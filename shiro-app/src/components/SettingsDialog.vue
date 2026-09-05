@@ -3,11 +3,13 @@
 // - 遮罩「按下与抬起都落在遮罩上」才关闭：面板内拖动选择文本滑出面板松开，按 click.self 判定会误关
 // - Esc 关闭
 // - 打开期间挂 body.dialog-open 挂起窗口拖拽区（drag 由 OS 命中测试优先消费，不挂起点遮罩会变拖动窗口）
-import { onMounted, onUnmounted, ref } from 'vue'
+import { ref } from 'vue'
 import { apiBase } from '../api'
+import { useDialogMask } from '../composables/useDialog'
 import pkg from '../../package.json'
 
 const emit = defineEmits<{ close: [] }>()
+const { onMaskDown, onMaskUp } = useDialogMask(() => emit('close'))
 
 const SECTIONS = [
   { key: 'general', label: '通用' },
@@ -16,28 +18,6 @@ const SECTIONS = [
 type SectionKey = (typeof SECTIONS)[number]['key']
 const section = ref<SectionKey>('general')
 
-onMounted(() => {
-  document.body.classList.add('dialog-open')
-  window.addEventListener('keydown', onKeydown)
-})
-onUnmounted(() => {
-  document.body.classList.remove('dialog-open')
-  window.removeEventListener('keydown', onKeydown)
-})
-
-// ---- 遮罩关闭：按下与抬起都落在遮罩上才关 ----
-let downOnMask = false
-function onMaskDown(e: PointerEvent) {
-  downOnMask = e.target === e.currentTarget
-}
-function onMaskUp(e: PointerEvent) {
-  if (downOnMask && e.target === e.currentTarget) emit('close')
-  downOnMask = false
-}
-
-function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape') emit('close')
-}
 </script>
 
 <template>

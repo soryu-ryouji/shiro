@@ -11,6 +11,70 @@
   "paths": {},
   "components": {
     "schemas": {
+      "CreateProjectRequest": {
+        "type": "object",
+        "required": [
+          "parent",
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "项目名（即新建的子目录名）"
+          },
+          "parent": {
+            "type": "string",
+            "description": "父目录绝对路径（须已存在）"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ProjectItem": {
+        "type": "object",
+        "required": [
+          "path",
+          "name",
+          "exists"
+        ],
+        "properties": {
+          "exists": {
+            "type": "boolean",
+            "description": "目录当前是否存在（已移动/删除的历史项返回 false，前端置灰）"
+          },
+          "name": {
+            "type": "string",
+            "description": "显示名（目录 basename）"
+          },
+          "path": {
+            "type": "string",
+            "description": "项目文件夹绝对路径"
+          }
+        }
+      },
+      "ProjectListResponse": {
+        "type": "object",
+        "required": [
+          "projects"
+        ],
+        "properties": {
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectItem"
+            }
+          }
+        }
+      },
       "StartupResponse": {
         "type": "object",
         "required": [

@@ -7,6 +7,26 @@ export type paths = Record<string, never>;
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        CreateProjectRequest: {
+            /** @description 项目名（即新建的子目录名） */
+            name: string;
+            /** @description 父目录绝对路径（须已存在） */
+            parent: string;
+        };
+        ErrorResponse: {
+            message: string;
+        };
+        ProjectItem: {
+            /** @description 目录当前是否存在（已移动/删除的历史项返回 false，前端置灰） */
+            exists: boolean;
+            /** @description 显示名（目录 basename） */
+            name: string;
+            /** @description 项目文件夹绝对路径 */
+            path: string;
+        };
+        ProjectListResponse: {
+            projects: components["schemas"]["ProjectItem"][];
+        };
         StartupResponse: {
             status: components["schemas"]["StartupStatus"];
         };

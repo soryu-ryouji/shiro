@@ -8,6 +8,8 @@ export const IPC = {
   winMinimize: 'shiro:win-minimize',
   winMaximizeToggle: 'shiro:win-maximize-toggle',
   winClose: 'shiro:win-close',
+  pickDirectory: 'shiro:pick-directory',
+  showInFolder: 'shiro:show-in-folder',
   // ---- 主进程 → 渲染进程（webContents.send / ipcRenderer.on） ----
   winMaximized: 'shiro:win-maximized',
 } as const
@@ -20,6 +22,10 @@ export interface ShiroShell {
   /** 最大化/还原切换，返回切换后的最大化状态 */
   toggleMaximizeWindow(): Promise<boolean>
   closeWindow(): Promise<void>
+  /** 弹系统目录选择框（取消返回 null） */
+  pickDirectory(title: string): Promise<string | null>
+  /** 在系统文件管理器中显示该路径（定位到父级并选中） */
+  showInFolder(path: string): Promise<void>
   /** 订阅最大化状态变化（含 Aero Snap 等系统途径），返回退订函数 */
   onWindowMaximized(cb: (maximized: boolean) => void): () => void
 }
