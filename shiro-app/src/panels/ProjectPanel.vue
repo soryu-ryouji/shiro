@@ -128,6 +128,10 @@ async function submitRename(newName: string) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: item.path, new_name: newName }),
     })
+    // 写作模式下重命名当前打开的项目时，同步项目头标题
+    if (projectStore.current?.path === item.path) {
+      projectStore.current = { ...projectStore.current, name: newName }
+    }
     await refresh()
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : String(e)
@@ -143,36 +147,51 @@ async function confirmDeleteFolder() {
   try {
     await shell.trashItem(item.path)
     await apiFetch(`/api/v1/projects?path=${encodeURIComponent(item.path)}`, { method: 'DELETE' })
+    // 写作模式下删除当前打开的项目时，退回列表模式
+    if (projectStore.current?.path === item.path) projectStore.close()
     await refresh()
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : String(e)
   }
 }
+
+// ---- 项目头 ··· 菜单（项目级操作，复用列表模式的改名/删除流程） ----
+const projMenu = ref<{ x: number; y: number; items: MenuItem[] } | null>(null)
+
+function openProjectMenu(e: MouseEvent) {
+  const cur = projectStore.current
+  if (!cur) return
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const items: MenuItem[] = []
+  if (hasShell) {
+    items.push({ label: '在文件夹中打开', action: () => void shell.openPath(cur.path) })
+  }
+  items.push({ label: '重命名…', action: () => (renamingProject.value = cur) })
+  items.push({ label: '删除文件夹…', danger: true, action: () => (deletingProject.value = cur) })
+  projMenu.value = { x: rect.left, y: rect.bottom + 4, items }
+}
 </script>
 
 <template>
-  <!-- 写作模式：返回 + 目录树（只含目录；文稿列表在中栏） -->
+  <!-- 写作模式：项目头（返回 + 大标题 + 操作行）+ 虚线 + 根级列表（子目录相对缩进；文稿列表在中栏） -->
   <div v-if="projectStore.current" class="project-nav">
-    <button class="back-btn" @click="projectStore.close()">
-      <Icon name="chevronLeft" :size="14" />
-      <span class="back-name">{{ projectStore.current.name }}</span>
-    </button>
+    <div class="proj-head">
+      <button class="back-btn" title="返回项目列表" @click="projectStore.close()">
+        <Icon name="chevronLeft" :size="14" />
+      </button>
+      <div class="proj-title" :title="projectStore.current.path">{{ projectStore.current.name }}</div>
+    </div>
+    <div class="proj-actions">
+      <button class="act-btn" title="新建根文件夹" @click="startRootNaming">
+        <Icon name="plus" :size="14" />
+      </button>
+      <button class="act-btn" title="项目操作" @click="openProjectMenu">
+        <Icon name="more" :size="14" />
+      </button>
+    </div>
+    <div class="proj-divider" />
     <div class="tree">
-      <div
-        class="tree-root"
-        :class="{ active: projectStore.selectedDir === '' }"
-        @click="projectStore.selectedDir = ''"
-      >
-        <Icon name="fileText" :size="14" />
-        <span class="root-name">项目文件</span>
-        <button
-          class="row-btn root-add"
-          title="新建目录"
-          @click.stop="startRootNaming"
-        >
-          <Icon name="plus" :size="12" />
-        </button>
-      </div>
+      <!-- 根级新建文件夹的命名行 -->
       <div v-if="projectStore.namingDir === ''" class="naming-row root-naming">
         <input
           ref="rootNamingInput"
@@ -184,6 +203,17 @@ async function confirmDeleteFolder() {
           @blur="confirmRootNaming"
         />
       </div>
+      <!-- 根目录行：选中的中栏列出项目根级散落的文稿 -->
+      <div
+        class="root-dir-row"
+        :class="{ active: projectStore.selectedDir === '' }"
+        title="项目根目录"
+        @click="projectStore.selectedDir = ''"
+      >
+        <Icon name="folder" :size="14" class="folder" />
+        <span class="row-name">根目录</span>
+      </div>
+      <!-- 根级目录直接成列表；子目录由 TreeNode 逐级缩进 -->
       <TreeNode v-for="node in projectStore.tree" :key="node.path" :node="node" />
     </div>
     <ContextMenu
@@ -192,6 +222,13 @@ async function confirmDeleteFolder() {
       :y="treeMenu.y"
       :items="treeMenuItems(treeMenu.node)"
       @close="treeMenu = null"
+    />
+    <ContextMenu
+      v-if="projMenu"
+      :x="projMenu.x"
+      :y="projMenu.y"
+      :items="projMenu.items"
+      @close="projMenu = null"
     />
   </div>
 
@@ -235,23 +272,25 @@ async function confirmDeleteFolder() {
       @close="menu = null"
     />
     <NewProjectDialog v-if="showNew" @close="showNew = false" @created="refresh" />
-    <PromptDialog
-      v-if="renamingProject"
-      title="重命名项目"
-      :initial="renamingProject.name"
-      placeholder="新名称"
-      @close="renamingProject = null"
-      @submit="submitRename"
-    />
-    <ConfirmDialog
-      v-if="deletingProject"
-      title="删除文件夹"
-      :message="`将把项目文件夹移到系统回收站（可恢复）：\n${deletingProject.path}`"
-      confirm-label="删除"
-      @close="deletingProject = null"
-      @confirm="confirmDeleteFolder"
-    />
   </div>
+
+  <!-- 项目重命名 / 删除文件夹确认：列表右键菜单与写作模式 ··· 菜单共用 -->
+  <PromptDialog
+    v-if="renamingProject"
+    title="重命名项目"
+    :initial="renamingProject.name"
+    placeholder="新名称"
+    @close="renamingProject = null"
+    @submit="submitRename"
+  />
+  <ConfirmDialog
+    v-if="deletingProject"
+    title="删除文件夹"
+    :message="`将把项目文件夹移到系统回收站（可恢复）：\n${deletingProject.path}`"
+    confirm-label="删除"
+    @close="deletingProject = null"
+    @confirm="confirmDeleteFolder"
+  />
 </template>
 
 <style scoped>
@@ -384,38 +423,85 @@ async function confirmDeleteFolder() {
   font-size: calc(12px * var(--font-scale-ui));
 }
 
-/* ---- 写作模式：返回 + 目录树 ---- */
+/* ---- 写作模式：项目头（返回 + 大标题 + 操作行）+ 虚线 + 根级列表 ---- */
 .project-nav {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+}
+
+.proj-head {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px 0;
 }
 
 .back-btn {
+  flex: none;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 8px;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
   border: none;
-  border-radius: 6px;
+  border-radius: 5px;
   background: none;
-  font-size: calc(13px * var(--font-scale-ui));
-  font-weight: 600;
-  color: var(--text);
+  color: var(--text-dim);
   cursor: pointer;
-  text-align: left;
 }
 
 @media (hover: hover) {
   .back-btn:hover {
     background: var(--border);
+    color: var(--text);
   }
 }
 
-.back-name {
+/* 项目大标题（Ulysses 式） */
+.proj-title {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: calc(19px * var(--font-scale-ui));
+  font-weight: 700;
+  color: var(--text);
+}
+
+.proj-actions {
+  display: flex;
+  gap: 2px;
+  padding: 2px 6px;
+}
+
+.act-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .act-btn:hover {
+    background: var(--border);
+    color: var(--text);
+  }
+}
+
+/* 项目信息区块与目录列表的虚线分界 */
+.proj-divider {
+  margin: 2px 8px 4px;
+  border-bottom: 1px dashed var(--border);
 }
 
 .tree {
@@ -424,33 +510,8 @@ async function confirmDeleteFolder() {
   gap: 1px;
 }
 
-.tree-root {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 8px;
-  border-radius: 5px;
-  font-size: calc(13px * var(--font-scale-ui));
-  color: var(--text);
-  cursor: pointer;
-  user-select: none;
-}
-
-.root-name {
-  flex: 1;
-}
-
-/* 根行的新建按钮默认隐藏，悬停浮现 */
-.root-add {
-  opacity: 0;
-}
-
-.tree-root:hover .root-add {
-  opacity: 1;
-}
-
 .root-naming {
-  padding: 2px 6px 2px 28px;
+  padding: 2px 6px 2px 30px;
 }
 
 .root-naming input {
@@ -463,30 +524,48 @@ async function confirmDeleteFolder() {
   outline: none;
 }
 
+/* 根目录行：查看项目根级散落文稿的入口，与目录行的 folder 图标对齐（arrow 18px + gap 4px + 行缩进 8px）；
+   与下方目录列表留出间隔，区分「根目录」与同级目录列表 */
+.root-dir-row {
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px 5px 30px;
+  border-radius: 5px;
+  font-size: calc(13px * var(--font-scale-ui));
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  user-select: none;
+}
+
 @media (hover: hover) {
-  .tree-root:hover {
+  .root-dir-row:hover {
     background: var(--border);
   }
 }
 
-.tree-root.active {
+.root-dir-row .folder {
+  flex: none;
+  color: var(--text-dim);
+}
+
+.root-dir-row .row-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.root-dir-row.active {
   background: var(--accent-soft);
   color: var(--accent);
   font-weight: 600;
 }
 
-/* 树行内操作按钮（与 TreeNode 行内样式同款） */
-.row-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-dim);
-  cursor: pointer;
+.root-dir-row.active .folder {
+  color: var(--accent);
 }
+
 </style>

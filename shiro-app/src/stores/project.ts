@@ -21,6 +21,11 @@ export const projectStore = reactive({
   namingDir: null as string | null,
   /** 正在重命名的目录（null = 未在重命名） */
   renamingDir: null as string | null,
+  /** 编辑器状态（Editor 写入，编辑区顶行显示） */
+  wordCount: 0,
+  saveState: 'saved' as 'saved' | 'saving' | 'error',
+  /** 保存状态文字是否可见（瞬时反馈，自动淡出；失败常驻） */
+  saveStatusVisible: false,
 
   async open(project: ProjectItem) {
     this.current = project
@@ -28,9 +33,9 @@ export const projectStore = reactive({
     this.tabs = []
     this.selectedDir = '正文'
     await this.refreshTree()
-    // 默认选中「正文」；项目里没有则退回项目根
+    // 默认选中「正文」；没有则退回第一个根目录，再无目录退回项目根（根级散落文稿）
     if (!findDir(this.tree, '正文')) {
-      this.selectedDir = ''
+      this.selectedDir = this.tree.find((n) => n.kind === 'dir')?.path ?? ''
     }
   },
 

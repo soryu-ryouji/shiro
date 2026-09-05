@@ -18,20 +18,20 @@ const editorEl = ref<HTMLElement | null>(null)
 let view: EditorView | null = null
 
 const loading = ref(false)
-const wordCount = ref(0)
-const saveState = ref<'saved' | 'saving' | 'error'>('saved')
-/** 保存状态文字是否可见（保存活动瞬时反馈，自动淡出；失败常驻） */
-const statusVisible = ref(false)
 let hideTimer: ReturnType<typeof setTimeout> | null = null
 
-watch(saveState, (s) => {
-  if (hideTimer) clearTimeout(hideTimer)
-  if (s === 'saved') {
-    hideTimer = setTimeout(() => (statusVisible.value = false), 1600)
-  } else {
-    statusVisible.value = true
-  }
-})
+// 字数/保存状态提升在 store（本组件写入，编辑区顶行 EditorTabs 显示）
+watch(
+  () => projectStore.saveState,
+  (s) => {
+    if (hideTimer) clearTimeout(hideTimer)
+    if (s === 'saved') {
+      hideTimer = setTimeout(() => (projectStore.saveStatusVisible = false), 1600)
+    } else {
+      projectStore.saveStatusVisible = true
+    }
+  },
+)
 
 /** 待保存内容与其所属文稿（切文稿时 pending 仍指向旧文件，保证不串写） */
 let pending: { file: string; content: string } | null = null
@@ -41,7 +41,7 @@ async function flushSave() {
   if (!pending || !projectStore.current) return
   const { file, content } = pending
   pending = null
-  saveState.value = 'saving'
+  projectStore.saveState = 'saving'
   try {
     await apiFetch<FileContent>('/api/v1/projects/file', {
       method: 'PUT',
@@ -49,9 +49,9 @@ async function flushSave() {
       body: JSON.stringify({ path: projectStore.current.path, file, content }),
     })
     // 保存期间又有输入（pending 重新有值）时保持 saving，等下一轮 flush
-    saveState.value = pending === null ? 'saved' : 'saving'
+    projectStore.saveState = pending === null ? 'saved' : 'saving'
   } catch {
-    saveState.value = 'error'
+    projectStore.saveState = 'error'
   }
 }
 
@@ -59,7 +59,7 @@ function scheduleSave(content: string) {
   const file = projectStore.currentFile
   if (!file) return
   pending = { file, content }
-  wordCount.value = countWords(content)
+  projectStore.wordCount = countWords(content)
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => void flushSave(), 800)
 }
@@ -104,9 +104,9 @@ async function loadFile() {
       `/api/v1/projects/file?path=${encodeURIComponent(projectStore.current.path)}&file=${encodeURIComponent(file)}`,
     )
     view.setState(makeState(res.content ?? ''))
-    wordCount.value = countWords(res.content ?? '')
+    projectStore.wordCount = countWords(res.content ?? '')
     pending = null
-    saveState.value = 'saved'
+    projectStore.saveState = 'saved'
   } finally {
     loading.value = false
   }
@@ -131,15 +131,6 @@ onUnmounted(() => {
     <!-- 编辑器容器常驻（v-show 控制显隐）：CodeMirror 视图在 onMounted 即挂载，
          放进 v-if 分支会因挂载时机晚于视图创建而导致 DOM 不渲染 -->
     <div ref="editorEl" v-show="projectStore.currentFile" class="editor" />
-    <div v-if="projectStore.currentFile" class="editor-status">
-      <template v-if="statusVisible">
-        <span v-if="saveState === 'saving'">保存中…</span>
-        <span v-else-if="saveState === 'error'" class="save-error">保存失败</span>
-        <span v-else>已保存</span>
-        <span class="sep">·</span>
-      </template>
-      <span>{{ wordCount }} 字</span>
-    </div>
     <div v-if="!projectStore.currentFile" class="editor-empty">从中间列表选择文稿，或新建一篇</div>
   </div>
 </template>
@@ -161,23 +152,6 @@ onUnmounted(() => {
 
 .editor :deep(.cm-editor) {
   height: 100%;
-}
-
-.editor-status {
-  position: absolute;
-  top: 10px;
-  right: 16px;
-  z-index: 10;
-  display: flex;
-  gap: 6px;
-  font-size: calc(11px * var(--font-scale-ui));
-  color: var(--text-dim);
-  user-select: none;
-  pointer-events: none;
-}
-
-.save-error {
-  color: var(--danger);
 }
 
 .editor-empty {

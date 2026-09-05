@@ -43,50 +43,92 @@ function onDragEnd() {
 </script>
 
 <template>
-  <div v-if="projectStore.tabs.length > 1" class="tabs">
-    <div
-      v-for="(path, i) in projectStore.tabs"
-      :key="path"
-      class="tab"
-      :class="{
-        active: projectStore.currentFile === path,
-        'drop-target': dropIndex === i && dragIndex !== null && dragIndex !== i,
-        dragging: dragIndex === i,
-      }"
-      draggable="true"
-      :title="path"
-      @click="projectStore.currentFile = path"
-      @dragstart="onDragStart(i, $event)"
-      @dragover="onDragOver(i, $event)"
-      @drop="onDrop(i, $event)"
-      @dragend="onDragEnd"
-    >
-      <Icon name="fileText" :size="13" class="tab-icon" />
-      <span class="tab-title">{{ tabTitle(path) }}</span>
-      <button class="tab-close" title="关闭" @click.stop="projectStore.closeTab(path)">
-        <Icon name="close" :size="12" />
-      </button>
+  <!-- 编辑区顶行常驻：左侧标签页（溢出横向滚动），右侧状态（保存状态 + 字数）固定不被挤压 -->
+  <div class="tabs-row">
+    <div v-if="projectStore.tabs.length > 1" class="tabs">
+      <div
+        v-for="(path, i) in projectStore.tabs"
+        :key="path"
+        class="tab"
+        :class="{
+          active: projectStore.currentFile === path,
+          'drop-target': dropIndex === i && dragIndex !== null && dragIndex !== i,
+          dragging: dragIndex === i,
+        }"
+        draggable="true"
+        :title="path"
+        @click="projectStore.currentFile = path"
+        @dragstart="onDragStart(i, $event)"
+        @dragover="onDragOver(i, $event)"
+        @drop="onDrop(i, $event)"
+        @dragend="onDragEnd"
+      >
+        <Icon name="fileText" :size="13" class="tab-icon" />
+        <span class="tab-title">{{ tabTitle(path) }}</span>
+        <button class="tab-close" title="关闭" @click.stop="projectStore.closeTab(path)">
+          <Icon name="close" :size="12" />
+        </button>
+      </div>
+    </div>
+    <div class="row-spacer" />
+    <div v-if="projectStore.currentFile" class="editor-status">
+      <template v-if="projectStore.saveStatusVisible">
+        <span v-if="projectStore.saveState === 'saving'">保存中…</span>
+        <span v-else-if="projectStore.saveState === 'error'" class="save-error">保存失败</span>
+        <span v-else>已保存</span>
+        <span class="sep">·</span>
+      </template>
+      <span>{{ projectStore.wordCount }} 字</span>
     </div>
   </div>
 </template>
 
 <style scoped>
-.tabs {
+.tabs-row {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 4px;
   height: 32px;
   padding: 0 8px;
-  /* 空白区域不填灰：栏背景透明，与编辑器一体 */
+}
+
+/* 标签区：横向滚动（滚动条隐藏），不挤压右侧状态区 */
+.tabs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   overflow-x: auto;
   overflow-y: hidden;
-  /* 隐藏横向滚动条轨道（拖长出滚动条时会露出一条灰带）；溢出仍可滚（触控板/Shift+滚轮） */
   scrollbar-width: none;
 }
 
 .tabs::-webkit-scrollbar {
   display: none;
+}
+
+.row-spacer {
+  flex: none;
+  min-width: 8px;
+}
+
+/* 右侧状态区：固定不被标签挤压；margin-left:auto 兜底无标签时也靠右（此时标签区 v-if 掉，无 flex:1 占位） */
+.editor-status {
+  flex: none;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  font-size: calc(11px * var(--font-scale-ui));
+  color: var(--text-dim);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.save-error {
+  color: var(--danger);
 }
 
 .tab {
