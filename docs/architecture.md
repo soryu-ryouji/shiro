@@ -16,6 +16,14 @@ REST API 由代码生成 OpenAPI schema（utoipa：`#[utoipa::path]` 标注端�
 
 **4. 编辑计算归 app，存储与管理归 daemon**
 
+**5. 模型接入归 daemon**
+
+模型接入层在 shiro-daemon 内实现：
+
+- 统一 provider 抽象，各模型（OpenAI 兼容 API、Anthropic 等）各自实现
+- 密钥与 provider 配置存 `~/.config/shiro/config.toml`
+- 前端通过 HTTP API 调用，流式输出走 SSE
+
 ## 仓库结构
 
 ```text
