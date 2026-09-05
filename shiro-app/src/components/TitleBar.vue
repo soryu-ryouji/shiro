@@ -1,7 +1,8 @@
 <script setup lang="ts">
-// 中栏顶栏（只覆盖中栏，左右栏通高）：当前视图标题 · 右端设置按钮。
+// 中栏顶栏（只覆盖中栏，左右栏通高）：当前模块标题 · 右端设置按钮。
 // 整条为窗口拖拽区（双击空白切换最大化），按钮退出拖拽。
-// 侧栏隐藏时本栏通栏到窗口左缘：macOS 左端避让原生红绿灯，并显示侧栏开关。
+// 侧栏收起时：Activity 图标随侧栏整栏隐藏，展开入口挪到本栏左端；
+// 且 macOS 红绿灯改压本栏左端（避让 78px）。
 import { computed } from 'vue'
 import { hasShell, isMac, shell } from '../platform'
 import Icon from './Icon.vue'
@@ -48,7 +49,7 @@ function onDblClick(e: MouseEvent) {
   -webkit-app-region: no-drag;
 }
 
-/* 侧栏隐藏时顶栏通栏：macOS 左端避开窗口左上角的原生红绿灯 */
+/* 侧栏收起时顶栏通栏到窗口左缘：macOS 避让原生红绿灯 */
 .titlebar.reserve-traffic {
   padding-left: 78px;
 }

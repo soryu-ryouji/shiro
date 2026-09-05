@@ -1,53 +1,32 @@
-<script setup lang="ts">
-// 项目卡片列表后续接 history.toml 对应 API；本期为空状态占位（docs/frontend/layout.md）
-</script>
-
 <template>
-  <section class="project-view">
-    <div class="card-row">
-      <button class="card card-open" disabled title="即将支持">
-        <span class="card-plus">＋</span>
-        <span>打开项目文件夹</span>
-      </button>
-    </div>
-    <p class="empty-hint">打开过的项目会显示在这里</p>
+  <!-- 未打开项目时的中栏欢迎页；打开后中栏为编辑器（章节编辑待实现） -->
+  <section class="welcome">
+    <h1 class="logo">shiro</h1>
+    <p class="hint">从左侧打开项目文件夹开始</p>
   </section>
 </template>
 
 <style scoped>
-.card-row {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.card {
-  width: 140px;
-  height: 96px;
+.welcome {
+  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  border: 1px dashed var(--border);
-  border-radius: 8px;
-  background: var(--bg-soft);
+  gap: 8px;
+}
+
+.logo {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text);
+}
+
+.hint {
+  margin: 0;
   color: var(--text-dim);
   font-size: 13px;
-  cursor: pointer;
-}
-
-.card:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-.card-plus {
-  font-size: 20px;
-  line-height: 1;
-}
-
-.empty-hint {
-  margin-top: 16px;
 }
 </style>

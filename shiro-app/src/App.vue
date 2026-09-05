@@ -20,6 +20,15 @@ const NAV_ITEMS: NavItem[] = [
 const active = ref<NavKey>('project')
 const activeTitle = computed(() => NAV_ITEMS.find((i) => i.key === active.value)?.label ?? '')
 
+/** 侧栏图标行点击：点当前激活图标收起侧栏（VSCode 行为）；切换模块直接生效 */
+function onActivity(key: NavKey) {
+  if (key === active.value) {
+    toggleSidebar()
+    return
+  }
+  active.value = key
+}
+
 // ---- 启动阶段：页面先于 daemon 就绪加载（先监听后启动模型），轮询 startup 直到 ready/error ----
 const status = ref<'connecting' | 'ready' | 'error'>('connecting')
 const errorMsg = ref('')
@@ -123,9 +132,9 @@ const gridStyle = computed(() => ({
     <WindowControls />
   </div>
 
-  <!-- 三栏布局：左右栏通高，顶栏只覆盖中栏；窗口控制 fixed 于窗口右上角（Windows/Linux） -->
+  <!-- 侧栏（Activity 图标置顶）+ 中栏 + 详情栏：左右栏通高，顶栏只覆盖中栏 -->
   <div v-else class="app" :style="gridStyle">
-    <Sidebar :items="NAV_ITEMS" :active="active" @navigate="active = $event" @toggle="toggleSidebar" />
+    <Sidebar :items="NAV_ITEMS" :active="active" @activate="onActivity" @toggle="toggleSidebar" />
 
     <div class="center">
       <TitleBar
