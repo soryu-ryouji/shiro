@@ -118,6 +118,9 @@ function stopResize() {
 const gridStyle = computed(() => ({
   gridTemplateColumns: `${sidebarVisible.value ? sidebarWidth.value : 0}px minmax(0, 1fr)`,
 }))
+
+/** 写作模式（项目已打开）：各栏自带顶栏、分隔竖线贯穿窗口，全局顶栏让位 */
+const writing = computed(() => active.value === 'project' && !!projectStore.current)
 </script>
 
 <template>
@@ -130,14 +133,24 @@ const gridStyle = computed(() => ({
     <WindowControls />
   </div>
 
-  <!-- 侧栏（Activity 图标置顶）+ 中栏：左栏通高，顶栏只覆盖中栏 -->
+  <!-- 侧栏（Activity 图标置顶）+ 中栏：左栏通高；写作模式各栏自带顶栏，全局顶栏只覆盖其余形态 -->
   <div v-else class="app" :style="gridStyle">
     <Sidebar :items="NAV_ITEMS" :active="active" @activate="onActivity" @toggle="toggleSidebar" />
 
     <div class="center">
-      <TitleBar :sidebar-visible="sidebarVisible" @toggle-sidebar="toggleSidebar" @open-settings="showSettings = true" />
-      <div class="content-body">
-        <ProjectView v-if="active === 'project'" />
+      <TitleBar
+        v-if="!writing"
+        :sidebar-visible="sidebarVisible"
+        @toggle-sidebar="toggleSidebar"
+        @open-settings="showSettings = true"
+      />
+      <div class="content-body" :class="{ flush: writing }">
+        <ProjectView
+          v-if="active === 'project'"
+          :sidebar-visible="sidebarVisible"
+          @toggle-sidebar="toggleSidebar"
+          @open-settings="showSettings = true"
+        />
         <DatabaseView v-else-if="active === 'database'" />
         <ModelView v-else />
       </div>

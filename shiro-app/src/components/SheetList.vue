@@ -1,13 +1,29 @@
 <script setup lang="ts">
-// 中栏文稿列表（Ulysses 第二栏）：选中目录的直接 .md 文稿；顶部目录名 + 右侧新建（内联命名）。
+// 中栏文稿列表（Ulysses 第二栏）：选中目录的直接 .md 文稿。
+// 顶栏（窗口拖拽区）：左侧目录名（侧栏收起时带展开入口），右侧筛选（按标题子串过滤）与新建（列表首行内联命名）。
 // 每项展示：时间 + 标题 + 正文预览（daemon excerpts 接口，剥离 markdown 取开头约 160 字，两行截断）。
 import { computed, nextTick, ref, watch } from 'vue'
 import { apiFetch } from '../api'
-import { hasShell, shell } from '../platform'
+import { hasShell, isMac, shell } from '../platform'
 import { findDir, projectStore } from '../stores/project'
 import type { components } from '../api-types'
 import ContextMenu, { type MenuItem } from './ContextMenu.vue'
 import Icon from './Icon.vue'
+
+const props = defineProps<{ sidebarVisible: boolean }>()
+const emit = defineEmits<{ 'toggle-sidebar': [] }>()
+
+/** 侧栏收起时 macOS 红绿灯压顶栏左端（避让 78px） */
+const reserveTraffic = computed(() => hasShell && isMac && !props.sidebarVisible)
+
+/** 顶栏双击空白切换最大化（按钮/输入框上不触发） */
+function onHeadDblClick(e: MouseEvent) {
+  if ((e.target as HTMLElement).closest('button, input')) return
+  void shell.toggleMaximizeWindow()
+}
+
+/** 顶栏标题：选中目录名（项目根为固定文案） */
+const dirTitle = computed(() => (projectStore.selectedDir ? (projectStore.selectedDir.split('/').at(-1) ?? '') : '根目录'))
 
 /** 选中目录的直接文稿（file 节点） */
 const sheets = computed(() =>
@@ -59,6 +75,31 @@ function sheetTitle(name: string): string {
   return name.replace(/\.(md|markdown)$/i, '')
 }
 
+// ---- 列表筛选：顶栏漏斗开关，按标题子串过滤（不区分大小写）；Esc 或空值失焦关闭 ----
+const filtering = ref(false)
+const filter = ref('')
+const filterInput = ref<HTMLInputElement | null>(null)
+
+async function toggleFilter() {
+  filtering.value = !filtering.value
+  if (!filtering.value) {
+    filter.value = ''
+    return
+  }
+  await nextTick()
+  filterInput.value?.focus()
+}
+
+function onFilterBlur() {
+  if (!filter.value.trim()) filtering.value = false
+}
+
+const shownSheets = computed(() => {
+  const q = filter.value.trim().toLowerCase()
+  if (!q) return sheets.value
+  return sheets.value.filter((s) => sheetTitle(s.name).toLowerCase().includes(q))
+})
+
 // ---- 新建文稿：列表顶行内联输入（Enter 创建，Esc 取消） ----
 const naming = ref(false)
 const newName = ref('')
@@ -66,6 +107,11 @@ const nameInput = ref<HTMLInputElement | null>(null)
 const createError = ref('')
 
 async function startNaming() {
+  // 命名行已打开时再点「新建」只回焦输入框，不清空已输入内容
+  if (naming.value) {
+    nameInput.value?.focus()
+    return
+  }
   naming.value = true
   createError.value = ''
   newName.value = ''
@@ -149,30 +195,53 @@ async function confirmRename(path: string) {
 
 <template>
   <div class="sheet-list">
-    <!-- 无独立头部横条：新建入口为列表首行（内联命名行同位置展开） -->
-    <div class="top-row">
-      <div v-if="naming" class="naming-row">
-        <input
-          ref="nameInput"
-          v-model="newName"
-          class="naming-input"
-          type="text"
-          placeholder="文稿名"
-          @keydown.enter="confirmNaming"
-          @keydown.esc="naming = false"
-          @blur="confirmNaming"
-        />
-        <p v-if="createError" class="naming-error">{{ createError }}</p>
-      </div>
-      <button v-else class="new-row" @click="startNaming">
-        <Icon name="plus" :size="13" />
-        <span>新建文稿</span>
+    <!-- 次栏顶栏（窗口拖拽区）：左端目录名（侧栏收起时带展开入口），右端筛选/新建 -->
+    <div class="sheet-head" :class="{ 'reserve-traffic': reserveTraffic }" @dblclick="onHeadDblClick">
+      <button v-if="!sidebarVisible" class="head-btn" title="展开侧栏" @click="emit('toggle-sidebar')">
+        <Icon name="panelLeft" :size="15" />
       </button>
+      <span class="head-title">{{ dirTitle }}</span>
+      <div class="head-actions">
+        <!-- mousedown.prevent：阻止按下时筛选输入框失焦（否则 blur 先关闭、click 又打开，开关打架） -->
+        <button class="head-btn" :class="{ on: filtering }" title="筛选文稿" @mousedown.prevent @click="toggleFilter">
+          <Icon name="filter" :size="14" />
+        </button>
+        <button class="head-btn" title="新建文稿" @click="startNaming">
+          <Icon name="plus" :size="14" />
+        </button>
+      </div>
     </div>
 
-    <ul v-if="sheets.length" class="sheets">
+    <!-- 筛选行：顶栏漏斗开关 -->
+    <div v-if="filtering" class="filter-row">
+      <input
+        ref="filterInput"
+        v-model="filter"
+        type="text"
+        placeholder="按标题筛选"
+        @keydown.esc="toggleFilter"
+        @blur="onFilterBlur"
+      />
+    </div>
+
+    <!-- 新建文稿：列表首行内联命名（Enter 创建，Esc 取消） -->
+    <div v-if="naming" class="naming-row">
+      <input
+        ref="nameInput"
+        v-model="newName"
+        class="naming-input"
+        type="text"
+        placeholder="文稿名"
+        @keydown.enter="confirmNaming"
+        @keydown.esc="naming = false"
+        @blur="confirmNaming"
+      />
+      <p v-if="createError" class="naming-error">{{ createError }}</p>
+    </div>
+
+    <ul v-if="shownSheets.length" class="sheets">
       <li
-        v-for="s in sheets"
+        v-for="s in shownSheets"
         :key="s.path"
         class="sheet"
         :class="{ active: projectStore.currentFile === s.path }"
@@ -197,7 +266,7 @@ async function confirmRename(path: string) {
         </template>
       </li>
     </ul>
-    <p v-else-if="!naming" class="empty-hint">此目录还没有文稿</p>
+    <p v-else-if="!naming" class="empty-hint">{{ filter.trim() ? '没有匹配的文稿' : '此目录还没有文稿' }}</p>
 
     <ContextMenu
       v-if="sheetMenu"
@@ -218,34 +287,94 @@ async function confirmRename(path: string) {
   overflow: hidden;
 }
 
-.top-row {
+/* 次栏顶栏：与编辑区顶行（EditorTabs）同为 40px，拼成通窗工具行；本身是窗口拖拽区 */
+.sheet-head {
   flex: none;
-  padding: 8px 8px 4px;
-}
-
-.new-row {
+  height: 40px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 6px 10px;
-  border: none;
-  border-radius: 6px;
-  background: none;
+  gap: 2px;
+  padding: 0 8px;
+  -webkit-app-region: drag;
+}
+
+.sheet-head button {
+  -webkit-app-region: no-drag;
+}
+
+/* 侧栏收起时顶栏通到窗口左缘：macOS 避让原生红绿灯 */
+.sheet-head.reserve-traffic {
+  padding-left: 78px;
+}
+
+.head-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: calc(13px * var(--font-scale-ui));
+  font-weight: 600;
+  color: var(--text);
+  user-select: none;
+}
+
+.head-actions {
+  flex: none;
+  display: flex;
+  gap: 2px;
+}
+
+.head-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
   color: var(--text-dim);
   cursor: pointer;
 }
 
 @media (hover: hover) {
-  .new-row:hover {
+  .head-btn:hover {
     background: var(--bg-soft);
     color: var(--text);
   }
 }
 
+.head-btn.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.filter-row {
+  flex: none;
+  padding: 0 8px 6px;
+}
+
+.filter-row input {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: calc(13px * var(--font-scale-ui));
+  color: var(--text);
+  outline: none;
+}
+
+.filter-row input:focus {
+  border-color: var(--accent);
+}
+
+/* 命名行与列表首项同位（顶部间隙一致） */
 .naming-row {
-  padding: 0;
+  padding: 12px 8px 4px;
 }
 
 .naming-input {
@@ -268,7 +397,8 @@ async function confirmRename(path: string) {
   flex: 1;
   list-style: none;
   margin: 0;
-  padding: 8px;
+  /* 顶部间隙与标签页条（EditorTabs .tabs-row）一致：首项与首签平齐，顶栏下留出呼吸位 */
+  padding: 12px 8px 8px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;

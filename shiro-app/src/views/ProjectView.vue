@@ -1,16 +1,19 @@
 <script setup lang="ts">
-// 中栏：打开项目后为写作模式（文稿列表 + 编辑器，Ulysses 式），未打开项目为欢迎页。
+// 中栏：打开项目后为写作模式（文稿列表 + 编辑器，Ulysses 式分栏：各栏自带顶栏，分隔竖线贯穿窗口），未打开项目为欢迎页。
 import { projectStore } from '../stores/project'
 import SheetList from '../components/SheetList.vue'
 import Editor from '../components/Editor.vue'
 import EditorTabs from '../components/EditorTabs.vue'
+
+defineProps<{ sidebarVisible: boolean }>()
+const emit = defineEmits<{ 'toggle-sidebar': []; 'open-settings': [] }>()
 </script>
 
 <template>
   <section v-if="projectStore.current" class="writing">
-    <SheetList class="sheet-col" />
+    <SheetList class="sheet-col" :sidebar-visible="sidebarVisible" @toggle-sidebar="emit('toggle-sidebar')" />
     <div class="editor-col">
-      <EditorTabs />
+      <EditorTabs @open-settings="emit('open-settings')" />
       <Editor />
     </div>
   </section>
