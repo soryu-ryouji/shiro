@@ -8,7 +8,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tower_http::services::{ServeDir, ServeFile};
-use utoipa::{IntoParams, OpenApi, ToSchema};
+use utoipa::{IntoParams, Modify, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 #[derive(Clone)]
@@ -255,6 +255,299 @@ async fn remove_project(Query(query): Query<RemoveProjectQuery>) -> StatusCode {
     StatusCode::NO_CONTENT
 }
 
+// ---- 项目文件（真实文件夹直读直写，见 docs/backend/storage.md） ----
+
+/// 项目内相对路径安全校验：拒绝绝对路径与 .. 逃逸，返回拼接后的完整路径
+fn resolve_inside(root: &Path, rel: &str) -> Result<PathBuf, ApiError> {
+    let rel_path = Path::new(rel);
+    if rel_path.is_absolute()
+        || rel
+            .split(['/', '\\'])
+            .any(|seg| seg == ".." || seg == ".")
+        || rel.trim().is_empty()
+    {
+        return Err(bad_request("非法的文件路径"));
+    }
+    Ok(root.join(rel_path))
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct TreeNode {
+    /// 节点名（文件含 .md 后缀）
+    pub name: String,
+    /// 项目内相对路径
+    pub path: String,
+    /// dir / file
+    pub kind: String,
+    /// 文件修改时间（epoch 秒，仅 file）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modified: Option<u64>,
+    /// 子节点（仅 dir）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(no_recursion)]
+    pub children: Option<Vec<TreeNode>>,
+}
+
+/// 递归构建目录树：只含目录与 .md 文件；排除 . 开头项（.shiro 等）；目录在前，按名称排序
+fn build_tree(dir: &Path, root: &Path) -> Vec<TreeNode> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut dirs = Vec::new();
+    let mut files = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') {
+            continue;
+        }
+        let path = entry.path();
+        let rel = path
+            .strip_prefix(root)
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_default();
+        if path.is_dir() {
+            dirs.push(TreeNode {
+                name,
+                path: rel,
+                kind: "dir".into(),
+                modified: None,
+                children: Some(build_tree(&path, root)),
+            });
+        } else if name.to_lowercase().ends_with(".md") || name.to_lowercase().ends_with(".markdown") {
+            let modified = entry
+                .metadata()
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs());
+            files.push(TreeNode { name, path: rel, kind: "file".into(), modified, children: None });
+        }
+    }
+    dirs.sort_by(|a, b| a.name.cmp(&b.name));
+    files.sort_by(|a, b| a.name.cmp(&b.name));
+    dirs.extend(files);
+    dirs
+}
+
+#[derive(Deserialize, IntoParams)]
+pub struct TreeQuery {
+    /// 项目根目录绝对路径
+    path: String,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct TreeResponse {
+    pub children: Vec<TreeNode>,
+}
+
+/// 项目目录树（目录与 .md 文件；目录在前，文件名排序）
+#[utoipa::path(
+    get,
+    path = "/api/v1/projects/tree",
+    tag = "projects",
+    params(TreeQuery),
+    responses(
+        (status = 200, description = "目录树", body = TreeResponse),
+        (status = 400, description = "项目目录不存在", body = ErrorResponse),
+        (status = 401, description = "未鉴权")
+    ),
+    security(("bearer_token" = []))
+)]
+async fn project_tree(Query(q): Query<TreeQuery>) -> Result<Json<TreeResponse>, ApiError> {
+    let root = PathBuf::from(&q.path);
+    if !root.is_dir() {
+        return Err(bad_request("项目目录不存在"));
+    }
+    Ok(Json(TreeResponse { children: build_tree(&root, &root) }))
+}
+
+#[derive(Deserialize, IntoParams)]
+pub struct ReadFileQuery {
+    /// 项目根目录绝对路径
+    path: String,
+    /// 项目内相对路径（如 正文/第一卷/001 序章.md）
+    file: String,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct FileContent {
+    pub content: String,
+    /// 修改时间（epoch 秒）
+    pub modified: u64,
+}
+
+fn file_mtime(path: &Path) -> u64 {
+    path.metadata()
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// 读取文稿内容
+#[utoipa::path(
+    get,
+    path = "/api/v1/projects/file",
+    tag = "projects",
+    params(ReadFileQuery),
+    responses(
+        (status = 200, description = "文稿内容", body = FileContent),
+        (status = 400, description = "路径非法", body = ErrorResponse),
+        (status = 404, description = "文件不存在", body = ErrorResponse),
+        (status = 401, description = "未鉴权")
+    ),
+    security(("bearer_token" = []))
+)]
+async fn read_project_file(Query(q): Query<ReadFileQuery>) -> Result<Json<FileContent>, ApiError> {
+    let target = resolve_inside(&PathBuf::from(&q.path), &q.file)?;
+    if !target.is_file() {
+        return Err((StatusCode::NOT_FOUND, Json(ErrorResponse { message: "文件不存在".into() })));
+    }
+    let content = std::fs::read_to_string(&target).map_err(internal_error)?;
+    Ok(Json(FileContent { content, modified: file_mtime(&target) }))
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct WriteFileRequest {
+    /// 项目根目录绝对路径
+    pub path: String,
+    /// 项目内相对路径
+    pub file: String,
+    pub content: String,
+}
+
+/// 保存文稿：同目录临时文件 + rename 原子覆盖，写入中断不腐蚀已有正文（见 storage.md 备份与快照）
+#[utoipa::path(
+    put,
+    path = "/api/v1/projects/file",
+    tag = "projects",
+    request_body = WriteFileRequest,
+    responses(
+        (status = 200, description = "已保存，返回新修改时间", body = FileContent),
+        (status = 400, description = "路径非法", body = ErrorResponse),
+        (status = 401, description = "未鉴权"),
+        (status = 500, description = "写入失败", body = ErrorResponse)
+    ),
+    security(("bearer_token" = []))
+)]
+async fn write_project_file(Json(req): Json<WriteFileRequest>) -> Result<Json<FileContent>, ApiError> {
+    let target = resolve_inside(&PathBuf::from(&req.path), &req.file)?;
+    let tmp = target.with_extension("md.shiro-tmp");
+    std::fs::write(&tmp, &req.content).map_err(internal_error)?;
+    std::fs::rename(&tmp, &target).map_err(internal_error)?;
+    Ok(Json(FileContent { content: req.content, modified: file_mtime(&target) }))
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct CreateFileRequest {
+    /// 项目根目录绝对路径
+    pub path: String,
+    /// 项目内相对路径（父目录自动创建）
+    pub file: String,
+}
+
+/// 新建文稿（空文件）
+#[utoipa::path(
+    post,
+    path = "/api/v1/projects/file",
+    tag = "projects",
+    request_body = CreateFileRequest,
+    responses(
+        (status = 201, description = "已创建", body = FileContent),
+        (status = 400, description = "路径非法", body = ErrorResponse),
+        (status = 409, description = "文件已存在", body = ErrorResponse),
+        (status = 401, description = "未鉴权")
+    ),
+    security(("bearer_token" = []))
+)]
+async fn create_project_file(Json(req): Json<CreateFileRequest>) -> Result<(StatusCode, Json<FileContent>), ApiError> {
+    let target = resolve_inside(&PathBuf::from(&req.path), &req.file)?;
+    if target.exists() {
+        return Err((StatusCode::CONFLICT, Json(ErrorResponse { message: "文件已存在".into() })));
+    }
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(internal_error)?;
+    }
+    std::fs::write(&target, "").map_err(internal_error)?;
+    Ok((StatusCode::CREATED, Json(FileContent { content: String::new(), modified: file_mtime(&target) })))
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct CreateDirRequest {
+    /// 项目根目录绝对路径
+    pub path: String,
+    /// 项目内相对路径（多级自动创建）
+    pub dir: String,
+}
+
+/// 新建目录（幂等：已存在返回 200）
+#[utoipa::path(
+    post,
+    path = "/api/v1/projects/dir",
+    tag = "projects",
+    request_body = CreateDirRequest,
+    responses(
+        (status = 201, description = "已创建"),
+        (status = 200, description = "目录已存在"),
+        (status = 400, description = "路径非法", body = ErrorResponse),
+        (status = 401, description = "未鉴权")
+    ),
+    security(("bearer_token" = []))
+)]
+async fn create_project_dir(Json(req): Json<CreateDirRequest>) -> Result<StatusCode, ApiError> {
+    let target = resolve_inside(&PathBuf::from(&req.path), &req.dir)?;
+    if target.is_dir() {
+        return Ok(StatusCode::OK);
+    }
+    std::fs::create_dir_all(&target).map_err(internal_error)?;
+    Ok(StatusCode::CREATED)
+}
+
+#[derive(Deserialize, IntoParams)]
+pub struct RemoveDirQuery {
+    /// 项目根目录绝对路径
+    path: String,
+    /// 项目内相对路径（不允许根目录与 .shiro）
+    dir: String,
+}
+
+/// 删除目录：空目录直接删除；非空目录移入项目回收站（.shiro/trash/，可手动恢复）
+#[utoipa::path(
+    delete,
+    path = "/api/v1/projects/dir",
+    tag = "projects",
+    params(RemoveDirQuery),
+    responses(
+        (status = 204, description = "已删除"),
+        (status = 400, description = "路径非法或受保护", body = ErrorResponse),
+        (status = 404, description = "目录不存在", body = ErrorResponse),
+        (status = 401, description = "未鉴权")
+    ),
+    security(("bearer_token" = []))
+)]
+async fn remove_project_dir(Query(q): Query<RemoveDirQuery>) -> Result<StatusCode, ApiError> {
+    let root = PathBuf::from(&q.path);
+    let target = resolve_inside(&root, &q.dir)?;
+    if q.dir.split(['/', '\\']).next() == Some(".shiro") {
+        return Err(bad_request(".shiro 是 shiro 的工作目录，不能删除"));
+    }
+    if !target.is_dir() {
+        return Err((StatusCode::NOT_FOUND, Json(ErrorResponse { message: "目录不存在".into() })));
+    }
+    let is_empty = target.read_dir().map(|mut d| d.next().is_none()).unwrap_or(false);
+    if is_empty {
+        std::fs::remove_dir(&target).map_err(internal_error)?;
+    } else {
+        let trash = root.join(".shiro").join("trash");
+        std::fs::create_dir_all(&trash).map_err(internal_error)?;
+        let name = target.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "dir".into());
+        let dest = trash.join(format!("{}-{}", now_secs(), name));
+        std::fs::rename(&target, &dest).map_err(internal_error)?;
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn auth(State(state): State<AppState>, req: Request, next: Next) -> Result<Response, StatusCode> {
     let token = req
         .headers()
@@ -266,21 +559,6 @@ async fn auth(State(state): State<AppState>, req: Request, next: Next) -> Result
         _ => Err(StatusCode::UNAUTHORIZED),
     }
 }
-
-#[derive(OpenApi)]
-#[openapi(
-    info(title = "shiro API", version = env!("CARGO_PKG_VERSION")),
-    components(schemas(
-        StartupResponse,
-        StartupStatus,
-        ProjectItem,
-        ProjectListResponse,
-        CreateProjectRequest,
-        ErrorResponse
-    )),
-    modifiers(&SecurityAddon)
-)]
-struct ApiDoc;
 
 struct SecurityAddon;
 
@@ -296,17 +574,25 @@ impl utoipa::Modify for SecurityAddon {
             ),
         );
     }
+    // 让 modifier 同时补全 info（OpenApiRouter 生成的文档不含 title/version）
 }
 
-/// 构建 API 路由与 OpenAPI 文档（同一来源，契约测试校验 openapi.json 同步）。
+fn apply_info(doc: &mut utoipa::openapi::OpenApi) {
+    doc.info.title = "shiro API".into();
+    doc.info.version = env!("CARGO_PKG_VERSION").into();
+}
+
+/// 构建 API 路由与 OpenAPI 文档（同一来源：路由即文档，契约测试校验 openapi.json 同步）。
 pub fn build_router(state: AppState, serve_dir: Option<PathBuf>) -> (Router, utoipa::openapi::OpenApi) {
-    let (api_router, api) = OpenApiRouter::new()
+    let (api_router, mut doc) = OpenApiRouter::new()
         .routes(routes!(startup))
         .routes(routes!(list_projects, create_project, remove_project))
+        .routes(routes!(project_tree))
+        .routes(routes!(read_project_file, write_project_file, create_project_file))
+        .routes(routes!(create_project_dir, remove_project_dir))
         .split_for_parts();
-    // ApiDoc 与 OpenApiRouter 各自声明；以 ApiDoc 为准输出 schema（含 security scheme）。
-    let _ = &api;
-    let doc = ApiDoc::openapi();
+    SecurityAddon.modify(&mut doc);
+    apply_info(&mut doc);
 
     let api_router = api_router
         .layer(axum::middleware::from_fn_with_state(state.clone(), auth));
@@ -336,7 +622,7 @@ mod tests {
     /// 改 API 后执行 `cargo run -- --dump-openapi > openapi.json` 重新固化。
     #[test]
     fn openapi_json_in_sync() {
-        let doc = ApiDoc::openapi();
+        let (_, doc) = build_router(AppState { token: String::new() }, None);
         let generated = serde_json::to_string_pretty(&doc).unwrap();
         let frozen = include_str!("../openapi.json");
         assert_eq!(

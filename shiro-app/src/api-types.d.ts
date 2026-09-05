@@ -3,10 +3,119 @@
  * Do not make direct changes to the file.
  */
 
-export type paths = Record<string, never>;
+export interface paths {
+    "/api/v1/app/startup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 启动状态。当前无后台初始化流程，直接返回 ready；
+         *     后续加入初始化流程后按 starting → ready/error 流转。
+         */
+        get: operations["startup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 项目列表（history.toml 记录，最近打开在前） */
+        get: operations["list_projects"];
+        put?: never;
+        /**
+         * 新建项目：在父目录下创建项目文件夹（初始化 .shiro/ 与 正文/），并导入记录。
+         *     目录已存在时：空目录或已是 shiro 项目（含 .shiro/）则直接导入，否则 409。
+         */
+        post: operations["create_project"];
+        /** 删除项目记录（只从 history.toml 移除，不删除文件夹本身） */
+        delete: operations["remove_project"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/dir": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 新建目录（幂等：已存在返回 200） */
+        post: operations["create_project_dir"];
+        /** 删除目录：空目录直接删除；非空目录移入项目回收站（.shiro/trash/，可手动恢复） */
+        delete: operations["remove_project_dir"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 读取文稿内容 */
+        get: operations["read_project_file"];
+        /** 保存文稿：同目录临时文件 + rename 原子覆盖，写入中断不腐蚀已有正文（见 storage.md 备份与快照） */
+        put: operations["write_project_file"];
+        /** 新建文稿（空文件） */
+        post: operations["create_project_file"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/tree": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 项目目录树（目录与 .md 文件；目录在前，文件名排序） */
+        get: operations["project_tree"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+}
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        CreateDirRequest: {
+            /** @description 项目内相对路径（多级自动创建） */
+            dir: string;
+            /** @description 项目根目录绝对路径 */
+            path: string;
+        };
+        CreateFileRequest: {
+            /** @description 项目内相对路径（父目录自动创建） */
+            file: string;
+            /** @description 项目根目录绝对路径 */
+            path: string;
+        };
         CreateProjectRequest: {
             /** @description 项目名（即新建的子目录名） */
             name: string;
@@ -15,6 +124,14 @@ export interface components {
         };
         ErrorResponse: {
             message: string;
+        };
+        FileContent: {
+            content: string;
+            /**
+             * Format: int64
+             * @description 修改时间（epoch 秒）
+             */
+            modified: number;
         };
         ProjectItem: {
             /** @description 目录当前是否存在（已移动/删除的历史项返回 false，前端置灰） */
@@ -32,6 +149,31 @@ export interface components {
         };
         /** @enum {string} */
         StartupStatus: "starting" | "ready" | "error";
+        TreeNode: {
+            /** @description 子节点（仅 dir） */
+            children?: components["schemas"]["TreeNode"][] | null;
+            /** @description dir / file */
+            kind: string;
+            /**
+             * Format: int64
+             * @description 文件修改时间（epoch 秒，仅 file）
+             */
+            modified?: number | null;
+            /** @description 节点名（文件含 .md 后缀） */
+            name: string;
+            /** @description 项目内相对路径 */
+            path: string;
+        };
+        TreeResponse: {
+            children: components["schemas"]["TreeNode"][];
+        };
+        WriteFileRequest: {
+            content: string;
+            /** @description 项目内相对路径 */
+            file: string;
+            /** @description 项目根目录绝对路径 */
+            path: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -40,4 +182,418 @@ export interface components {
     pathItems: never;
 }
 export type $defs = Record<string, never>;
-export type operations = Record<string, never>;
+export interface operations {
+    startup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 启动状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StartupResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_projects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 项目列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectListResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    create_project: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateProjectRequest"];
+            };
+        };
+        responses: {
+            /** @description 已创建 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectItem"];
+                };
+            };
+            /** @description 参数错误 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目录已存在且非空 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 写入失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    remove_project: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 要移除记录的项目路径（只删记录，不删文件夹） */
+                path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已删除 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    create_project_dir: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDirRequest"];
+            };
+        };
+        responses: {
+            /** @description 目录已存在 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 已创建 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 路径非法 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    remove_project_dir: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 项目根目录绝对路径 */
+                path: string;
+                /** @description 项目内相对路径（不允许根目录与 .shiro） */
+                dir: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已删除 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 路径非法或受保护 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 目录不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_project_file: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 项目根目录绝对路径 */
+                path: string;
+                /** @description 项目内相对路径（如 正文/第一卷/001 序章.md） */
+                file: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 文稿内容 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileContent"];
+                };
+            };
+            /** @description 路径非法 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 文件不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    write_project_file: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WriteFileRequest"];
+            };
+        };
+        responses: {
+            /** @description 已保存，返回新修改时间 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileContent"];
+                };
+            };
+            /** @description 路径非法 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 写入失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_project_file: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateFileRequest"];
+            };
+        };
+        responses: {
+            /** @description 已创建 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileContent"];
+                };
+            };
+            /** @description 路径非法 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 文件已存在 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    project_tree: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 项目根目录绝对路径 */
+                path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 目录树 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TreeResponse"];
+                };
+            };
+            /** @description 项目目录不存在 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+}

@@ -34,6 +34,12 @@ const ICONS: Record<string, IconPath[]> = {
     { d: 'M8 8h.01', w: 2.4 },
     { d: 'M12.5 8h.01', w: 2.4 },
   ],
+  // 方向箭头
+  chevronDown: [{ d: 'M3 6l5 5 5-5' }],
+  chevronRight: [{ d: 'M6 3l5 5-5 5' }],
+  chevronLeft: [{ d: 'M10 3l-5 5 5 5' }],
+  // 文稿
+  fileText: [{ d: 'M4 2h5.5L12 4.5V14H4z' }, { d: 'M6 7h4M6 9.5h4' }],
 }
 
 const paths = computed(() => ICONS[props.name] ?? [])

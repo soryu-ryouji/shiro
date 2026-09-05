@@ -2,15 +2,546 @@
   "openapi": "3.1.0",
   "info": {
     "title": "shiro API",
-    "description": "",
+    "description": "Utoipa's axum bindings for seamless integration for the two",
+    "contact": {
+      "name": "Juha Kukkonen",
+      "email": "juha7kukkonen@gmail.com"
+    },
     "license": {
-      "name": ""
+      "name": "MIT OR Apache-2.0",
+      "identifier": "MIT OR Apache-2.0"
     },
     "version": "0.1.0"
   },
-  "paths": {},
+  "paths": {
+    "/api/v1/app/startup": {
+      "get": {
+        "tags": [
+          "app"
+        ],
+        "summary": "启动状态。当前无后台初始化流程，直接返回 ready；\n后续加入初始化流程后按 starting → ready/error 流转。",
+        "operationId": "startup",
+        "responses": {
+          "200": {
+            "description": "启动状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartupResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "项目列表（history.toml 记录，最近打开在前）",
+        "operationId": "list_projects",
+        "responses": {
+          "200": {
+            "description": "项目列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "新建项目：在父目录下创建项目文件夹（初始化 .shiro/ 与 正文/），并导入记录。\n目录已存在时：空目录或已是 shiro 项目（含 .shiro/）则直接导入，否则 409。",
+        "operationId": "create_project",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "已创建",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectItem"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "目录已存在且非空",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "写入失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "删除项目记录（只从 history.toml 移除，不删除文件夹本身）",
+        "operationId": "remove_project",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "description": "要移除记录的项目路径（只删记录，不删文件夹）",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "已删除"
+          },
+          "401": {
+            "description": "未鉴权"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/dir": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "新建目录（幂等：已存在返回 200）",
+        "operationId": "create_project_dir",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDirRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "目录已存在"
+          },
+          "201": {
+            "description": "已创建"
+          },
+          "400": {
+            "description": "路径非法",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "删除目录：空目录直接删除；非空目录移入项目回收站（.shiro/trash/，可手动恢复）",
+        "operationId": "remove_project_dir",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "description": "项目根目录绝对路径",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dir",
+            "in": "path",
+            "description": "项目内相对路径（不允许根目录与 .shiro）",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "已删除"
+          },
+          "400": {
+            "description": "路径非法或受保护",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "目录不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/file": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "读取文稿内容",
+        "operationId": "read_project_file",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "description": "项目根目录绝对路径",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "file",
+            "in": "path",
+            "description": "项目内相对路径（如 正文/第一卷/001 序章.md）",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "文稿内容",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileContent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "路径非法",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "文件不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "保存文稿：同目录临时文件 + rename 原子覆盖，写入中断不腐蚀已有正文（见 storage.md 备份与快照）",
+        "operationId": "write_project_file",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WriteFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "已保存，返回新修改时间",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileContent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "路径非法",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "500": {
+            "description": "写入失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "新建文稿（空文件）",
+        "operationId": "create_project_file",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "已创建",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileContent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "路径非法",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "409": {
+            "description": "文件已存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/tree": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "项目目录树（目录与 .md 文件；目录在前，文件名排序）",
+        "operationId": "project_tree",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "description": "项目根目录绝对路径",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "目录树",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TreeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "项目目录不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    }
+  },
   "components": {
     "schemas": {
+      "CreateDirRequest": {
+        "type": "object",
+        "required": [
+          "path",
+          "dir"
+        ],
+        "properties": {
+          "dir": {
+            "type": "string",
+            "description": "项目内相对路径（多级自动创建）"
+          },
+          "path": {
+            "type": "string",
+            "description": "项目根目录绝对路径"
+          }
+        }
+      },
+      "CreateFileRequest": {
+        "type": "object",
+        "required": [
+          "path",
+          "file"
+        ],
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "项目内相对路径（父目录自动创建）"
+          },
+          "path": {
+            "type": "string",
+            "description": "项目根目录绝对路径"
+          }
+        }
+      },
       "CreateProjectRequest": {
         "type": "object",
         "required": [
@@ -36,6 +567,24 @@
         "properties": {
           "message": {
             "type": "string"
+          }
+        }
+      },
+      "FileContent": {
+        "type": "object",
+        "required": [
+          "content",
+          "modified"
+        ],
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "modified": {
+            "type": "integer",
+            "format": "int64",
+            "description": "修改时间（epoch 秒）",
+            "minimum": 0
           }
         }
       },
@@ -93,6 +642,82 @@
           "ready",
           "error"
         ]
+      },
+      "TreeNode": {
+        "type": "object",
+        "required": [
+          "name",
+          "path",
+          "kind"
+        ],
+        "properties": {
+          "children": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/TreeNode"
+            },
+            "description": "子节点（仅 dir）"
+          },
+          "kind": {
+            "type": "string",
+            "description": "dir / file"
+          },
+          "modified": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "文件修改时间（epoch 秒，仅 file）",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string",
+            "description": "节点名（文件含 .md 后缀）"
+          },
+          "path": {
+            "type": "string",
+            "description": "项目内相对路径"
+          }
+        }
+      },
+      "TreeResponse": {
+        "type": "object",
+        "required": [
+          "children"
+        ],
+        "properties": {
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TreeNode"
+            }
+          }
+        }
+      },
+      "WriteFileRequest": {
+        "type": "object",
+        "required": [
+          "path",
+          "file",
+          "content"
+        ],
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "file": {
+            "type": "string",
+            "description": "项目内相对路径"
+          },
+          "path": {
+            "type": "string",
+            "description": "项目根目录绝对路径"
+          }
+        }
       }
     },
     "securitySchemes": {

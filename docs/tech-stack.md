@@ -25,7 +25,7 @@ Electron 壳 + Vue 3 前端。约束：
 - Electron 主进程只负责：创建窗口、拉起/回收后端进程、注入 token
 - electron-builder 打包，`extraResources` 携带各平台后端二进制（Windows/macOS/Linux）
 
-编辑器组件尚未定型，候选 CodeMirror 6（大文档虚拟渲染、移动端触屏支持），选型时以这两点优先。
+编辑器组件：CodeMirror 6（大文档虚拟渲染、移动端触屏支持），markdown 源码 + 语法高亮，防抖自动保存。
 
 ## 契约：OpenAPI
 

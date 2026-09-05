@@ -2,15 +2,14 @@
 // Project 面板（侧栏）：区块结构，首个区块为「项目列表」。
 // - 区块右上 +：新建项目（指定目录创建工程文件夹并导入记录，见 NewProjectDialog）
 // - 列表项悬停浮现 ···（单击或右键调出菜单）：打开文件位置（仅桌面端）/ 删除记录（不删文件夹）
-import { onMounted, ref } from 'vue'
+import { nextTick, onMounted, provide, ref } from 'vue'
 import { apiFetch } from '../api'
 import { hasShell, shell } from '../platform'
-import type { components } from '../api-types'
+import { projectStore, type ProjectItem, type TreeNode as TreeNodeData } from '../stores/project'
 import Icon from '../components/Icon.vue'
+import TreeNode from '../components/TreeNode.vue'
 import ContextMenu, { type MenuItem } from '../components/ContextMenu.vue'
 import NewProjectDialog from '../components/NewProjectDialog.vue'
-
-type ProjectItem = components['schemas']['ProjectItem']
 
 const projects = ref<ProjectItem[]>([])
 const loadError = ref('')
@@ -19,7 +18,7 @@ const menu = ref<{ x: number; y: number; item: ProjectItem } | null>(null)
 
 async function refresh() {
   try {
-    const res = await apiFetch<components['schemas']['ProjectListResponse']>('/api/v1/projects')
+    const res = await apiFetch<{ projects?: ProjectItem[] }>('/api/v1/projects')
     projects.value = res.projects ?? []
     loadError.value = ''
   } catch (e) {
@@ -27,6 +26,46 @@ async function refresh() {
   }
 }
 onMounted(refresh)
+
+/** 双击项目项进入写作模式（目录已消失的项不可打开） */
+function openProject(p: ProjectItem) {
+  if (!p.exists) return
+  void projectStore.open(p)
+}
+
+// ---- 目录树菜单（新建子目录 / 删除目录）；递归的 TreeNode 经 inject 打开 ----
+const treeMenu = ref<{ x: number; y: number; node: TreeNodeData } | null>(null)
+provide('openTreeMenu', (e: MouseEvent, node: TreeNodeData) => {
+  treeMenu.value = { x: e.clientX, y: e.clientY, node }
+})
+
+function treeMenuItems(node: TreeNodeData): MenuItem[] {
+  return [
+    { label: '新建子目录', action: () => (projectStore.namingDir = node.path) },
+    {
+      label: '删除目录（移至回收站）',
+      danger: true,
+      action: () => void projectStore.removeDir(node.path),
+    },
+  ]
+}
+
+/** 根级新建目录的命名行输入框引用与确认（'' = 项目根） */
+const rootNamingInput = ref<HTMLInputElement | null>(null)
+const rootNewName = ref('')
+
+function startRootNaming() {
+  projectStore.namingDir = ''
+  rootNewName.value = ''
+  void nextTick(() => rootNamingInput.value?.focus())
+}
+
+async function confirmRootNaming() {
+  const name = rootNewName.value.trim().replace(/[/\\]/g, '')
+  projectStore.namingDir = null
+  if (!name) return
+  await projectStore.createDir('', name)
+}
 
 function openMenu(e: MouseEvent, item: ProjectItem) {
   e.preventDefault()
@@ -59,8 +98,52 @@ async function removeRecord(item: ProjectItem) {
 </script>
 
 <template>
-  <div class="panel">
-    <!-- 区块：项目列表（后续区块在此扩展） -->
+  <!-- 写作模式：返回 + 目录树（只含目录；文稿列表在中栏） -->
+  <div v-if="projectStore.current" class="project-nav">
+    <button class="back-btn" @click="projectStore.close()">
+      <Icon name="chevronLeft" :size="14" />
+      <span class="back-name">{{ projectStore.current.name }}</span>
+    </button>
+    <div class="tree">
+      <div
+        class="tree-root"
+        :class="{ active: projectStore.selectedDir === '' }"
+        @click="projectStore.selectedDir = ''"
+      >
+        <Icon name="fileText" :size="14" />
+        <span class="root-name">项目文件</span>
+        <button
+          class="row-btn root-add"
+          title="新建目录"
+          @click.stop="startRootNaming"
+        >
+          <Icon name="plus" :size="12" />
+        </button>
+      </div>
+      <div v-if="projectStore.namingDir === ''" class="naming-row root-naming">
+        <input
+          ref="rootNamingInput"
+          v-model="rootNewName"
+          type="text"
+          placeholder="目录名"
+          @keydown.enter="confirmRootNaming"
+          @keydown.esc="projectStore.namingDir = null"
+          @blur="confirmRootNaming"
+        />
+      </div>
+      <TreeNode v-for="node in projectStore.tree" :key="node.path" :node="node" />
+    </div>
+    <ContextMenu
+      v-if="treeMenu"
+      :x="treeMenu.x"
+      :y="treeMenu.y"
+      :items="treeMenuItems(treeMenu.node)"
+      @close="treeMenu = null"
+    />
+  </div>
+
+  <!-- 列表模式：项目列表区块 -->
+  <div v-else class="panel">
     <section class="section">
       <header class="section-head">
         <span class="section-title">项目列表</span>
@@ -75,7 +158,8 @@ async function removeRecord(item: ProjectItem) {
           :key="p.path"
           class="project-item"
           :class="{ missing: !p.exists }"
-          :title="p.exists ? p.path : `${p.path}（目录已不存在）`"
+          :title="p.exists ? `${p.path}（双击打开）` : `${p.path}（目录已不存在）`"
+          @dblclick="openProject(p)"
           @contextmenu.prevent="openMenu($event, p)"
         >
           <div class="meta">
@@ -87,7 +171,7 @@ async function removeRecord(item: ProjectItem) {
           </button>
         </li>
       </ul>
-      <p v-else class="hint">{{ loadError || '新建或打开过的项目会显示在这里' }}</p>
+      <p v-else class="hint">{{ loadError || '新建或打开过的项目会显示在这里，双击进入写作' }}</p>
     </section>
 
     <ContextMenu
@@ -229,5 +313,111 @@ async function removeRecord(item: ProjectItem) {
   padding: 0 4px;
   color: var(--text-dim);
   font-size: 12px;
+}
+
+/* ---- 写作模式：返回 + 目录树 ---- */
+.project-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+@media (hover: hover) {
+  .back-btn:hover {
+    background: var(--border);
+  }
+}
+
+.back-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.tree-root {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.root-name {
+  flex: 1;
+}
+
+/* 根行的新建按钮默认隐藏，悬停浮现 */
+.root-add {
+  opacity: 0;
+}
+
+.tree-root:hover .root-add {
+  opacity: 1;
+}
+
+.root-naming {
+  padding: 2px 6px 2px 28px;
+}
+
+.root-naming input {
+  width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  font-size: 13px;
+  outline: none;
+}
+
+@media (hover: hover) {
+  .tree-root:hover {
+    background: var(--border);
+  }
+}
+
+.tree-root.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* 树行内操作按钮（与 TreeNode 行内样式同款） */
+.row-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
 }
 </style>

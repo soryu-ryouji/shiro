@@ -132,11 +132,18 @@ app.whenReady().then(async () => {
   mainWindow.on('maximize', () => mainWindow?.webContents.send(IPC.winMaximized, true))
   mainWindow.on('unmaximize', () => mainWindow?.webContents.send(IPC.winMaximized, false))
 
-  // 无头自检：SHIRO_SCREENSHOT=<路径> 时加载完成后截图落盘
+  // 无头自检：SHIRO_SCREENSHOT=<路径> 时加载完成后截图落盘（可带 SHIRO_DIAG 输出编辑器 DOM 诊断）
   if (process.env.SHIRO_SCREENSHOT) {
     mainWindow.webContents.once('did-finish-load', () => {
       const delay = Number(process.env.SHIRO_SCREENSHOT_DELAY || 3000)
       setTimeout(async () => {
+        if (process.env.SHIRO_DIAG) {
+          const diag = await mainWindow?.webContents.executeJavaScript(`(() => {
+            const r = (sel) => { const el = document.querySelector(sel); if (!el) return null; const b = el.getBoundingClientRect(); return { w: Math.round(b.width), h: Math.round(b.height) } }
+            return JSON.stringify({ wrap: r('.editor'), cmEditor: r('.cm-editor'), scroller: r('.cm-scroller'), content: r('.cm-content'), text: document.querySelector('.cm-content')?.textContent?.slice(0, 30) ?? null })
+          })()`)
+          console.log('diag:', diag)
+        }
         const image = await mainWindow?.webContents.capturePage()
         if (image) fs.writeFileSync(process.env.SHIRO_SCREENSHOT as string, image.toPNG())
         console.log(`screenshot saved: ${process.env.SHIRO_SCREENSHOT}`)
@@ -144,7 +151,11 @@ app.whenReady().then(async () => {
     })
   }
 
-  const params = `api=${encodeURIComponent(`http://127.0.0.1:${port}`)}&token=${token}`
+  const params =
+    `api=${encodeURIComponent(`http://127.0.0.1:${port}`)}&token=${token}` +
+    // 调试深链透传（SHIRO_OPEN / SHIRO_FILE，无头冒烟用）
+    (process.env.SHIRO_OPEN ? `&open=${encodeURIComponent(process.env.SHIRO_OPEN)}` : '') +
+    (process.env.SHIRO_FILE ? `&file=${encodeURIComponent(process.env.SHIRO_FILE)}` : '')
   const devServer = process.env.VITE_DEV_SERVER_URL
   if (devServer) {
     mainWindow.loadURL(`${devServer}/#${params}`)

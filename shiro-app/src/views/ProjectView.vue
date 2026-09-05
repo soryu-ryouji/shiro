@@ -1,12 +1,45 @@
+<script setup lang="ts">
+// 中栏：打开项目后为写作模式（文稿列表 + 编辑器，Ulysses 式），未打开项目为欢迎页。
+import { projectStore } from '../stores/project'
+import SheetList from '../components/SheetList.vue'
+import Editor from '../components/Editor.vue'
+</script>
+
 <template>
-  <!-- 未打开项目时的中栏欢迎页；打开后中栏为编辑器（章节编辑待实现） -->
-  <section class="welcome">
+  <section v-if="projectStore.current" class="writing">
+    <SheetList class="sheet-col" />
+    <Editor class="editor-col" />
+  </section>
+
+  <section v-else class="welcome">
     <h1 class="logo">shiro</h1>
-    <p class="hint">从左侧打开项目文件夹开始</p>
+    <p class="hint">从左侧打开项目文件夹开始，双击项目进入写作</p>
   </section>
 </template>
 
 <style scoped>
+.writing {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+}
+
+/* 子列用 flex 链传高度（grid stretch 子项里 height:100% 不可靠） */
+.sheet-col {
+  border-right: 1px solid var(--border);
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-col {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .welcome {
   height: 100%;
   display: flex;

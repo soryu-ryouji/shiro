@@ -11,6 +11,7 @@ import SettingsDialog from './components/SettingsDialog.vue'
 import ProjectView from './views/ProjectView.vue'
 import DatabaseView from './views/DatabaseView.vue'
 import ModelView from './views/ModelView.vue'
+import { projectStore } from './stores/project'
 
 const NAV_ITEMS: NavItem[] = [
   { key: 'project', label: 'Project', icon: 'folder' },
@@ -44,6 +45,16 @@ onMounted(async () => {
       const res = await apiFetch<{ status: string }>('/api/v1/app/startup')
       if (res.status === 'ready') {
         status.value = 'ready'
+        // 调试深链：hash 带 open=<项目路径>（可叠加 file=<文稿相对路径>）时启动后直接进入写作模式
+        const hashParams = new URLSearchParams(location.hash.replace(/^#/, ''))
+        const openPath = hashParams.get('open')
+        if (openPath) {
+          const name = openPath.replace(/[\\/]+$/, '').split(/[\\/]/).at(-1) ?? openPath
+          void projectStore.open({ path: openPath, name, exists: true }).then(() => {
+            const file = hashParams.get('file')
+            if (file) projectStore.currentFile = file
+          })
+        }
         return
       }
       if (res.status === 'error') {
@@ -118,7 +129,8 @@ function stopResize() {
 }
 
 const gridStyle = computed(() => ({
-  gridTemplateColumns: `${sidebarVisible.value ? sidebarWidth.value : 0}px minmax(0, 1fr) ${inspectorWidth.value}px`,
+  // 写作模式（项目已打开）下详情栏让位给编辑器
+  gridTemplateColumns: `${sidebarVisible.value ? sidebarWidth.value : 0}px minmax(0, 1fr) ${projectStore.current ? 0 : inspectorWidth.value}px`,
 }))
 </script>
 
@@ -150,10 +162,10 @@ const gridStyle = computed(() => ({
       </div>
     </div>
 
-    <Inspector />
+    <Inspector v-if="!projectStore.current" />
     <WindowControls />
 
-    <!-- 栏宽拖拽手柄：4px 命中区紧贴分界线 -->
+    <!-- 栏宽拖拽手柄：4px 命中区紧贴分界线；写作模式下右侧手柄隐藏 -->
     <div
       v-show="sidebarVisible"
       class="col-resize-handle"
@@ -162,6 +174,7 @@ const gridStyle = computed(() => ({
       @mousedown.prevent="startResize('left')"
     />
     <div
+      v-show="!projectStore.current"
       class="col-resize-handle"
       :class="{ active: dragSide === 'right' }"
       :style="{ left: `calc(100% - ${inspectorWidth}px)` }"
