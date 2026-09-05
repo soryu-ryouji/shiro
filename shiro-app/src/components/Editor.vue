@@ -4,6 +4,7 @@
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { apiFetch } from '../api'
 import { projectStore } from '../stores/project'
+import { countWords } from '../utils/wordcount'
 import type { components } from '../api-types'
 import { EditorView, keymap, drawSelection } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
@@ -19,14 +20,22 @@ let view: EditorView | null = null
 const loading = ref(false)
 const wordCount = ref(0)
 const saveState = ref<'saved' | 'saving' | 'error'>('saved')
+/** 保存状态文字是否可见（保存活动瞬时反馈，自动淡出；失败常驻） */
+const statusVisible = ref(false)
+let hideTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(saveState, (s) => {
+  if (hideTimer) clearTimeout(hideTimer)
+  if (s === 'saved') {
+    hideTimer = setTimeout(() => (statusVisible.value = false), 1600)
+  } else {
+    statusVisible.value = true
+  }
+})
 
 /** 待保存内容与其所属文稿（切文稿时 pending 仍指向旧文件，保证不串写） */
 let pending: { file: string; content: string } | null = null
 let saveTimer: ReturnType<typeof setTimeout> | null = null
-
-function countWords(text: string): number {
-  return text.replace(/\s/g, '').length
-}
 
 async function flushSave() {
   if (!pending || !projectStore.current) return
@@ -123,10 +132,12 @@ onUnmounted(() => {
          放进 v-if 分支会因挂载时机晚于视图创建而导致 DOM 不渲染 -->
     <div ref="editorEl" v-show="projectStore.currentFile" class="editor" />
     <div v-if="projectStore.currentFile" class="editor-status">
-      <span v-if="saveState === 'saving'">保存中…</span>
-      <span v-else-if="saveState === 'error'" class="save-error">保存失败</span>
-      <span v-else>已保存</span>
-      <span class="sep">·</span>
+      <template v-if="statusVisible">
+        <span v-if="saveState === 'saving'">保存中…</span>
+        <span v-else-if="saveState === 'error'" class="save-error">保存失败</span>
+        <span v-else>已保存</span>
+        <span class="sep">·</span>
+      </template>
       <span>{{ wordCount }} 字</span>
     </div>
     <div v-if="!projectStore.currentFile" class="editor-empty">从中间列表选择文稿，或新建一篇</div>

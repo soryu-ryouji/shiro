@@ -152,6 +152,7 @@ const gridStyle = computed(() => ({
       <TitleBar
         :title="activeTitle"
         :sidebar-visible="sidebarVisible"
+        :controls-overlay="!!projectStore.current"
         @toggle-sidebar="toggleSidebar"
         @open-settings="showSettings = true"
       />

@@ -7,10 +7,16 @@ import { computed } from 'vue'
 import { hasShell, isMac, shell } from '../platform'
 import Icon from './Icon.vue'
 
-const props = defineProps<{ title: string; sidebarVisible: boolean }>()
+const props = defineProps<{
+  title: string
+  sidebarVisible: boolean
+  /** 窗口控制按钮是否压在本栏右上（详情栏隐藏、顶栏通到窗口右缘时） */
+  controlsOverlay?: boolean
+}>()
 const emit = defineEmits<{ 'toggle-sidebar': []; 'open-settings': [] }>()
 
 const reserveTraffic = computed(() => hasShell && isMac && !props.sidebarVisible)
+const reserveControls = computed(() => hasShell && !isMac && props.controlsOverlay)
 
 function onDblClick(e: MouseEvent) {
   if ((e.target as HTMLElement).closest('button')) return
@@ -19,7 +25,7 @@ function onDblClick(e: MouseEvent) {
 </script>
 
 <template>
-  <header class="titlebar" :class="{ 'reserve-traffic': reserveTraffic }" @dblclick="onDblClick">
+  <header class="titlebar" :class="{ 'reserve-traffic': reserveTraffic, 'reserve-controls': reserveControls }" @dblclick="onDblClick">
     <button v-if="!sidebarVisible" class="bar-btn" title="侧栏" @click="emit('toggle-sidebar')">
       <Icon name="panelLeft" :size="16" />
     </button>
@@ -52,6 +58,11 @@ function onDblClick(e: MouseEvent) {
 /* 侧栏收起时顶栏通栏到窗口左缘：macOS 避让原生红绿灯 */
 .titlebar.reserve-traffic {
   padding-left: 78px;
+}
+
+/* 窗口控制按钮（fixed 右上角 3 × 42px + 间隙）压在本栏时右端避让 */
+.titlebar.reserve-controls {
+  padding-right: 130px;
 }
 
 .title {
