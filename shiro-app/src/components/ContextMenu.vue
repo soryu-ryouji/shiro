@@ -38,7 +38,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="ctx-menu" :style="pos">
+  <div class="ctx-menu" :style="pos" @contextmenu.prevent>
     <button
       v-for="(item, i) in items"
       :key="i"
@@ -61,6 +61,8 @@ onUnmounted(() => {
   border-radius: 8px;
   background: var(--bg);
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+  /* Windows 上右键按下即弹菜单，按住拖过菜单项会选中文字；菜单文本不可选 */
+  user-select: none;
   display: flex;
   flex-direction: column;
 }

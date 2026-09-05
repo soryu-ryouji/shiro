@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 目录树节点（递归）：目录行 = 箭头 + 文件夹图标 + 名称；悬停浮现 +（新建子目录）与 ···（菜单）。
+// 目录树节点（递归）：目录行 = 箭头槽（无子目录时留空占位，保证同层对齐、出现子目录时行内容不位移） + 文件夹图标 + 名称；悬停浮现 +（新建子目录）与 ···（菜单）。
 // 点行选中并展开，点箭头只切换展开；新建子目录为该目录子级的内联命名行。
 import { computed, inject, nextTick, ref, watch } from 'vue'
 import { projectStore, type TreeNode } from '../stores/project'
@@ -80,9 +80,10 @@ async function confirmRename() {
       @click="onRowClick"
       @contextmenu.prevent="openTreeMenu($event, node)"
     >
-      <button class="arrow" :class="{ open }" @click.stop="open = !open">
+      <button v-if="dirChildren.length" class="arrow" :class="{ open }" @click.stop="open = !open">
         <Icon name="chevronRight" :size="12" />
       </button>
+      <span v-else class="arrow-slot"></span>
       <Icon name="folder" :size="14" class="folder" />
       <span class="node-name">{{ node.name }}</span>
       <span class="row-actions">
@@ -95,7 +96,7 @@ async function confirmRename() {
       </span>
     </div>
     <!-- 重命名态：本行就地变为输入框 -->
-    <div v-else class="rename-row" :style="{ paddingLeft: `${8 + (depth ?? 0) * 14 + 22}px` }">
+    <div v-else class="rename-row" :style="{ paddingLeft: `${8 + (depth ?? 0) * 14 + 18}px` }">
       <input
         ref="renameInput"
         v-model="renameValue"
@@ -106,7 +107,7 @@ async function confirmRename() {
       />
     </div>
     <div v-if="open">
-      <div v-if="naming" class="naming-row" :style="{ paddingLeft: `${8 + ((depth ?? 0) + 1) * 14 + 20}px` }">
+      <div v-if="naming" class="naming-row" :style="{ paddingLeft: `${8 + ((depth ?? 0) + 1) * 14 + 18}px` }">
         <input
           ref="namingInput"
           v-model="newName"
@@ -158,7 +159,7 @@ async function confirmRename() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
+  width: 14px;
   height: 18px;
   padding: 0;
   border: none;
@@ -170,6 +171,12 @@ async function confirmRename() {
 
 .arrow.open {
   transform: rotate(90deg);
+}
+
+/* 空箭头槽：与箭头同宽，维持同层对齐 */
+.arrow-slot {
+  flex: none;
+  width: 14px;
 }
 
 .folder {

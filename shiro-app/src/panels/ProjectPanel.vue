@@ -29,7 +29,7 @@ async function refresh() {
 }
 onMounted(refresh)
 
-/** 双击项目项进入写作模式（目录已消失的项不可打开） */
+/** 单击项目项进入写作模式（目录已消失的项不可打开） */
 function openProject(p: ProjectItem) {
   if (!p.exists) return
   void projectStore.open(p)
@@ -248,20 +248,20 @@ function openProjectMenu(e: MouseEvent) {
           :key="p.path"
           class="project-item"
           :class="{ missing: !p.exists }"
-          :title="p.exists ? `${p.path}（双击打开）` : `${p.path}（目录已不存在）`"
-          @dblclick="openProject(p)"
+          :title="p.exists ? p.path : `${p.path}（目录已不存在）`"
+          @click="openProject(p)"
           @contextmenu.prevent="openMenu($event, p)"
         >
           <div class="meta">
             <span class="name">{{ p.name }}</span>
             <span class="path">{{ p.path }}</span>
           </div>
-          <button class="more-btn" title="更多操作（只删除记录，不删除文件夹）" @click="openMenu($event, p)">
+          <button class="more-btn" title="更多操作（只删除记录，不删除文件夹）" @click.stop="openMenu($event, p)">
             <Icon name="more" :size="14" />
           </button>
         </li>
       </ul>
-      <p v-else class="hint">{{ loadError || '新建或打开过的项目会显示在这里，双击进入写作' }}</p>
+      <p v-else class="hint">{{ loadError || '新建或打开过的项目会显示在这里，点击进入写作' }}</p>
     </section>
 
     <ContextMenu
@@ -511,7 +511,7 @@ function openProjectMenu(e: MouseEvent) {
 }
 
 .root-naming {
-  padding: 2px 6px 2px 30px;
+  padding: 2px 6px 2px 26px;
 }
 
 .root-naming input {
@@ -524,14 +524,14 @@ function openProjectMenu(e: MouseEvent) {
   outline: none;
 }
 
-/* 根目录行：查看项目根级散落文稿的入口，与目录行的 folder 图标对齐（arrow 18px + gap 4px + 行缩进 8px）；
+/* 根目录行：查看项目根级散落文稿的入口，与目录行的 folder 图标对齐（箭头槽 14px + gap 4px + 行缩进 8px）；
    与下方目录列表留出间隔，区分「根目录」与同级目录列表 */
 .root-dir-row {
   margin-bottom: 6px;
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 6px 5px 30px;
+  padding: 5px 6px 5px 26px;
   border-radius: 5px;
   font-size: calc(13px * var(--font-scale-ui));
   color: var(--text);

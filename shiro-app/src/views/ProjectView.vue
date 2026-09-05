@@ -17,7 +17,7 @@ import EditorTabs from '../components/EditorTabs.vue'
 
   <section v-else class="welcome">
     <h1 class="logo">shiro</h1>
-    <p class="hint">从左侧打开项目文件夹开始，双击项目进入写作</p>
+    <p class="hint">从左侧打开项目文件夹开始，点击项目进入写作</p>
   </section>
 </template>
 

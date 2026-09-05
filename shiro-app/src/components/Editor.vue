@@ -6,6 +6,7 @@ import { apiFetch } from '../api'
 import { projectStore } from '../stores/project'
 import { countWords } from '../utils/wordcount'
 import { editorParaMode } from '../utils/font'
+import { livePreview } from '../utils/livePreview'
 import type { components } from '../api-types'
 import { EditorView, keymap, drawSelection, ViewPlugin, Decoration, type DecorationSet, type ViewUpdate } from '@codemirror/view'
 import { EditorState, RangeSetBuilder } from '@codemirror/state'
@@ -136,6 +137,7 @@ function makeState(doc: string): EditorState {
         if (update.docChanged) scheduleSave(update.state.doc.toString())
       }),
       paraSpacingPlugin,
+      livePreview(),
       theme,
     ],
   })
@@ -199,6 +201,68 @@ onUnmounted(() => {
 
 .editor :deep(.cm-editor) {
   height: 100%;
+}
+
+/* ---- Markdown 实时预览（utils/livePreview.ts 生成 md-* 类） ---- */
+
+/* 标题：只加粗不改字号；# 记号是行内挂件，负外边距挂进内容列左侧留白，与文本基线天然对齐 */
+.editor :deep(.md-h) {
+  font-weight: 700;
+}
+.editor :deep(.md-hmark) {
+  display: inline-block;
+  width: 2em;
+  margin-left: -2em;
+  padding-right: 0.6em;
+  box-sizing: border-box;
+  text-align: right;
+  font-weight: 400;
+  color: var(--text-dim);
+}
+
+/* 引用：竖线挂行左缘外，正文淡色斜体 */
+.editor :deep(.md-quote) {
+  position: relative;
+  color: var(--text-dim);
+  font-style: italic;
+}
+.editor :deep(.md-quote)::before {
+  content: '';
+  position: absolute;
+  left: -20px;
+  top: 0;
+  bottom: 0;
+  border-left: 3px solid var(--border);
+}
+
+/* 列表圆点 */
+.editor :deep(.md-bullet) {
+  color: var(--text-dim);
+}
+
+/* 行内格式 */
+.editor :deep(.md-strong) {
+  font-weight: 700;
+}
+.editor :deep(.md-em) {
+  font-style: italic;
+}
+.editor :deep(.md-strike) {
+  text-decoration: line-through;
+}
+.editor :deep(.md-code) {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.9em;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+/* 代码围栏 */
+.editor :deep(.md-fence) {
+  background: var(--bg-soft);
+  font-family: ui-monospace, Consolas, monospace;
 }
 
 .editor-empty {
