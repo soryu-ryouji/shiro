@@ -1,23 +1,76 @@
 <script setup lang="ts">
-// 设置面板壳：左侧导航 + 右侧分区的两栏结构。交互要点（同 hawk）：
+// 设置面板壳：左侧导航 + 右侧分区的两栏结构。交互要点：
 // - 遮罩「按下与抬起都落在遮罩上」才关闭：面板内拖动选择文本滑出面板松开，按 click.self 判定会误关
 // - Esc 关闭
-// - 打开期间挂 body.dialog-open 挂起窗口拖拽区（drag 由 OS 命中测试优先消费，不挂起点遮罩会变拖动窗口）
-import { ref } from 'vue'
+// - 打开期间挂 body.dialog-open 挂起窗口拖拽区
+// 分区视觉：macOS 设置式——灰底、白色分组卡片、行式布局（标签左、控件右、行间细分隔线）。
+import { onMounted, ref } from 'vue'
 import { apiBase } from '../api'
+import { hasShell } from '../platform'
 import { useDialogMask } from '../composables/useDialog'
+import {
+  applyEditorFont,
+  applyEditorFontSize,
+  applyUiFont,
+  applyUiFontSize,
+  currentEditorFontKey,
+  currentEditorFontSize,
+  currentUiFontKey,
+  currentUiFontSize,
+  FONT_SIZE_MAX,
+  FONT_SIZE_MIN,
+  listSystemFonts,
+} from '../utils/font'
 import pkg from '../../package.json'
 
 const emit = defineEmits<{ close: [] }>()
 const { onMaskDown, onMaskUp } = useDialogMask(() => emit('close'))
 
 const SECTIONS = [
+  { key: 'appearance', label: '外观' },
   { key: 'general', label: '通用' },
   { key: 'lan', label: '局域网' },
 ] as const
 type SectionKey = (typeof SECTIONS)[number]['key']
-const section = ref<SectionKey>('general')
+const section = ref<SectionKey>('appearance')
 
+// 字体（界面/正文分设，实时生效；key 为内置选项 key 或系统字体 family 名）
+const uiFontKey = ref(currentUiFontKey())
+const editorFontKey = ref(currentEditorFontKey())
+function selectUiFont(key: string) {
+  applyUiFont(key)
+  uiFontKey.value = currentUiFontKey()
+}
+function selectEditorFont(key: string) {
+  applyEditorFont(key)
+  editorFontKey.value = currentEditorFontKey()
+}
+
+// 字号：界面/正文各自的数值框（实时生效）
+const uiFontSize = ref(currentUiFontSize())
+const editorFontSize = ref(currentEditorFontSize())
+function onUiSizeInput(e: Event) {
+  const v = Number((e.target as HTMLInputElement).value)
+  if (Number.isNaN(v)) return
+  applyUiFontSize(v)
+  uiFontSize.value = currentUiFontSize()
+}
+function onEditorSizeInput(e: Event) {
+  const v = Number((e.target as HTMLInputElement).value)
+  if (Number.isNaN(v)) return
+  applyEditorFontSize(v)
+  editorFontSize.value = currentEditorFontSize()
+}
+
+// 系统字体（Local Font Access API；桌面端可用。选项名统一用界面字体渲染——符号字体的字母码位不可读）
+const systemFonts = ref<string[] | null>(null)
+onMounted(async () => {
+  try {
+    systemFonts.value = await listSystemFonts()
+  } catch {
+    systemFonts.value = null
+  }
+})
 </script>
 
 <template>
@@ -36,26 +89,83 @@ const section = ref<SectionKey>('general')
       </nav>
 
       <div class="dialog-body">
+        <section v-show="section === 'appearance'" class="pane">
+          <div class="group">
+            <div class="grow">
+              <span class="glabel">界面字体</span>
+              <div class="editor-font-row">
+                <select class="select" :value="uiFontKey" @change="selectUiFont(($event.target as HTMLSelectElement).value)">
+                  <option value="sans">系统无衬线</option>
+                  <option value="serif">系统衬线</option>
+                  <option value="lxgw">霞鹜文楷（内置）</option>
+                  <optgroup v-if="hasShell && systemFonts?.length" label="系统字体">
+                    <option v-for="f in systemFonts" :key="f" :value="f">{{ f }}</option>
+                  </optgroup>
+                </select>
+                <input
+                  type="number"
+                  class="size-num"
+                  :min="FONT_SIZE_MIN"
+                  :max="FONT_SIZE_MAX"
+                  :step="0.5"
+                  :value="uiFontSize"
+                  title="界面字号"
+                  @change="onUiSizeInput"
+                />
+                <span class="size-unit">px</span>
+              </div>
+            </div>
+            <div class="grow">
+              <span class="glabel">正文字体</span>
+              <div class="editor-font-row">
+                <select class="select" :value="editorFontKey" @change="selectEditorFont(($event.target as HTMLSelectElement).value)">
+                  <option value="lxgw">霞鹜文楷（内置）</option>
+                  <option value="sans">系统无衬线</option>
+                  <option value="serif">系统衬线</option>
+                  <optgroup v-if="hasShell && systemFonts?.length" label="系统字体">
+                    <option v-for="f in systemFonts" :key="f" :value="f">{{ f }}</option>
+                  </optgroup>
+                </select>
+                <input
+                  type="number"
+                  class="size-num"
+                  :min="FONT_SIZE_MIN"
+                  :max="FONT_SIZE_MAX"
+                  :step="0.5"
+                  :value="editorFontSize"
+                  title="正文字号"
+                  @change="onEditorSizeInput"
+                />
+                <span class="size-unit">px</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section v-show="section === 'general'" class="pane">
-          <h3>通用</h3>
-          <dl class="info">
-            <dt>版本</dt>
-            <dd>shiro {{ pkg.version }}</dd>
-            <dt>后端</dt>
-            <dd class="mono">{{ apiBase }}</dd>
-          </dl>
+          <div class="group">
+            <div class="grow">
+              <span class="glabel">版本</span>
+              <span class="gvalue">shiro {{ pkg.version }}</span>
+            </div>
+            <div class="grow">
+              <span class="glabel">后端</span>
+              <span class="gvalue mono">{{ apiBase }}</span>
+            </div>
+          </div>
         </section>
 
         <section v-show="section === 'lan'" class="pane">
-          <h3>局域网访问</h3>
-          <p class="hint">
+          <div class="group">
+            <div class="grow">
+              <span class="glabel">开启局域网访问</span>
+              <input type="checkbox" disabled />
+            </div>
+          </div>
+          <p class="pane-hint">
             开启后局域网内的设备（iPad、手机等）可通过浏览器访问 shiro。访问 key 的生成与管理将在后续版本提供（设计见
             docs/architecture.md「局域网访问」）。
           </p>
-          <label class="row disabled">
-            <input type="checkbox" disabled />
-            <span>开启局域网访问（待实现）</span>
-          </label>
         </section>
       </div>
     </div>
@@ -67,42 +177,47 @@ const section = ref<SectionKey>('general')
   position: fixed;
   inset: 0;
   z-index: 200;
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.25);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
+/* macOS 设置式：灰底窗口 + 白色分组卡片 */
 .dialog {
-  width: min(640px, 90vw);
-  height: min(440px, 80vh);
+  width: min(620px, 90vw);
+  height: min(460px, 82vh);
   display: flex;
-  border-radius: 10px;
-  background: var(--bg);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  border-radius: 12px;
+  background: var(--bg-soft);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
   overflow: hidden;
 }
 
 .dialog-nav {
   flex: none;
-  width: 140px;
-  padding: 12px 8px;
-  background: var(--bg-soft);
-  border-right: 1px solid var(--border);
+  width: 148px;
+  padding: 14px 10px;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
 .dialog-nav-item {
-  padding: 7px 10px;
+  padding: 6px 10px;
   border: none;
   border-radius: 6px;
   background: none;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   color: var(--text);
   text-align: left;
   cursor: pointer;
+}
+
+@media (hover: hover) {
+  .dialog-nav-item:hover {
+    background: var(--border);
+  }
 }
 
 .dialog-nav-item.active {
@@ -118,48 +233,102 @@ const section = ref<SectionKey>('general')
 }
 
 .pane {
-  padding: 16px 20px;
+  padding: 16px 18px;
 }
 
-.pane h3 {
-  margin: 0 0 12px;
-  font-size: 15px;
+/* 分组卡片：白底圆角，行式布局，行间细分隔线 */
+.group {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
 }
 
-.info {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 8px 16px;
-  margin: 0;
-  font-size: 13px;
+.grow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 14px;
 }
 
-.info dt {
+.grow + .grow {
+  border-top: 1px solid var(--border);
+}
+
+.glabel {
+  flex: none;
+  font-size: calc(13px * var(--font-scale-ui));
+  color: var(--text);
+}
+
+.gvalue {
+  font-size: calc(13px * var(--font-scale-ui));
   color: var(--text-dim);
-}
-
-.info dd {
-  margin: 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mono {
   font-family: ui-monospace, Consolas, monospace;
 }
 
-.hint {
-  font-size: 13px;
+.pane-hint {
+  margin: 10px 4px 0;
+  font-size: calc(12px * var(--font-scale-ui));
   color: var(--text-dim);
   line-height: 1.6;
 }
 
-.row {
+/* 控件：下拉与字号 */
+.select {
+  appearance: none;
+  max-width: 240px;
+  height: 28px;
+  padding: 0 26px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background:
+    var(--bg-soft)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.5'/%3E%3C/svg%3E")
+    no-repeat right 8px center;
+  font-size: calc(13px * var(--font-scale-ui));
+  color: var(--text);
+  cursor: pointer;
+  outline: none;
+}
+
+.select:focus {
+  border-color: var(--accent);
+}
+
+/* 字号：数值框（并入正文字体行右侧） */
+.editor-font-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  min-width: 0;
 }
 
-.row.disabled {
+.size-num {
+  width: 56px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: calc(13px * var(--font-scale-ui));
+  color: var(--text);
+  outline: none;
+}
+
+.size-num:focus {
+  border-color: var(--accent);
+}
+
+.size-unit {
   color: var(--text-dim);
+  font-size: calc(12px * var(--font-scale-ui));
 }
 </style>

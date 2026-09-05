@@ -196,7 +196,7 @@ async function confirmRename(path: string) {
   border: none;
   border-radius: 6px;
   background: none;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   color: var(--text-dim);
   cursor: pointer;
 }
@@ -218,13 +218,13 @@ async function confirmRename(path: string) {
   padding: 0 8px;
   border: 1px solid var(--accent);
   border-radius: 5px;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   outline: none;
 }
 
 .naming-error {
   margin: 6px 0 0;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale-ui));
   color: var(--danger);
 }
 
@@ -260,12 +260,12 @@ async function confirmRename(path: string) {
 }
 
 .sheet-time {
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale-ui));
   color: var(--text-dim);
 }
 
 .sheet-title {
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   font-weight: 600;
   color: var(--text);
   white-space: nowrap;
@@ -279,13 +279,13 @@ async function confirmRename(path: string) {
   padding: 0 8px;
   border: 1px solid var(--accent);
   border-radius: 5px;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   outline: none;
 }
 
 .empty-hint {
   padding: 16px 12px;
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale-ui));
 }
 </style>

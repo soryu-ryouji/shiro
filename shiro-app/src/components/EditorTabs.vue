@@ -97,7 +97,7 @@ function onDragEnd() {
   padding: 0 6px 0 8px;
   border-radius: 6px;
   background: var(--bg-soft);
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   color: var(--text-dim);
   cursor: pointer;
   user-select: none;

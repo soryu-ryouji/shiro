@@ -41,12 +41,12 @@ const { onMaskDown, onMaskUp } = useDialogMask(() => emit('close'))
 
 .dialog-title {
   margin: 0 0 10px;
-  font-size: 15px;
+  font-size: calc(15px * var(--font-scale-ui));
 }
 
 .message {
   margin: 0;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   color: var(--text-dim);
   line-height: 1.6;
   word-break: break-all;
@@ -65,7 +65,7 @@ const { onMaskDown, onMaskUp } = useDialogMask(() => emit('close'))
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   color: var(--text);
   cursor: pointer;
 }

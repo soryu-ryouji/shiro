@@ -92,7 +92,7 @@ async function create() {
 
 .dialog-title {
   margin: 0 0 16px;
-  font-size: 15px;
+  font-size: calc(15px * var(--font-scale-ui));
 }
 
 .field {
@@ -103,7 +103,7 @@ async function create() {
 .field-label {
   display: block;
   margin-bottom: 6px;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   color: var(--text-dim);
 }
 
@@ -113,7 +113,7 @@ async function create() {
   padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   color: var(--text);
   background: var(--bg);
   outline: none;
@@ -135,13 +135,13 @@ async function create() {
 
 .hint {
   margin: 0 0 12px;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale-ui));
   color: var(--text-dim);
 }
 
 .error {
   margin: 0 0 12px;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale-ui));
   color: var(--danger);
 }
 
@@ -157,7 +157,7 @@ async function create() {
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   color: var(--text);
   cursor: pointer;
 }

@@ -269,7 +269,7 @@ async function confirmDeleteFolder() {
 }
 
 .section-title {
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale-ui));
   font-weight: 600;
   color: var(--text-dim);
   letter-spacing: 0.4px;
@@ -333,7 +333,7 @@ async function confirmDeleteFolder() {
 }
 
 .name {
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
@@ -341,7 +341,7 @@ async function confirmDeleteFolder() {
 }
 
 .path {
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale-ui));
   color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
@@ -381,7 +381,7 @@ async function confirmDeleteFolder() {
   margin: 0;
   padding: 0 4px;
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale-ui));
 }
 
 /* ---- 写作模式：返回 + 目录树 ---- */
@@ -399,7 +399,7 @@ async function confirmDeleteFolder() {
   border: none;
   border-radius: 6px;
   background: none;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   font-weight: 600;
   color: var(--text);
   cursor: pointer;
@@ -430,7 +430,7 @@ async function confirmDeleteFolder() {
   gap: 6px;
   padding: 5px 8px;
   border-radius: 5px;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   color: var(--text);
   cursor: pointer;
   user-select: none;
@@ -459,7 +459,7 @@ async function confirmDeleteFolder() {
   padding: 0 8px;
   border: 1px solid var(--accent);
   border-radius: 5px;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   outline: none;
 }
 

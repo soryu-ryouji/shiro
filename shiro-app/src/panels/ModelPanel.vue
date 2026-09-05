@@ -23,7 +23,7 @@
   border-radius: 8px;
   background: var(--bg);
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   cursor: pointer;
 }
 
@@ -35,6 +35,6 @@
 .hint {
   margin: 0;
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale-ui));
 }
 </style>

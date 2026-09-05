@@ -55,7 +55,7 @@ import EditorTabs from '../components/EditorTabs.vue'
 
 .logo {
   margin: 0;
-  font-size: 32px;
+  font-size: calc(32px * var(--font-scale-ui));
   font-weight: 700;
   letter-spacing: 1px;
   color: var(--text);
@@ -64,6 +64,6 @@ import EditorTabs from '../components/EditorTabs.vue'
 .hint {
   margin: 0;
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
 }
 </style>

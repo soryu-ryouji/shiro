@@ -65,9 +65,9 @@ function scheduleSave(content: string) {
 }
 
 const theme = EditorView.theme({
-  '&': { fontSize: '15px', backgroundColor: 'transparent' },
+  '&': { fontSize: 'calc(15px * var(--font-scale-editor))', backgroundColor: 'transparent' },
   '.cm-content': {
-    fontFamily: "'Georgia', 'Songti SC', 'Microsoft YaHei', serif",
+    fontFamily: 'var(--font-editor)',
     padding: '28px 32px',
     maxWidth: '760px',
     margin: '0 auto',
@@ -170,7 +170,7 @@ onUnmounted(() => {
   z-index: 10;
   display: flex;
   gap: 6px;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale-ui));
   color: var(--text-dim);
   user-select: none;
   pointer-events: none;
@@ -186,6 +186,6 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
 }
 </style>

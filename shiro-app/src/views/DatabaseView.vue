@@ -12,11 +12,11 @@
 
 h2 {
   margin: 0 0 8px;
-  font-size: 16px;
+  font-size: calc(16px * var(--font-scale-ui));
 }
 
 .hint {
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
 }
 </style>

@@ -32,7 +32,7 @@ const CATEGORIES = [
   border: none;
   border-radius: 6px;
   background: none;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   color: var(--text);
   text-align: left;
   cursor: pointer;
@@ -49,6 +49,6 @@ const CATEGORIES = [
 
 .count {
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale-ui));
 }
 </style>

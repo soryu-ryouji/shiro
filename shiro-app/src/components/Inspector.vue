@@ -40,6 +40,6 @@ function onHeadDblClick(e: MouseEvent) {
 
 .inspector-hint {
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
 }
 </style>

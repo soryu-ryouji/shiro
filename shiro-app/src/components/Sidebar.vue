@@ -119,7 +119,7 @@ function onHeadDblClick(e: MouseEvent) {
 .panel-title {
   flex: none;
   padding: 2px 12px 8px;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale-ui));
   font-weight: 600;
   letter-spacing: 0.4px;
   color: var(--text-dim);

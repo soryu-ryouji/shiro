@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog } from 'electron'
+import { app, BrowserWindow, dialog, session } from 'electron'
 import { spawn, type ChildProcess } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
@@ -100,6 +100,11 @@ function startDaemon(port: number, token: string): ChildProcess {
 }
 
 app.whenReady().then(async () => {
+  // 权限白名单：只允许系统字体读取（Local Font Access，设置面板字体列表用），其余默认拒绝
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
+    callback(permission === 'local-fonts')
+  })
+
   const port = await probeFreePort()
   const token = crypto.randomBytes(32).toString('hex')
   daemon = startDaemon(port, token)

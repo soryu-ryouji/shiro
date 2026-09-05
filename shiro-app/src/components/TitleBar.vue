@@ -66,7 +66,7 @@ function onDblClick(e: MouseEvent) {
 }
 
 .title {
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   font-weight: 600;
   white-space: nowrap;
 }

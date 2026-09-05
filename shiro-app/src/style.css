@@ -7,6 +7,13 @@
   --accent: #4f6ef7;
   --accent-soft: #eef2ff;
   --danger: #c0392b;
+  /* 字号全局缩放系数（设置面板外观档位驱动） */
+  /* 字号缩放系数（界面/正文分设，设置面板外观驱动） */
+  --font-scale-ui: 1;
+  --font-scale-editor: 1;
+  /* 界面字体（默认系统无衬线）与正文字体（默认霞鹜文楷）分设，utils/font.ts 可覆盖 */
+  --font-ui: system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  --font-editor: 'LXGW WenKai', system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
 }
 
 * {
@@ -21,13 +28,8 @@ body,
 }
 
 body {
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    'Microsoft YaHei',
-    sans-serif;
-  font-size: 14px;
+  font-family: var(--font-ui);
+  font-size: calc(14px * var(--font-scale-ui));
   color: var(--text);
   background: var(--bg);
 }

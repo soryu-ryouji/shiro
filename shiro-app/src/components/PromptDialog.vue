@@ -68,7 +68,7 @@ function submit() {
 
 .dialog-title {
   margin: 0 0 14px;
-  font-size: 15px;
+  font-size: calc(15px * var(--font-scale-ui));
 }
 
 .input {
@@ -77,7 +77,7 @@ function submit() {
   padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   outline: none;
 }
 
@@ -98,7 +98,7 @@ function submit() {
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   color: var(--text);
   cursor: pointer;
 }

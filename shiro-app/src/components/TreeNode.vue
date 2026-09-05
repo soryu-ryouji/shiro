@@ -129,7 +129,7 @@ async function confirmRename() {
   gap: 4px;
   padding: 5px 6px 5px 0;
   border-radius: 5px;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   color: var(--text);
   cursor: pointer;
   white-space: nowrap;
@@ -226,7 +226,7 @@ async function confirmRename() {
   padding: 0 8px;
   border: 1px solid var(--accent);
   border-radius: 5px;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   outline: none;
 }
 
@@ -240,7 +240,7 @@ async function confirmRename() {
   padding: 0 8px;
   border: 1px solid var(--accent);
   border-radius: 5px;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   outline: none;
 }
 </style>

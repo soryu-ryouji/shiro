@@ -27,6 +27,8 @@ Electron 壳 + Vue 3 前端。约束：
 
 编辑器组件：CodeMirror 6（大文档虚拟渲染、移动端触屏支持），markdown 源码 + 语法高亮，防抖自动保存。
 
+字体：默认内置霞鹜文楷（@fontsource/lxgw-wenkai 自托管，OFL-1.1，unicode-range 分包按需加载），设置面板可切换系统衬线/无衬线。
+
 ## 契约：OpenAPI
 
 - OpenAPI schema 由后端代码生成（utoipa：`#[utoipa::path]` + `ToSchema` derive，路由即文档），固化于 `shiro-daemon/openapi.json`（`cargo run -- --dump-openapi` 重新生成）

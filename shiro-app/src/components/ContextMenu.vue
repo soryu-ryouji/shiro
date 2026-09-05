@@ -70,7 +70,7 @@ onUnmounted(() => {
   border: none;
   border-radius: 5px;
   background: none;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale-ui));
   color: var(--text);
   text-align: left;
   cursor: pointer;
