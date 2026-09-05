@@ -10,5 +10,10 @@
 
 **总体**
 
-- [架构设计](docs/architecture.md)：进程模型、桌面/服务器部署形态、仓库结构
+- [架构设计](docs/architecture.md)：总体架构、核心原则、部署形态（桌面版/局域网访问/服务器版）、仓库结构
 - [技术栈](docs/tech-stack.md)：语言与框架选型
+
+**后端**
+
+- [存储设计](docs/backend/storage.md)：真实文件夹项目、明文内容库、同步边界
+- [模型接入设计](docs/backend/model-access.md)：provider 抽象、配置、能力场景
