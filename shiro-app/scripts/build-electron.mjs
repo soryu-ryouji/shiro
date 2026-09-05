@@ -6,12 +6,23 @@ import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-await esbuild.build({
-  entryPoints: [path.join(root, 'electron/main.ts')],
+const common = {
   bundle: true,
   platform: 'node',
-  format: 'esm',
   external: ['electron'],
+}
+
+// main.mjs 为 ESM；sandbox 渲染进程要求 preload 为 CJS 单文件
+await esbuild.build({
+  ...common,
+  entryPoints: [path.join(root, 'electron/main.ts')],
+  format: 'esm',
   outfile: path.join(root, 'dist-electron/main.mjs'),
 })
-console.log('[build-electron] dist-electron/main.mjs 已生成')
+await esbuild.build({
+  ...common,
+  entryPoints: [path.join(root, 'electron/preload.ts')],
+  format: 'cjs',
+  outfile: path.join(root, 'dist-electron/preload.cjs'),
+})
+console.log('[build-electron] dist-electron/main.mjs + preload.cjs 已生成')

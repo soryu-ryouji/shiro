@@ -16,14 +16,23 @@ const daemon = spawnSync(
 )
 if (daemon.status !== 0) process.exit(daemon.status ?? 1)
 
-// 2. 构建主进程（esbuild JS API）
-await build({
-  entryPoints: [path.join(root, 'electron/main.ts')],
+// 2. 构建主进程与 preload（esbuild JS API；main 为 ESM，sandbox 要求 preload 为 CJS）
+const common = {
   bundle: true,
   platform: 'node',
-  format: 'esm',
   external: ['electron'],
+}
+await build({
+  ...common,
+  entryPoints: [path.join(root, 'electron/main.ts')],
+  format: 'esm',
   outfile: path.join(root, 'dist-electron/main.mjs'),
+})
+await build({
+  ...common,
+  entryPoints: [path.join(root, 'electron/preload.ts')],
+  format: 'cjs',
+  outfile: path.join(root, 'dist-electron/preload.cjs'),
 })
 
 // 3. vite dev server

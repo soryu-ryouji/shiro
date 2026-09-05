@@ -5,6 +5,8 @@ import fs from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { IPC } from './ipc-contract'
+import { registerIpc } from './ipc'
 
 /**
  * Electron 壳职责（见 docs/architecture.md 核心原则）：
@@ -102,10 +104,45 @@ app.whenReady().then(async () => {
   const token = crypto.randomBytes(32).toString('hex')
   daemon = startDaemon(port, token)
 
+  registerIpc(() => mainWindow)
+
   // 窗口立即创建并加载页面（连接参数经 URL hash 注入，不经 IPC、不落盘）。
   // 启动进度由页面轮询 /api/v1/app/startup 呈现（starting → ready/error）。
-  mainWindow = new BrowserWindow({ width: 1280, height: 800, show: false })
+  mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 800,
+    minWidth: 960,
+    minHeight: 600,
+    show: false,
+    // 与浅色主题一致，防启动白闪
+    backgroundColor: '#ffffff',
+    // macOS：隐藏系统标题栏但保留原生红绿灯（悬停 glyph/全屏行为由系统保证），
+    // trafficLightPosition 按 40px 拖拽条垂直居中；Windows/Linux：无边框，窗口控制前端自绘
+    ...(process.platform === 'darwin'
+      ? { titleBarStyle: 'hidden' as const, trafficLightPosition: { x: 12, y: 14 } }
+      : { frame: false }),
+    // 开发态 / Linux 的窗口图标；打包后各平台图标由 electron-builder 嵌入
+    icon: path.join(ELECTRON_DIR, '../build/icon.png'),
+    webPreferences: {
+      preload: path.join(ELECTRON_DIR, 'preload.cjs'),
+    },
+  })
   mainWindow.once('ready-to-show', () => mainWindow?.show())
+  // 同步最大化状态给渲染进程（窗口控制按钮图标切换，含 Aero Snap 等系统途径）
+  mainWindow.on('maximize', () => mainWindow?.webContents.send(IPC.winMaximized, true))
+  mainWindow.on('unmaximize', () => mainWindow?.webContents.send(IPC.winMaximized, false))
+
+  // 无头自检：SHIRO_SCREENSHOT=<路径> 时加载完成后截图落盘
+  if (process.env.SHIRO_SCREENSHOT) {
+    mainWindow.webContents.once('did-finish-load', () => {
+      const delay = Number(process.env.SHIRO_SCREENSHOT_DELAY || 3000)
+      setTimeout(async () => {
+        const image = await mainWindow?.webContents.capturePage()
+        if (image) fs.writeFileSync(process.env.SHIRO_SCREENSHOT as string, image.toPNG())
+        console.log(`screenshot saved: ${process.env.SHIRO_SCREENSHOT}`)
+      }, delay)
+    })
+  }
 
   const params = `api=${encodeURIComponent(`http://127.0.0.1:${port}`)}&token=${token}`
   const devServer = process.env.VITE_DEV_SERVER_URL

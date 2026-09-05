@@ -4,6 +4,7 @@
   --bg-soft: #f6f6f8;
   --text: #2a2a2e;
   --text-dim: #8a8a92;
+  --accent: #4f6ef7;
   --accent-soft: #eef2ff;
   --danger: #c0392b;
 }
@@ -31,8 +32,15 @@ body {
   background: var(--bg);
 }
 
-.boot {
+/* ---- 启动/错误屏（前置阶段） ---- */
+.standalone {
   height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.boot {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -43,53 +51,57 @@ body {
   color: var(--danger);
 }
 
-/* 三栏布局：导航 / 内容 / 详情（docs/frontend/layout.md） */
-.layout {
+/* 全宽拖拽条（启动屏等无主界面场景用） */
+.drag-strip {
+  height: 40px;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
+/* ---- 三栏布局：列宽由 App.vue 内联 gridTemplateColumns 驱动（侧栏可隐藏、可拖宽） ---- */
+.app {
   display: grid;
-  grid-template-columns: 140px 1fr 240px;
   height: 100%;
 }
 
-.sidebar {
-  border-right: 1px solid var(--border);
-  padding: 8px;
+/* 中栏：顶栏 + 内容 */
+.center {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
 }
 
-.nav-item {
-  padding: 8px 12px;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  text-align: left;
-  font-size: 14px;
-  color: var(--text);
-  cursor: pointer;
-}
-
-.nav-item:hover {
-  background: var(--bg-soft);
-}
-
-.nav-item.active {
-  background: var(--accent-soft);
-  font-weight: 600;
-}
-
-.content {
+.content-body {
+  flex: 1;
   padding: 16px;
   overflow: auto;
 }
 
-.inspector {
-  border-left: 1px solid var(--border);
-  padding: 12px;
+/* ---- 栏宽拖拽手柄：4px 命中区紧贴分界线 ---- */
+.col-resize-handle {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  z-index: 90;
 }
 
-.inspector-hint,
-.empty-hint {
-  color: var(--text-dim);
-  font-size: 13px;
+.col-resize-handle.active {
+  background: var(--accent-soft);
+}
+
+body.col-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* 对话框/浮层打开期间挂起窗口拖拽区（drag 由 OS 命中测试优先消费，
+   不挂起点遮罩盖住的标题栏会变成拖动窗口） */
+body.dialog-open .drag-strip,
+body.dialog-open .sidebar-head,
+body.dialog-open .titlebar,
+body.dialog-open .inspector-head {
+  -webkit-app-region: no-drag;
 }
