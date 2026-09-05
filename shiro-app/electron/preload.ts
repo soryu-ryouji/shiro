@@ -10,6 +10,8 @@ const shell: ShiroShell = {
   closeWindow: () => ipcRenderer.invoke(IPC.winClose),
   pickDirectory: (title) => ipcRenderer.invoke(IPC.pickDirectory, title),
   showInFolder: (path) => ipcRenderer.invoke(IPC.showInFolder, path),
+  openPath: (path) => ipcRenderer.invoke(IPC.openPath, path),
+  trashItem: (path) => ipcRenderer.invoke(IPC.trashItem, path),
   onWindowMaximized: (cb) => {
     const listener = (_event: IpcRendererEvent, maximized: boolean): void => cb(maximized)
     ipcRenderer.on(IPC.winMaximized, listener)

@@ -11,5 +11,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     headers: { Authorization: `Bearer ${apiToken}`, ...init?.headers },
   })
   if (!res.ok) throw new Error(`${init?.method ?? 'GET'} ${path} → HTTP ${res.status}`)
-  return res.json() as Promise<T>
+  // 201/204 等空 body 响应：res.json() 会抛 Unexpected end of JSON input，按文本判空
+  const text = await res.text()
+  return (text ? JSON.parse(text) : undefined) as T
 }

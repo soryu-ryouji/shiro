@@ -15,12 +15,17 @@ export const projectStore = reactive({
   selectedDir: '正文',
   /** 编辑器当前打开的文稿（项目内相对路径） */
   currentFile: null as string | null,
+  /** 编辑区标题栏的标签（有序，可拖拽调整） */
+  tabs: [] as string[],
   /** 正在新建子目录的父目录（'' = 项目根；null = 未在命名） */
   namingDir: null as string | null,
+  /** 正在重命名的目录（null = 未在重命名） */
+  renamingDir: null as string | null,
 
   async open(project: ProjectItem) {
     this.current = project
     this.currentFile = null
+    this.tabs = []
     this.selectedDir = '正文'
     await this.refreshTree()
     // 默认选中「正文」；项目里没有则退回项目根
@@ -33,6 +38,34 @@ export const projectStore = reactive({
     this.current = null
     this.tree = []
     this.currentFile = null
+    this.tabs = []
+  },
+
+  /** 打开文稿：入标签栏并设为当前（点击列表项的行为） */
+  openFile(rel: string) {
+    if (!this.tabs.includes(rel)) this.tabs.push(rel)
+    this.currentFile = rel
+  },
+
+  /** 添加到标签栏但不切换当前编辑（右键菜单「添加到编辑器标题栏」） */
+  pinFile(rel: string) {
+    if (!this.tabs.includes(rel)) this.tabs.push(rel)
+  },
+
+  /** 关闭标签：当前标签被关时切到相邻标签（右侧优先） */
+  closeTab(rel: string) {
+    const i = this.tabs.indexOf(rel)
+    if (i < 0) return
+    this.tabs.splice(i, 1)
+    if (this.currentFile === rel) {
+      this.currentFile = this.tabs[i] ?? this.tabs[i - 1] ?? null
+    }
+  },
+
+  /** 拖拽排序 */
+  moveTab(from: number, to: number) {
+    const [item] = this.tabs.splice(from, 1)
+    this.tabs.splice(to, 0, item)
   },
 
   async refreshTree() {
@@ -63,16 +96,51 @@ export const projectStore = reactive({
       `/api/v1/projects/dir?path=${encodeURIComponent(this.current.path)}&dir=${encodeURIComponent(rel)}`,
       { method: 'DELETE' },
     )
-    // 选中目录/当前文稿在被删子树内时回退
+    // 选中目录/当前文稿/标签在被删子树内时回退
     if (this.selectedDir === rel || this.selectedDir.startsWith(rel + '/')) {
       this.selectedDir = rel.split('/').slice(0, -1).join('/')
     }
+    this.tabs = this.tabs.filter((t) => t !== rel && !t.startsWith(rel + '/'))
     if (this.currentFile === rel || this.currentFile?.startsWith(rel + '/')) {
       this.currentFile = null
     }
     await this.refreshTree()
   },
+
+  /** 重命名项目内条目（文件/目录）：选中目录/标签/当前文稿的路径前缀联动替换 */
+  async renameEntry(rel: string, newName: string) {
+    if (!this.current) return
+    await apiFetch('/api/v1/projects/entry/rename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: this.current.path, rel, new_name: newName }),
+    })
+    const parent = rel.split('/').slice(0, -1).join('/')
+    const newRel = parent ? `${parent}/${newName}` : newName
+    const remap = (p: string) => (p === rel || p.startsWith(rel + '/') ? newRel + p.slice(rel.length) : p)
+    this.selectedDir = remap(this.selectedDir)
+    this.tabs = this.tabs.map(remap)
+    if (this.currentFile) this.currentFile = remap(this.currentFile)
+    await this.refreshTree()
+  },
+
+  /** 删除文稿（移 .shiro/trash/，可手动恢复） */
+  async removeFile(rel: string) {
+    if (!this.current) return
+    await apiFetch(
+      `/api/v1/projects/file?path=${encodeURIComponent(this.current.path)}&file=${encodeURIComponent(rel)}`,
+      { method: 'DELETE' },
+    )
+    this.tabs = this.tabs.filter((t) => t !== rel)
+    if (this.currentFile === rel) this.currentFile = null
+    await this.refreshTree()
+  },
 })
+
+// 开发调试钩子：dev 模式或深链冒烟（hash 带 open=）时可在渲染进程控制台直接操作 store
+if (import.meta.env.DEV || location.hash.includes('open=')) {
+  ;(window as unknown as Record<string, unknown>).projectStore = projectStore
+}
 
 /** 在目录树中查找目录节点的直接子节点；未找到返回 null */
 export function findDir(nodes: TreeNode[], path: string): TreeNode[] | null {

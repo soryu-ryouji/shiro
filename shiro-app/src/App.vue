@@ -51,8 +51,9 @@ onMounted(async () => {
         if (openPath) {
           const name = openPath.replace(/[\\/]+$/, '').split(/[\\/]/).at(-1) ?? openPath
           void projectStore.open({ path: openPath, name, exists: true }).then(() => {
-            const file = hashParams.get('file')
-            if (file) projectStore.currentFile = file
+            // file 参数支持逗号分隔多个（依次入标签栏，最后一个激活）
+            const files = hashParams.get('file')
+            if (files) files.split(',').forEach((f) => projectStore.openFile(f))
           })
         }
         return

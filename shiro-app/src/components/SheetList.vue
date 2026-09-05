@@ -2,7 +2,9 @@
 // 中栏文稿列表（Ulysses 第二栏）：选中目录的直接 .md 文稿；顶部目录名 + 右侧新建（内联命名）。
 import { computed, nextTick, ref } from 'vue'
 import { apiFetch } from '../api'
+import { hasShell, shell } from '../platform'
 import { findDir, projectStore } from '../stores/project'
+import ContextMenu, { type MenuItem } from './ContextMenu.vue'
 import Icon from './Icon.vue'
 
 /** 选中目录的直接文稿（file 节点） */
@@ -38,10 +40,9 @@ async function startNaming() {
 
 async function confirmNaming() {
   const name = newName.value.trim()
-  if (!name) {
-    naming.value = false
-    return
-  }
+  newName.value = '' // Enter 确认后输入框卸载会再触发 blur，先清空防二次提交
+  naming.value = false
+  if (!name) return
   const project = projectStore.current
   if (!project) return
   const file = `${projectStore.selectedDir ? projectStore.selectedDir + '/' : ''}${name}.md`
@@ -51,12 +52,63 @@ async function confirmNaming() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: project.path, file }),
     })
-    naming.value = false
     await projectStore.refreshTree()
-    projectStore.currentFile = file
+    projectStore.openFile(file)
   } catch (e) {
     createError.value = e instanceof Error ? e.message : String(e)
   }
+}
+
+// ---- 文稿右键菜单 ----
+const sheetMenu = ref<{ x: number; y: number; path: string } | null>(null)
+
+function openSheetMenu(e: MouseEvent, path: string) {
+  e.preventDefault()
+  sheetMenu.value = { x: e.clientX, y: e.clientY, path }
+}
+
+function sheetMenuItems(path: string): MenuItem[] {
+  const items: MenuItem[] = []
+  if (!projectStore.tabs.includes(path)) {
+    items.push({ label: '添加到编辑器标题栏', action: () => projectStore.pinFile(path) })
+  }
+  items.push({ label: '重命名…', action: () => startRename(path) })
+  // 文件管理器能力是桌面壳能力，局域网浏览器形态没有
+  if (hasShell) {
+    items.push({
+      label: '在文件夹中打开',
+      action: () => void shell.showInFolder(`${projectStore.current?.path}/${path}`),
+    })
+  }
+  items.push({
+    label: '删除（移至回收站）',
+    danger: true,
+    action: () => void projectStore.removeFile(path),
+  })
+  return items
+}
+
+// ---- 文稿重命名：列表项就地变为输入框 ----
+const renamingFile = ref<string | null>(null)
+const renameValue = ref('')
+const renameInput = ref<HTMLInputElement | null>(null)
+
+function startRename(path: string) {
+  renamingFile.value = path
+  renameValue.value = sheetTitle(path.split('/').at(-1) ?? path)
+  void nextTick(() => {
+    renameInput.value?.focus()
+    renameInput.value?.select()
+  })
+}
+
+async function confirmRename(path: string) {
+  const base = renameValue.value.trim().replace(/[/\\]/g, '')
+  const oldName = path.split('/').at(-1) ?? ''
+  const suffix = oldName.match(/\.(md|markdown)$/i)?.[0] ?? '.md'
+  renamingFile.value = null
+  if (!base || base + suffix === oldName) return
+  await projectStore.renameEntry(path, base + suffix)
 }
 </script>
 
@@ -89,13 +141,35 @@ async function confirmNaming() {
         :key="s.path"
         class="sheet"
         :class="{ active: projectStore.currentFile === s.path }"
-        @click="projectStore.currentFile = s.path"
+        @click="projectStore.openFile(s.path)"
+        @contextmenu="openSheetMenu($event, s.path)"
       >
-        <span class="sheet-time">{{ fmtTime(s.modified) }}</span>
-        <span class="sheet-title">{{ sheetTitle(s.name) }}</span>
+        <input
+          v-if="renamingFile === s.path"
+          ref="renameInput"
+          v-model="renameValue"
+          class="rename-input"
+          type="text"
+          @click.stop
+          @keydown.enter="confirmRename(s.path)"
+          @keydown.esc="renamingFile = null"
+          @blur="confirmRename(s.path)"
+        />
+        <template v-else>
+          <span class="sheet-time">{{ fmtTime(s.modified) }}</span>
+          <span class="sheet-title">{{ sheetTitle(s.name) }}</span>
+        </template>
       </li>
     </ul>
     <p v-else-if="!naming" class="empty-hint">此目录还没有文稿</p>
+
+    <ContextMenu
+      v-if="sheetMenu"
+      :x="sheetMenu.x"
+      :y="sheetMenu.y"
+      :items="sheetMenuItems(sheetMenu.path)"
+      @close="sheetMenu = null"
+    />
   </div>
 </template>
 
@@ -197,6 +271,16 @@ async function confirmNaming() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.rename-input {
+  width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  font-size: 13px;
+  outline: none;
 }
 
 .empty-hint {

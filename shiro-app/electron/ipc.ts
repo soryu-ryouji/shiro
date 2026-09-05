@@ -26,4 +26,6 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     return result.canceled ? null : result.filePaths[0]
   })
   ipcMain.handle(IPC.showInFolder, (_event, path: string) => electronShell.showItemInFolder(path))
+  ipcMain.handle(IPC.openPath, (_event, path: string) => electronShell.openPath(path))
+  ipcMain.handle(IPC.trashItem, (_event, path: string) => electronShell.trashItem(path))
 }

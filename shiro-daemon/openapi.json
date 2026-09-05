@@ -272,6 +272,68 @@
         ]
       }
     },
+    "/api/v1/projects/entry/rename": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "重命名项目内条目（文件或目录）：同目录改名",
+        "operationId": "rename_entry",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameEntryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "已重命名"
+          },
+          "400": {
+            "description": "路径非法或受保护",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "条目不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "目标已存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
     "/api/v1/projects/file": {
       "get": {
         "tags": [
@@ -439,6 +501,135 @@
           },
           "409": {
             "description": "文件已存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "删除文稿：移入项目回收站（.shiro/trash/，可手动恢复）",
+        "operationId": "remove_project_file",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "description": "项目根目录绝对路径",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "file",
+            "in": "path",
+            "description": "文稿相对路径",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "已删除（移入回收站）"
+          },
+          "400": {
+            "description": "路径非法",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "文件不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/rename": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "重命名项目：重命名项目文件夹本体，history.toml 记录同步更新",
+        "operationId": "rename_project",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "已重命名",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectItem"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "名称非法",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "项目目录不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "目标目录已存在",
             "content": {
               "application/json": {
                 "schema": {
@@ -621,6 +812,45 @@
             "items": {
               "$ref": "#/components/schemas/ProjectItem"
             }
+          }
+        }
+      },
+      "RenameEntryRequest": {
+        "type": "object",
+        "required": [
+          "path",
+          "rel",
+          "new_name"
+        ],
+        "properties": {
+          "new_name": {
+            "type": "string",
+            "description": "新名字（文件名含后缀）"
+          },
+          "path": {
+            "type": "string",
+            "description": "项目根目录绝对路径"
+          },
+          "rel": {
+            "type": "string",
+            "description": "条目相对路径（文件或目录；文件需含后缀）"
+          }
+        }
+      },
+      "RenameProjectRequest": {
+        "type": "object",
+        "required": [
+          "path",
+          "new_name"
+        ],
+        "properties": {
+          "new_name": {
+            "type": "string",
+            "description": "新名称（即新目录名）"
+          },
+          "path": {
+            "type": "string",
+            "description": "项目当前绝对路径"
           }
         }
       },

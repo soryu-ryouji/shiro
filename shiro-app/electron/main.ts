@@ -137,6 +137,11 @@ app.whenReady().then(async () => {
     mainWindow.webContents.once('did-finish-load', () => {
       const delay = Number(process.env.SHIRO_SCREENSHOT_DELAY || 3000)
       setTimeout(async () => {
+        // SHIRO_EVAL：在渲染进程执行任意 JS 并打印结果（无头交互冒烟用）
+        if (process.env.SHIRO_EVAL) {
+          const result = await mainWindow?.webContents.executeJavaScript(process.env.SHIRO_EVAL)
+          console.log('eval:', result)
+        }
         if (process.env.SHIRO_DIAG) {
           const diag = await mainWindow?.webContents.executeJavaScript(`(() => {
             const r = (sel) => { const el = document.querySelector(sel); if (!el) return null; const b = el.getBoundingClientRect(); return { w: Math.round(b.width), h: Math.round(b.height) } }

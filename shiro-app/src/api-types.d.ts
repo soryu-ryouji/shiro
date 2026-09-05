@@ -64,6 +64,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/entry/rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 重命名项目内条目（文件或目录）：同目录改名 */
+        post: operations["rename_entry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/file": {
         parameters: {
             query?: never;
@@ -77,6 +94,24 @@ export interface paths {
         put: operations["write_project_file"];
         /** 新建文稿（空文件） */
         post: operations["create_project_file"];
+        /** 删除文稿：移入项目回收站（.shiro/trash/，可手动恢复） */
+        delete: operations["remove_project_file"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 重命名项目：重命名项目文件夹本体，history.toml 记录同步更新 */
+        post: operations["rename_project"];
         delete?: never;
         options?: never;
         head?: never;
@@ -143,6 +178,20 @@ export interface components {
         };
         ProjectListResponse: {
             projects: components["schemas"]["ProjectItem"][];
+        };
+        RenameEntryRequest: {
+            /** @description 新名字（文件名含后缀） */
+            new_name: string;
+            /** @description 项目根目录绝对路径 */
+            path: string;
+            /** @description 条目相对路径（文件或目录；文件需含后缀） */
+            rel: string;
+        };
+        RenameProjectRequest: {
+            /** @description 新名称（即新目录名） */
+            new_name: string;
+            /** @description 项目当前绝对路径 */
+            path: string;
         };
         StartupResponse: {
             status: components["schemas"]["StartupStatus"];
@@ -409,6 +458,62 @@ export interface operations {
             };
         };
     };
+    rename_entry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameEntryRequest"];
+            };
+        };
+        responses: {
+            /** @description 已重命名 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 路径非法或受保护 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 条目不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标已存在 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     read_project_file: {
         parameters: {
             query?: never;
@@ -547,6 +652,112 @@ export interface operations {
                 content?: never;
             };
             /** @description 文件已存在 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    remove_project_file: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 项目根目录绝对路径 */
+                path: string;
+                /** @description 文稿相对路径 */
+                file: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已删除（移入回收站） */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 路径非法 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 文件不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    rename_project: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameProjectRequest"];
+            };
+        };
+        responses: {
+            /** @description 已重命名 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectItem"];
+                };
+            };
+            /** @description 名称非法 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 项目目录不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 目标目录已存在 */
             409: {
                 headers: {
                     [name: string]: unknown;

@@ -10,6 +10,8 @@ import Icon from '../components/Icon.vue'
 import TreeNode from '../components/TreeNode.vue'
 import ContextMenu, { type MenuItem } from '../components/ContextMenu.vue'
 import NewProjectDialog from '../components/NewProjectDialog.vue'
+import PromptDialog from '../components/PromptDialog.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 
 const projects = ref<ProjectItem[]>([])
 const loadError = ref('')
@@ -40,14 +42,23 @@ provide('openTreeMenu', (e: MouseEvent, node: TreeNodeData) => {
 })
 
 function treeMenuItems(node: TreeNodeData): MenuItem[] {
-  return [
+  const items: MenuItem[] = [
     { label: '新建子目录', action: () => (projectStore.namingDir = node.path) },
-    {
-      label: '删除目录（移至回收站）',
-      danger: true,
-      action: () => void projectStore.removeDir(node.path),
-    },
+    { label: '重命名…', action: () => (projectStore.renamingDir = node.path) },
   ]
+  // 文件管理器能力是桌面壳能力，局域网浏览器形态没有
+  if (hasShell) {
+    items.push({
+      label: '在文件夹中打开',
+      action: () => void shell.openPath(`${projectStore.current?.path}/${node.path}`),
+    })
+  }
+  items.push({
+    label: '删除目录（移至回收站）',
+    danger: true,
+    action: () => void projectStore.removeDir(node.path),
+  })
+  return items
 }
 
 /** 根级新建目录的命名行输入框引用与确认（'' = 项目根） */
@@ -78,17 +89,59 @@ function menuItems(item: ProjectItem): MenuItem[] {
   if (hasShell && item.exists) {
     items.push({ label: '打开文件位置', action: () => void shell.showInFolder(item.path) })
   }
+  if (item.exists) {
+    items.push({ label: '重命名…', action: () => (renamingProject.value = item) })
+  }
   items.push({
-    label: '删除记录',
-    danger: true,
+    label: '从列表移除',
     action: () => void removeRecord(item),
   })
+  if (hasShell && item.exists) {
+    items.push({
+      label: '删除文件夹…',
+      danger: true,
+      action: () => (deletingProject.value = item),
+    })
+  }
   return items
 }
 
 /** 只删 history.toml 里的记录，不动文件夹本身 */
 async function removeRecord(item: ProjectItem) {
   try {
+    await apiFetch(`/api/v1/projects?path=${encodeURIComponent(item.path)}`, { method: 'DELETE' })
+    await refresh()
+  } catch (e) {
+    loadError.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+// ---- 项目重命名（文件夹本体改名，history 同步） ----
+const renamingProject = ref<ProjectItem | null>(null)
+
+async function submitRename(newName: string) {
+  const item = renamingProject.value
+  if (!item) return
+  try {
+    await apiFetch('/api/v1/projects/rename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: item.path, new_name: newName }),
+    })
+    await refresh()
+  } catch (e) {
+    loadError.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+// ---- 删除项目文件夹（移系统回收站，确认后执行） ----
+const deletingProject = ref<ProjectItem | null>(null)
+
+async function confirmDeleteFolder() {
+  const item = deletingProject.value
+  if (!item) return
+  try {
+    await shell.trashItem(item.path)
     await apiFetch(`/api/v1/projects?path=${encodeURIComponent(item.path)}`, { method: 'DELETE' })
     await refresh()
   } catch (e) {
@@ -182,6 +235,22 @@ async function removeRecord(item: ProjectItem) {
       @close="menu = null"
     />
     <NewProjectDialog v-if="showNew" @close="showNew = false" @created="refresh" />
+    <PromptDialog
+      v-if="renamingProject"
+      title="重命名项目"
+      :initial="renamingProject.name"
+      placeholder="新名称"
+      @close="renamingProject = null"
+      @submit="submitRename"
+    />
+    <ConfirmDialog
+      v-if="deletingProject"
+      title="删除文件夹"
+      :message="`将把项目文件夹移到系统回收站（可恢复）：\n${deletingProject.path}`"
+      confirm-label="删除"
+      @close="deletingProject = null"
+      @confirm="confirmDeleteFolder"
+    />
   </div>
 </template>
 

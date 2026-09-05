@@ -10,6 +10,8 @@ export const IPC = {
   winClose: 'shiro:win-close',
   pickDirectory: 'shiro:pick-directory',
   showInFolder: 'shiro:show-in-folder',
+  openPath: 'shiro:open-path',
+  trashItem: 'shiro:trash-item',
   // ---- 主进程 → 渲染进程（webContents.send / ipcRenderer.on） ----
   winMaximized: 'shiro:win-maximized',
 } as const
@@ -26,6 +28,10 @@ export interface ShiroShell {
   pickDirectory(title: string): Promise<string | null>
   /** 在系统文件管理器中显示该路径（定位到父级并选中） */
   showInFolder(path: string): Promise<void>
+  /** 用系统默认方式打开路径（目录=打开文件夹窗口） */
+  openPath(path: string): Promise<void>
+  /** 移入系统回收站（可恢复） */
+  trashItem(path: string): Promise<void>
   /** 订阅最大化状态变化（含 Aero Snap 等系统途径），返回退订函数 */
   onWindowMaximized(cb: (maximized: boolean) => void): () => void
 }

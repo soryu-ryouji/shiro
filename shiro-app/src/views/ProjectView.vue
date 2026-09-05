@@ -3,12 +3,16 @@
 import { projectStore } from '../stores/project'
 import SheetList from '../components/SheetList.vue'
 import Editor from '../components/Editor.vue'
+import EditorTabs from '../components/EditorTabs.vue'
 </script>
 
 <template>
   <section v-if="projectStore.current" class="writing">
     <SheetList class="sheet-col" />
-    <Editor class="editor-col" />
+    <div class="editor-col">
+      <EditorTabs />
+      <Editor />
+    </div>
   </section>
 
   <section v-else class="welcome">

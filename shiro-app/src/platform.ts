@@ -29,6 +29,8 @@ const noopShell: ShiroShell = {
   closeWindow: async () => {},
   pickDirectory: async () => null,
   showInFolder: async () => {},
+  openPath: async () => {},
+  trashItem: async () => {},
   onWindowMaximized: () => () => {},
 }
 

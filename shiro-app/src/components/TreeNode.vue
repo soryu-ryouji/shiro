@@ -39,15 +39,41 @@ watch(
 async function confirmNaming() {
   // 目录名不允许路径分隔符（多级创建经 API 的 dir 参数另行支持，此处是单层命名）
   const name = newName.value.trim().replace(/[/\\]/g, '')
+  newName.value = '' // Enter 确认后输入框卸载会再触发 blur，先清空防二次提交
   projectStore.namingDir = null
   if (!name) return
   await projectStore.createDir(props.node.path, name)
+}
+
+// ---- 重命名：本行就地变为输入框（store.renamingDir 由右键菜单触发） ----
+const renaming = computed(() => projectStore.renamingDir === props.node.path)
+const renameInput = ref<HTMLInputElement | null>(null)
+const renameValue = ref('')
+
+watch(
+  () => projectStore.renamingDir,
+  async (dir) => {
+    if (dir === props.node.path) {
+      renameValue.value = props.node.name
+      await nextTick()
+      renameInput.value?.focus()
+      renameInput.value?.select()
+    }
+  },
+)
+
+async function confirmRename() {
+  const name = renameValue.value.trim().replace(/[/\\]/g, '')
+  projectStore.renamingDir = null
+  if (!name || name === props.node.name) return
+  await projectStore.renameEntry(props.node.path, name)
 }
 </script>
 
 <template>
   <div v-if="isDir" class="tree-node">
     <div
+      v-if="!renaming"
       class="tree-row"
       :class="{ active: projectStore.selectedDir === node.path }"
       :style="{ paddingLeft: `${8 + (depth ?? 0) * 14}px` }"
@@ -67,6 +93,17 @@ async function confirmNaming() {
           <Icon name="more" :size="12" />
         </button>
       </span>
+    </div>
+    <!-- 重命名态：本行就地变为输入框 -->
+    <div v-else class="rename-row" :style="{ paddingLeft: `${8 + (depth ?? 0) * 14 + 22}px` }">
+      <input
+        ref="renameInput"
+        v-model="renameValue"
+        type="text"
+        @keydown.enter="confirmRename"
+        @keydown.esc="projectStore.renamingDir = null"
+        @blur="confirmRename"
+      />
     </div>
     <div v-if="open">
       <div v-if="naming" class="naming-row" :style="{ paddingLeft: `${8 + ((depth ?? 0) + 1) * 14 + 20}px` }">
@@ -184,6 +221,20 @@ async function confirmNaming() {
 }
 
 .naming-row input {
+  width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  font-size: 13px;
+  outline: none;
+}
+
+.rename-row {
+  padding: 2px 6px 2px 0;
+}
+
+.rename-row input {
   width: 100%;
   height: 26px;
   padding: 0 8px;

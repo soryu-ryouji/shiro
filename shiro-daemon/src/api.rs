@@ -94,6 +94,27 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
+/// 名称合法性校验（目录/文件名共用）：非空、非 . ..、不含路径与 Windows 保留字符
+fn validate_name(name: &str) -> Result<&str, ApiError> {
+    const INVALID: [char; 9] = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
+    let name = name.trim();
+    if name.is_empty() || name == "." || name == ".." || name.chars().any(|c| INVALID.contains(&c)) {
+        return Err(bad_request("名称不能为空，且不能包含 \\ / : * ? \" < > | 字符"));
+    }
+    Ok(name)
+}
+
+/// 回收站目标路径：<项目>/.shiro/trash/<时间戳>-<原名>
+fn move_to_trash(root: &Path, target: &Path) -> Result<(), ApiError> {
+    let trash = root.join(".shiro").join("trash");
+    std::fs::create_dir_all(&trash).map_err(internal_error)?;
+    let name = target
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "item".into());
+    std::fs::rename(target, trash.join(format!("{}-{}", now_secs(), name))).map_err(internal_error)
+}
+
 /// 路径显示名：目录 basename（容忍尾部斜杠）
 fn dir_name(path: &str) -> String {
     let trimmed = path.trim_end_matches(['/', '\\']);
@@ -539,12 +560,154 @@ async fn remove_project_dir(Query(q): Query<RemoveDirQuery>) -> Result<StatusCod
     if is_empty {
         std::fs::remove_dir(&target).map_err(internal_error)?;
     } else {
-        let trash = root.join(".shiro").join("trash");
-        std::fs::create_dir_all(&trash).map_err(internal_error)?;
-        let name = target.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "dir".into());
-        let dest = trash.join(format!("{}-{}", now_secs(), name));
-        std::fs::rename(&target, &dest).map_err(internal_error)?;
+        move_to_trash(&root, &target)?;
     }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct RenameProjectRequest {
+    /// 项目当前绝对路径
+    pub path: String,
+    /// 新名称（即新目录名）
+    pub new_name: String,
+}
+
+/// 重命名项目：重命名项目文件夹本体，history.toml 记录同步更新
+#[utoipa::path(
+    post,
+    path = "/api/v1/projects/rename",
+    tag = "projects",
+    request_body = RenameProjectRequest,
+    responses(
+        (status = 200, description = "已重命名", body = ProjectItem),
+        (status = 400, description = "名称非法", body = ErrorResponse),
+        (status = 404, description = "项目目录不存在", body = ErrorResponse),
+        (status = 409, description = "目标目录已存在", body = ErrorResponse),
+        (status = 401, description = "未鉴权")
+    ),
+    security(("bearer_token" = []))
+)]
+async fn rename_project(Json(req): Json<RenameProjectRequest>) -> Result<Json<ProjectItem>, ApiError> {
+    let src = PathBuf::from(&req.path);
+    if !src.is_dir() {
+        return Err((StatusCode::NOT_FOUND, Json(ErrorResponse { message: "项目目录不存在".into() })));
+    }
+    let name = validate_name(&req.new_name)?;
+    let Some(parent) = src.parent() else {
+        return Err(bad_request("不能重命名根目录"));
+    };
+    let dst = parent.join(name);
+    if dst == src {
+        return Ok(Json(ProjectItem { path: src.to_string_lossy().to_string(), name: name.into(), exists: true }));
+    }
+    if dst.exists() {
+        return Err((StatusCode::CONFLICT, Json(ErrorResponse { message: "目标目录已存在".into() })));
+    }
+    std::fs::rename(&src, &dst).map_err(internal_error)?;
+
+    // .shiro/project.toml 的 name 同步（保留其他字段）
+    let project_toml = dst.join(".shiro").join("project.toml");
+    if project_toml.is_file() {
+        if let Ok(text) = std::fs::read_to_string(&project_toml) {
+            if let Ok(mut doc) = text.parse::<toml::Value>() {
+                if let Some(table) = doc.as_table_mut() {
+                    table.insert("name".into(), toml::Value::String(name.into()));
+                    let _ = std::fs::write(&project_toml, toml::to_string_pretty(&doc).unwrap_or_default());
+                }
+            }
+        }
+    }
+
+    // history 记录换为新路径
+    let new_path = dst.to_string_lossy().to_string();
+    let mut history = load_history();
+    for entry in &mut history.projects {
+        if entry.path == req.path {
+            entry.path = new_path.clone();
+            entry.opened_at = now_secs();
+        }
+    }
+    save_history(&history).map_err(internal_error)?;
+
+    Ok(Json(ProjectItem { path: new_path, name: name.into(), exists: true }))
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct RenameEntryRequest {
+    /// 项目根目录绝对路径
+    pub path: String,
+    /// 条目相对路径（文件或目录；文件需含后缀）
+    pub rel: String,
+    /// 新名字（文件名含后缀）
+    pub new_name: String,
+}
+
+/// 重命名项目内条目（文件或目录）：同目录改名
+#[utoipa::path(
+    post,
+    path = "/api/v1/projects/entry/rename",
+    tag = "projects",
+    request_body = RenameEntryRequest,
+    responses(
+        (status = 204, description = "已重命名"),
+        (status = 400, description = "路径非法或受保护", body = ErrorResponse),
+        (status = 404, description = "条目不存在", body = ErrorResponse),
+        (status = 409, description = "目标已存在", body = ErrorResponse),
+        (status = 401, description = "未鉴权")
+    ),
+    security(("bearer_token" = []))
+)]
+async fn rename_entry(Json(req): Json<RenameEntryRequest>) -> Result<StatusCode, ApiError> {
+    if req.rel.split(['/', '\\']).next() == Some(".shiro") {
+        return Err(bad_request(".shiro 是 shiro 的工作目录，不能重命名"));
+    }
+    let root = PathBuf::from(&req.path);
+    let src = resolve_inside(&root, &req.rel)?;
+    if !src.exists() {
+        return Err((StatusCode::NOT_FOUND, Json(ErrorResponse { message: "条目不存在".into() })));
+    }
+    let name = validate_name(&req.new_name)?;
+    let dst = src.parent().unwrap_or(&root).join(name);
+    if dst == src {
+        return Ok(StatusCode::NO_CONTENT);
+    }
+    if dst.exists() {
+        return Err((StatusCode::CONFLICT, Json(ErrorResponse { message: "目标已存在".into() })));
+    }
+    std::fs::rename(&src, &dst).map_err(internal_error)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize, IntoParams)]
+pub struct RemoveFileQuery {
+    /// 项目根目录绝对路径
+    path: String,
+    /// 文稿相对路径
+    file: String,
+}
+
+/// 删除文稿：移入项目回收站（.shiro/trash/，可手动恢复）
+#[utoipa::path(
+    delete,
+    path = "/api/v1/projects/file",
+    tag = "projects",
+    params(RemoveFileQuery),
+    responses(
+        (status = 204, description = "已删除（移入回收站）"),
+        (status = 400, description = "路径非法", body = ErrorResponse),
+        (status = 404, description = "文件不存在", body = ErrorResponse),
+        (status = 401, description = "未鉴权")
+    ),
+    security(("bearer_token" = []))
+)]
+async fn remove_project_file(Query(q): Query<RemoveFileQuery>) -> Result<StatusCode, ApiError> {
+    let root = PathBuf::from(&q.path);
+    let target = resolve_inside(&root, &q.file)?;
+    if !target.is_file() {
+        return Err((StatusCode::NOT_FOUND, Json(ErrorResponse { message: "文件不存在".into() })));
+    }
+    move_to_trash(&root, &target)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -590,6 +753,11 @@ pub fn build_router(state: AppState, serve_dir: Option<PathBuf>) -> (Router, uto
         .routes(routes!(project_tree))
         .routes(routes!(read_project_file, write_project_file, create_project_file))
         .routes(routes!(create_project_dir, remove_project_dir))
+        // 注意：utoipa-axum 的 routes! 会把同一次调用的 handler 的 MethodRouter 合并成一个，
+        // 只能组合「同路径不同方法」；不同路径必须分开注册
+        .routes(routes!(rename_project))
+        .routes(routes!(rename_entry))
+        .routes(routes!(remove_project_file))
         .split_for_parts();
     SecurityAddon.modify(&mut doc);
     apply_info(&mut doc);
