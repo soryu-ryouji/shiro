@@ -1,0 +1,95 @@
+:root {
+  --border: #e2e2e6;
+  --bg: #ffffff;
+  --bg-soft: #f6f6f8;
+  --text: #2a2a2e;
+  --text-dim: #8a8a92;
+  --accent-soft: #eef2ff;
+  --danger: #c0392b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    'Microsoft YaHei',
+    sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.boot {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+}
+
+.boot.error {
+  color: var(--danger);
+}
+
+/* 三栏布局：导航 / 内容 / 详情（docs/frontend/layout.md） */
+.layout {
+  display: grid;
+  grid-template-columns: 140px 1fr 240px;
+  height: 100%;
+}
+
+.sidebar {
+  border-right: 1px solid var(--border);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-item {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  text-align: left;
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.nav-item:hover {
+  background: var(--bg-soft);
+}
+
+.nav-item.active {
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
+.content {
+  padding: 16px;
+  overflow: auto;
+}
+
+.inspector {
+  border-left: 1px solid var(--border);
+  padding: 12px;
+}
+
+.inspector-hint,
+.empty-hint {
+  color: var(--text-dim);
+  font-size: 13px;
+}

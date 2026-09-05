@@ -1,0 +1,40 @@
+# electron-builder 配置。npm run pack 会先执行 build:daemon（scripts/build-daemon.mjs，cargo build --release）
+# 产出当前平台的 shiro-daemon 二进制（Rust）。
+appId: com.shiro.app
+productName: shiro
+# 产物名统一「产品-平台-架构」后缀（与 mac 的 shiro-mac-<arch>.zip 对齐，不带版本号）：
+# Windows shiro-windows-x64.zip / Linux shiro-linux-x64.AppImage；mac 为 --dir 产物（.app 目录名取 productName）
+# 只保留中英 Chromium 语言包（默认携带全部 55 种，约 49MB）
+electronLanguages:
+  - zh-CN
+  - en-US
+directories:
+  output: dist
+files:
+  - dist-electron/**/*
+  - dist/**/*
+  # 窗口/任务栏图标（1024px 源图，各平台格式由 electron-builder 自动转换）
+  - build/icon.png
+extraResources:
+  # 各平台 shiro-daemon 二进制（cargo build --release，见 scripts/build-daemon.mjs）
+  - from: resources/shiro-daemon
+    to: shiro-daemon
+# LAN 访问：shiro-daemon 以物理路径托管前端产物（asar 归档内不可读取）
+asarUnpack:
+  - dist/**/*
+mac:
+  category: public.app-category.productivity
+  # dir：只构建 .app 目录，不做镜像打包（zip 由 CI 负责）
+  target: dir
+win:
+  # 绿色软件：zip 解压即用，免安装。相比 portable（NSIS 单文件）无 32 位启动壳，构建也不依赖 NSIS 工具链下载
+  target: zip
+  artifactName: ${productName}-windows-${arch}.${ext}
+linux:
+  target: AppImage
+  # AppImage 的 ${arch} 会被映射为 x86_64，与 win/mac 的 x64 不一致——写死保持全平台统一
+  artifactName: shiro-linux-x64.${ext}
+  icon: build/icon.png
+  category: Office
+  # WM_CLASS 与 .desktop 关联（配合 package.json 的 desktopName）
+  syncDesktopName: true

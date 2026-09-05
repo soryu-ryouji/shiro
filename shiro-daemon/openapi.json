@@ -1,0 +1,41 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "shiro API",
+    "description": "",
+    "license": {
+      "name": ""
+    },
+    "version": "0.1.0"
+  },
+  "paths": {},
+  "components": {
+    "schemas": {
+      "StartupResponse": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/StartupStatus"
+          }
+        }
+      },
+      "StartupStatus": {
+        "type": "string",
+        "enum": [
+          "starting",
+          "ready",
+          "error"
+        ]
+      }
+    },
+    "securitySchemes": {
+      "bearer_token": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

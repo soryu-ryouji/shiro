@@ -1,0 +1,41 @@
+{
+  "name": "shiro-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "shiro",
+  "desktopName": "shiro",
+  "author": "soryu-ryouji",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/soryu-ryouji/shiro.git"
+  },
+  "type": "module",
+  "main": "dist-electron/main.mjs",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:vite": "vite",
+    "build": "npm run typecheck && npm run build:web",
+    "build:web": "vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "gen:types": "openapi-typescript ../shiro-daemon/openapi.json -o src/api-types.d.ts",
+    "build:electron": "node scripts/build-electron.mjs",
+    "build:daemon": "node scripts/build-daemon.mjs",
+    "pack": "npm run build && npm run build:electron && npm run build:daemon && node scripts/pack.mjs",
+    "pack:dir": "npm run build && npm run build:electron && npm run build:daemon && node scripts/pack.mjs --dir"
+  },
+  "dependencies": {
+    "vue": "^3.5.42"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "electron": "^44.2.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "openapi-typescript": "^7.13.0",
+    "typescript": "~5.9.3",
+    "vite": "^8.2.2",
+    "vue-tsc": "^3.3.11"
+  }
+}

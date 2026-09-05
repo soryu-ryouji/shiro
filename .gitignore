@@ -1,0 +1,6 @@
+node_modules/
+dist/
+dist-electron/
+target/
+out/
+shiro-app/resources/

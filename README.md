@@ -6,6 +6,37 @@
 
 > shiro (白写) 是一个面向剧本创作的 AI 项目
 
+## 开发
+
+```bash
+# 桌面应用开发模式（自动构建 daemon 与主进程，起 vite + electron）
+cd shiro-app && npm install && npm run dev
+
+# 后端：改 API 后重新固化契约并跑契约测试
+cd shiro-daemon && cargo run -- --dump-openapi > openapi.json && cargo test
+
+# 前端类型从契约生成
+cd shiro-app && npm run gen:types
+```
+
+## 构建与安装
+
+```powershell
+# Windows：本机安装到 out/（shiro.exe 免安装就地运行）
+./tools/install.ps1 [-Path <目录>]
+# Windows：分发包 out/shiro-windows-x64.zip
+./tools/build.ps1
+```
+
+```bash
+# macOS / Linux：本机安装（mac → /Applications/shiro.app，Linux → out/*.AppImage）
+./tools/install.sh
+# macOS / Linux：分发包归置到 out/
+./tools/build.sh
+```
+
+前置：Node.js 与 Rust 工具链。
+
 ## 文档
 
 **总体**
