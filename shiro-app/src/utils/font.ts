@@ -1,5 +1,6 @@
-// 外观配置：字体（界面/正文分设，内置 + 系统字体）与字号（自由数值）。localStorage 持久化。
-// 内置字体经 @fontsource 自托管（main.ts 引入）；切换经 --font-ui / --font-editor / --font-scale 变量全局生效。
+// 外观配置：字体（界面/正文分设，内置 + 系统字体）、字号、编辑区排版（行距/段距/分段方式）。
+// localStorage 持久化；内置字体经 @fontsource 自托管（main.ts 引入），切换经 CSS 变量全局生效。
+import { ref } from 'vue'
 
 export interface FontOption {
   key: string
@@ -102,4 +103,68 @@ export function applyEditorFontSize(px: number): void {
   const clamped = clampSize(px)
   document.documentElement.style.setProperty('--font-scale-editor', String(clamped / EDITOR_FONT_SIZE_DEFAULT))
   localStorage.setItem(EDITOR_SIZE_KEY, String(clamped))
+}
+
+// ---- 编辑区排版：行间距（行高倍数）与段间距（段落首行的额外距离 px），实时生效 ----
+
+export const LINE_HEIGHT_MIN = 1.2
+export const LINE_HEIGHT_MAX = 3
+export const LINE_HEIGHT_DEFAULT = 1.8
+export const PARA_GAP_MIN = 0
+export const PARA_GAP_MAX = 64
+export const PARA_GAP_DEFAULT = 0
+
+const LINE_HEIGHT_KEY = 'shiro.editor.lineHeight'
+const PARA_GAP_KEY = 'shiro.editor.paraSpacing'
+
+function readInRange(key: string, fallback: number, min: number, max: number): number {
+  const n = Number(localStorage.getItem(key))
+  return n >= min && n <= max ? n : fallback
+}
+
+function clampNum(v: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, v))
+}
+
+/** 编辑区行间距（line-height 倍数，默认 1.8） */
+export function currentEditorLineHeight(): number {
+  return readInRange(LINE_HEIGHT_KEY, LINE_HEIGHT_DEFAULT, LINE_HEIGHT_MIN, LINE_HEIGHT_MAX)
+}
+
+export function applyEditorLineHeight(v: number): void {
+  const n = clampNum(v, LINE_HEIGHT_MIN, LINE_HEIGHT_MAX)
+  document.documentElement.style.setProperty('--editor-line-height', String(n))
+  localStorage.setItem(LINE_HEIGHT_KEY, String(n))
+}
+
+/** 编辑区段间距（px，段落首行的额外上间距，0 = 关闭） */
+export function currentEditorParaGap(): number {
+  return readInRange(PARA_GAP_KEY, PARA_GAP_DEFAULT, PARA_GAP_MIN, PARA_GAP_MAX)
+}
+
+export function applyEditorParaGap(v: number): void {
+  const n = clampNum(v, PARA_GAP_MIN, PARA_GAP_MAX)
+  document.documentElement.style.setProperty('--editor-para-gap', `${n}px`)
+  localStorage.setItem(PARA_GAP_KEY, String(n))
+}
+
+// ---- 分段方式：决定哪些行算「新段落」（段落间距的生效范围） ----
+
+export type ParaMode = 'enter' | 'blank'
+export const PARA_MODE_DEFAULT: ParaMode = 'enter'
+const PARA_MODE_KEY = 'shiro.editor.paraMode'
+const PARA_MODES: ParaMode[] = ['enter', 'blank']
+
+/** 回车分段：每次回车都算新段落（Ulysses 式）；空行分段：空行隔开才算段落（Markdown 式） */
+export function currentEditorParaMode(): ParaMode {
+  const v = localStorage.getItem(PARA_MODE_KEY) as ParaMode | null
+  return v && PARA_MODES.includes(v) ? v : PARA_MODE_DEFAULT
+}
+
+/** 响应式副本：编辑器装饰插件与设置面板共享，切换后编辑器即时重算 */
+export const editorParaMode = ref<ParaMode>(currentEditorParaMode())
+
+export function applyEditorParaMode(mode: ParaMode): void {
+  localStorage.setItem(PARA_MODE_KEY, mode)
+  editorParaMode.value = mode
 }

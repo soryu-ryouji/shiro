@@ -1,15 +1,50 @@
 <script setup lang="ts">
 // 中栏文稿列表（Ulysses 第二栏）：选中目录的直接 .md 文稿；顶部目录名 + 右侧新建（内联命名）。
-import { computed, nextTick, ref } from 'vue'
+// 每项展示：时间 + 标题 + 正文预览（daemon excerpts 接口，剥离 markdown 取开头约 160 字，两行截断）。
+import { computed, nextTick, ref, watch } from 'vue'
 import { apiFetch } from '../api'
 import { hasShell, shell } from '../platform'
 import { findDir, projectStore } from '../stores/project'
+import type { components } from '../api-types'
 import ContextMenu, { type MenuItem } from './ContextMenu.vue'
 import Icon from './Icon.vue'
 
 /** 选中目录的直接文稿（file 节点） */
 const sheets = computed(() =>
   (findDir(projectStore.tree, projectStore.selectedDir) ?? []).filter((n) => n.kind === 'file'),
+)
+
+// ---- 正文预览：目录切换 / 树变化 / 保存完成时拉取目录预览列表 ----
+const excerpts = ref<Record<string, string>>({})
+
+async function refreshExcerpts() {
+  const project = projectStore.current
+  if (!project) {
+    excerpts.value = {}
+    return
+  }
+  try {
+    const res = await apiFetch<components['schemas']['ExcerptsResponse']>(
+      `/api/v1/projects/excerpts?path=${encodeURIComponent(project.path)}&dir=${encodeURIComponent(projectStore.selectedDir)}`,
+    )
+    const map: Record<string, string> = {}
+    for (const it of res.excerpts ?? []) map[it.file] = it.excerpt
+    excerpts.value = map
+  } catch {
+    excerpts.value = {}
+  }
+}
+
+watch(
+  () => [projectStore.selectedDir, projectStore.tree] as const,
+  () => void refreshExcerpts(),
+)
+// 保存完成后同步该篇预览
+watch(
+  () => projectStore.saveState,
+  (s) => {
+    if (s === 'saved') void refreshExcerpts()
+  },
 )
 
 function fmtTime(epochSecs?: number | null): string {
@@ -158,6 +193,7 @@ async function confirmRename(path: string) {
         <template v-else>
           <span class="sheet-time">{{ fmtTime(s.modified) }}</span>
           <span class="sheet-title">{{ sheetTitle(s.name) }}</span>
+          <span v-if="excerpts[s.path]" class="sheet-excerpt">{{ excerpts[s.path] }}</span>
         </template>
       </li>
     </ul>
@@ -271,6 +307,18 @@ async function confirmRename(path: string) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 正文预览：两行截断（Ulysses 式） */
+.sheet-excerpt {
+  font-size: calc(12px * var(--font-scale-ui));
+  color: var(--text-dim);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  user-select: none;
 }
 
 .rename-input {

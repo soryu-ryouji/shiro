@@ -1,9 +1,9 @@
 use axum::{
+    Json, Router,
     extract::{Query, Request, State},
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     middleware::Next,
     response::Response,
-    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -98,8 +98,11 @@ fn now_secs() -> u64 {
 fn validate_name(name: &str) -> Result<&str, ApiError> {
     const INVALID: [char; 9] = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
     let name = name.trim();
-    if name.is_empty() || name == "." || name == ".." || name.chars().any(|c| INVALID.contains(&c)) {
-        return Err(bad_request("名称不能为空，且不能包含 \\ / : * ? \" < > | 字符"));
+    if name.is_empty() || name == "." || name == ".." || name.chars().any(|c| INVALID.contains(&c))
+    {
+        return Err(bad_request(
+            "名称不能为空，且不能包含 \\ / : * ? \" < > | 字符",
+        ));
     }
     Ok(name)
 }
@@ -147,11 +150,21 @@ pub struct ErrorResponse {
 type ApiError = (StatusCode, Json<ErrorResponse>);
 
 fn bad_request(message: &str) -> ApiError {
-    (StatusCode::BAD_REQUEST, Json(ErrorResponse { message: message.into() }))
+    (
+        StatusCode::BAD_REQUEST,
+        Json(ErrorResponse {
+            message: message.into(),
+        }),
+    )
 }
 
 fn internal_error(e: std::io::Error) -> ApiError {
-    (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { message: e.to_string() }))
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            message: e.to_string(),
+        }),
+    )
 }
 
 /// 项目列表（history.toml 记录，最近打开在前）
@@ -202,11 +215,16 @@ pub struct CreateProjectRequest {
     ),
     security(("bearer_token" = []))
 )]
-async fn create_project(Json(req): Json<CreateProjectRequest>) -> Result<(StatusCode, Json<ProjectItem>), ApiError> {
+async fn create_project(
+    Json(req): Json<CreateProjectRequest>,
+) -> Result<(StatusCode, Json<ProjectItem>), ApiError> {
     let name = req.name.trim();
     const INVALID: [char; 9] = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
-    if name.is_empty() || name == "." || name == ".." || name.chars().any(|c| INVALID.contains(&c)) {
-        return Err(bad_request("项目名不能为空，且不能包含 \\ / : * ? \" < > | 字符"));
+    if name.is_empty() || name == "." || name == ".." || name.chars().any(|c| INVALID.contains(&c))
+    {
+        return Err(bad_request(
+            "项目名不能为空，且不能包含 \\ / : * ? \" < > | 字符",
+        ));
     }
     let parent = PathBuf::from(req.parent.trim());
     if !parent.is_dir() {
@@ -215,12 +233,17 @@ async fn create_project(Json(req): Json<CreateProjectRequest>) -> Result<(Status
 
     let target = parent.join(name);
     if target.exists() {
-        let is_empty = target.read_dir().map(|mut d| d.next().is_none()).unwrap_or(false);
+        let is_empty = target
+            .read_dir()
+            .map(|mut d| d.next().is_none())
+            .unwrap_or(false);
         let is_shiro_project = target.join(".shiro").is_dir();
         if !is_empty && !is_shiro_project {
             return Err((
                 StatusCode::CONFLICT,
-                Json(ErrorResponse { message: "目录已存在且非空".into() }),
+                Json(ErrorResponse {
+                    message: "目录已存在且非空".into(),
+                }),
             ));
         }
     } else {
@@ -241,13 +264,20 @@ async fn create_project(Json(req): Json<CreateProjectRequest>) -> Result<(Status
     history.projects.retain(|e| e.path != key);
     history.projects.insert(
         0,
-        HistoryEntry { path: key.clone(), opened_at: now_secs() },
+        HistoryEntry {
+            path: key.clone(),
+            opened_at: now_secs(),
+        },
     );
     save_history(&history).map_err(internal_error)?;
 
     Ok((
         StatusCode::CREATED,
-        Json(ProjectItem { path: key, name: name.to_string(), exists: true }),
+        Json(ProjectItem {
+            path: key,
+            name: name.to_string(),
+            exists: true,
+        }),
     ))
 }
 
@@ -282,9 +312,7 @@ async fn remove_project(Query(query): Query<RemoveProjectQuery>) -> StatusCode {
 fn resolve_inside(root: &Path, rel: &str) -> Result<PathBuf, ApiError> {
     let rel_path = Path::new(rel);
     if rel_path.is_absolute()
-        || rel
-            .split(['/', '\\'])
-            .any(|seg| seg == ".." || seg == ".")
+        || rel.split(['/', '\\']).any(|seg| seg == ".." || seg == ".")
         || rel.trim().is_empty()
     {
         return Err(bad_request("非法的文件路径"));
@@ -334,14 +362,21 @@ fn build_tree(dir: &Path, root: &Path) -> Vec<TreeNode> {
                 modified: None,
                 children: Some(build_tree(&path, root)),
             });
-        } else if name.to_lowercase().ends_with(".md") || name.to_lowercase().ends_with(".markdown") {
+        } else if name.to_lowercase().ends_with(".md") || name.to_lowercase().ends_with(".markdown")
+        {
             let modified = entry
                 .metadata()
                 .and_then(|m| m.modified())
                 .ok()
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|d| d.as_secs());
-            files.push(TreeNode { name, path: rel, kind: "file".into(), modified, children: None });
+            files.push(TreeNode {
+                name,
+                path: rel,
+                kind: "file".into(),
+                modified,
+                children: None,
+            });
         }
     }
     dirs.sort_by(|a, b| a.name.cmp(&b.name));
@@ -379,7 +414,195 @@ async fn project_tree(Query(q): Query<TreeQuery>) -> Result<Json<TreeResponse>, 
     if !root.is_dir() {
         return Err(bad_request("项目目录不存在"));
     }
-    Ok(Json(TreeResponse { children: build_tree(&root, &root) }))
+    Ok(Json(TreeResponse {
+        children: build_tree(&root, &root),
+    }))
+}
+
+#[derive(Deserialize, IntoParams)]
+pub struct ExcerptsQuery {
+    /// 项目根目录绝对路径
+    path: String,
+    /// 项目内相对路径（'' = 项目根）
+    dir: String,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct SheetExcerpt {
+    /// 文稿在项目内的相对路径
+    pub file: String,
+    /// 正文预览（剥离 markdown 标记，取开头约 160 字）
+    pub excerpt: String,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct ExcerptsResponse {
+    pub excerpts: Vec<SheetExcerpt>,
+}
+
+/// 读文件头部（最多 max_bytes 字节；截断处的多字节字符经 lossy 变替换符，由剥离逻辑过滤）
+fn read_file_head(path: &Path, max_bytes: usize) -> Option<String> {
+    use std::io::Read;
+    let f = std::fs::File::open(path).ok()?;
+    let mut buf = Vec::new();
+    f.take(max_bytes as u64).read_to_end(&mut buf).ok()?;
+    Some(String::from_utf8_lossy(&buf).into_owned())
+}
+
+/// 剥离单行 markdown 块级标记（# 标题、> 引用、-/*/+ 与 "1." 列表），返回行内文本
+fn strip_markdown_line(line: &str) -> String {
+    let mut s = line.trim();
+    loop {
+        let t = s.trim_start();
+        let Some(c) = t.chars().next() else { break };
+        match c {
+            '#' | '>' | '-' | '*' | '+' => s = &t[c.len_utf8()..],
+            '0'..='9' => {
+                let digits = t
+                    .char_indices()
+                    .take_while(|(_, ch)| ch.is_ascii_digit())
+                    .count();
+                let rest = &t[digits..];
+                match rest.strip_prefix(". ") {
+                    Some(after) => s = after,
+                    None => break,
+                }
+            }
+            _ => break,
+        }
+    }
+    s.trim().to_string()
+}
+
+/// 剥离行内 markdown：图片 ![alt](url) 整体移除，链接 [text](url) 保留 text，粗体/行内码/删除线标记移除
+fn strip_inline_markdown(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    loop {
+        let img = rest.find("![");
+        let link = rest.find('[');
+        // 图片与链接标记取更靠前的一个
+        let take_img = match (img, link) {
+            (Some(i), Some(l)) => i < l,
+            (Some(_), None) => true,
+            (None, _) => false,
+        };
+        if take_img {
+            let i = img.expect("take_img 为 true 时 img 必为 Some");
+            out.push_str(&rest[..i]);
+            match rest[i..]
+                .find("](")
+                .and_then(|j| rest[i + j..].find(')').map(|k| (j, k)))
+            {
+                Some((j, k)) => rest = &rest[i + j + k + 1..],
+                None => {
+                    rest = &rest[i + 2..];
+                }
+            }
+        } else if let Some(i) = link {
+            out.push_str(&rest[..i]);
+            let Some(j) = rest[i..].find(']') else {
+                rest = &rest[i + 1..];
+                continue;
+            };
+            let text = &rest[i + 1..i + j];
+            out.push_str(text);
+            if let Some(after) = rest[i + j..].strip_prefix("](") {
+                match after.find(')') {
+                    Some(k) => rest = &after[k + 1..],
+                    None => rest = after,
+                }
+            } else {
+                rest = &rest[i + j + 1..];
+            }
+        } else {
+            out.push_str(rest);
+            break;
+        }
+    }
+    out.chars()
+        .filter(|c| !matches!(c, '*' | '`' | '~'))
+        .collect()
+}
+
+/// 从文稿内容提取正文预览：逐行剥离 markdown，取开头约 max_chars 字
+fn excerpt_from_content(content: &str, max_chars: usize) -> String {
+    let mut out = String::new();
+    for line in content.lines() {
+        let text = strip_inline_markdown(&strip_markdown_line(line));
+        if text.is_empty() {
+            continue;
+        }
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.push_str(&text);
+        if out.chars().count() >= max_chars {
+            break;
+        }
+    }
+    if out.chars().count() > max_chars {
+        out.chars().take(max_chars).collect()
+    } else {
+        out
+    }
+}
+
+/// 目录内全部文稿的正文预览（每篇取开头几行，Ulysses 式列表）
+#[utoipa::path(
+    get,
+    path = "/api/v1/projects/excerpts",
+    tag = "projects",
+    params(ExcerptsQuery),
+    responses(
+        (status = 200, description = "预览列表", body = ExcerptsResponse),
+        (status = 400, description = "路径非法", body = ErrorResponse),
+        (status = 401, description = "未鉴权")
+    ),
+    security(("bearer_token" = []))
+)]
+async fn project_excerpts(
+    Query(q): Query<ExcerptsQuery>,
+) -> Result<Json<ExcerptsResponse>, ApiError> {
+    const HEAD_BYTES: usize = 4096;
+    const MAX_CHARS: usize = 160;
+    let root = PathBuf::from(&q.path);
+    if !root.is_dir() {
+        return Err(bad_request("项目目录不存在"));
+    }
+    let dir = if q.dir.is_empty() {
+        root.clone()
+    } else {
+        let d = resolve_inside(&root, &q.dir)?;
+        if !d.is_dir() {
+            return Err(bad_request("目录不存在"));
+        }
+        d
+    };
+    let mut excerpts = Vec::new();
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return Ok(Json(ExcerptsResponse { excerpts }));
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') {
+            continue;
+        }
+        let lower = name.to_lowercase();
+        if !(lower.ends_with(".md") || lower.ends_with(".markdown")) {
+            continue;
+        }
+        let p = entry.path();
+        let rel = p
+            .strip_prefix(&root)
+            .map(|s| s.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_default();
+        let excerpt = read_file_head(&p, HEAD_BYTES)
+            .map(|head| excerpt_from_content(&head, MAX_CHARS))
+            .unwrap_or_default();
+        excerpts.push(SheetExcerpt { file: rel, excerpt });
+    }
+    Ok(Json(ExcerptsResponse { excerpts }))
 }
 
 #[derive(Deserialize, IntoParams)]
@@ -423,10 +646,18 @@ fn file_mtime(path: &Path) -> u64 {
 async fn read_project_file(Query(q): Query<ReadFileQuery>) -> Result<Json<FileContent>, ApiError> {
     let target = resolve_inside(&PathBuf::from(&q.path), &q.file)?;
     if !target.is_file() {
-        return Err((StatusCode::NOT_FOUND, Json(ErrorResponse { message: "文件不存在".into() })));
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                message: "文件不存在".into(),
+            }),
+        ));
     }
     let content = std::fs::read_to_string(&target).map_err(internal_error)?;
-    Ok(Json(FileContent { content, modified: file_mtime(&target) }))
+    Ok(Json(FileContent {
+        content,
+        modified: file_mtime(&target),
+    }))
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -452,12 +683,17 @@ pub struct WriteFileRequest {
     ),
     security(("bearer_token" = []))
 )]
-async fn write_project_file(Json(req): Json<WriteFileRequest>) -> Result<Json<FileContent>, ApiError> {
+async fn write_project_file(
+    Json(req): Json<WriteFileRequest>,
+) -> Result<Json<FileContent>, ApiError> {
     let target = resolve_inside(&PathBuf::from(&req.path), &req.file)?;
     let tmp = target.with_extension("md.shiro-tmp");
     std::fs::write(&tmp, &req.content).map_err(internal_error)?;
     std::fs::rename(&tmp, &target).map_err(internal_error)?;
-    Ok(Json(FileContent { content: req.content, modified: file_mtime(&target) }))
+    Ok(Json(FileContent {
+        content: req.content,
+        modified: file_mtime(&target),
+    }))
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -482,16 +718,29 @@ pub struct CreateFileRequest {
     ),
     security(("bearer_token" = []))
 )]
-async fn create_project_file(Json(req): Json<CreateFileRequest>) -> Result<(StatusCode, Json<FileContent>), ApiError> {
+async fn create_project_file(
+    Json(req): Json<CreateFileRequest>,
+) -> Result<(StatusCode, Json<FileContent>), ApiError> {
     let target = resolve_inside(&PathBuf::from(&req.path), &req.file)?;
     if target.exists() {
-        return Err((StatusCode::CONFLICT, Json(ErrorResponse { message: "文件已存在".into() })));
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                message: "文件已存在".into(),
+            }),
+        ));
     }
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent).map_err(internal_error)?;
     }
     std::fs::write(&target, "").map_err(internal_error)?;
-    Ok((StatusCode::CREATED, Json(FileContent { content: String::new(), modified: file_mtime(&target) })))
+    Ok((
+        StatusCode::CREATED,
+        Json(FileContent {
+            content: String::new(),
+            modified: file_mtime(&target),
+        }),
+    ))
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -554,9 +803,17 @@ async fn remove_project_dir(Query(q): Query<RemoveDirQuery>) -> Result<StatusCod
         return Err(bad_request(".shiro 是 shiro 的工作目录，不能删除"));
     }
     if !target.is_dir() {
-        return Err((StatusCode::NOT_FOUND, Json(ErrorResponse { message: "目录不存在".into() })));
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                message: "目录不存在".into(),
+            }),
+        ));
     }
-    let is_empty = target.read_dir().map(|mut d| d.next().is_none()).unwrap_or(false);
+    let is_empty = target
+        .read_dir()
+        .map(|mut d| d.next().is_none())
+        .unwrap_or(false);
     if is_empty {
         std::fs::remove_dir(&target).map_err(internal_error)?;
     } else {
@@ -588,10 +845,17 @@ pub struct RenameProjectRequest {
     ),
     security(("bearer_token" = []))
 )]
-async fn rename_project(Json(req): Json<RenameProjectRequest>) -> Result<Json<ProjectItem>, ApiError> {
+async fn rename_project(
+    Json(req): Json<RenameProjectRequest>,
+) -> Result<Json<ProjectItem>, ApiError> {
     let src = PathBuf::from(&req.path);
     if !src.is_dir() {
-        return Err((StatusCode::NOT_FOUND, Json(ErrorResponse { message: "项目目录不存在".into() })));
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                message: "项目目录不存在".into(),
+            }),
+        ));
     }
     let name = validate_name(&req.new_name)?;
     let Some(parent) = src.parent() else {
@@ -599,10 +863,19 @@ async fn rename_project(Json(req): Json<RenameProjectRequest>) -> Result<Json<Pr
     };
     let dst = parent.join(name);
     if dst == src {
-        return Ok(Json(ProjectItem { path: src.to_string_lossy().to_string(), name: name.into(), exists: true }));
+        return Ok(Json(ProjectItem {
+            path: src.to_string_lossy().to_string(),
+            name: name.into(),
+            exists: true,
+        }));
     }
     if dst.exists() {
-        return Err((StatusCode::CONFLICT, Json(ErrorResponse { message: "目标目录已存在".into() })));
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                message: "目标目录已存在".into(),
+            }),
+        ));
     }
     std::fs::rename(&src, &dst).map_err(internal_error)?;
 
@@ -613,7 +886,10 @@ async fn rename_project(Json(req): Json<RenameProjectRequest>) -> Result<Json<Pr
             if let Ok(mut doc) = text.parse::<toml::Value>() {
                 if let Some(table) = doc.as_table_mut() {
                     table.insert("name".into(), toml::Value::String(name.into()));
-                    let _ = std::fs::write(&project_toml, toml::to_string_pretty(&doc).unwrap_or_default());
+                    let _ = std::fs::write(
+                        &project_toml,
+                        toml::to_string_pretty(&doc).unwrap_or_default(),
+                    );
                 }
             }
         }
@@ -630,7 +906,11 @@ async fn rename_project(Json(req): Json<RenameProjectRequest>) -> Result<Json<Pr
     }
     save_history(&history).map_err(internal_error)?;
 
-    Ok(Json(ProjectItem { path: new_path, name: name.into(), exists: true }))
+    Ok(Json(ProjectItem {
+        path: new_path,
+        name: name.into(),
+        exists: true,
+    }))
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -665,7 +945,12 @@ async fn rename_entry(Json(req): Json<RenameEntryRequest>) -> Result<StatusCode,
     let root = PathBuf::from(&req.path);
     let src = resolve_inside(&root, &req.rel)?;
     if !src.exists() {
-        return Err((StatusCode::NOT_FOUND, Json(ErrorResponse { message: "条目不存在".into() })));
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                message: "条目不存在".into(),
+            }),
+        ));
     }
     let name = validate_name(&req.new_name)?;
     let dst = src.parent().unwrap_or(&root).join(name);
@@ -673,7 +958,12 @@ async fn rename_entry(Json(req): Json<RenameEntryRequest>) -> Result<StatusCode,
         return Ok(StatusCode::NO_CONTENT);
     }
     if dst.exists() {
-        return Err((StatusCode::CONFLICT, Json(ErrorResponse { message: "目标已存在".into() })));
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                message: "目标已存在".into(),
+            }),
+        ));
     }
     std::fs::rename(&src, &dst).map_err(internal_error)?;
     Ok(StatusCode::NO_CONTENT)
@@ -705,13 +995,22 @@ async fn remove_project_file(Query(q): Query<RemoveFileQuery>) -> Result<StatusC
     let root = PathBuf::from(&q.path);
     let target = resolve_inside(&root, &q.file)?;
     if !target.is_file() {
-        return Err((StatusCode::NOT_FOUND, Json(ErrorResponse { message: "文件不存在".into() })));
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                message: "文件不存在".into(),
+            }),
+        ));
     }
     move_to_trash(&root, &target)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn auth(State(state): State<AppState>, req: Request, next: Next) -> Result<Response, StatusCode> {
+async fn auth(
+    State(state): State<AppState>,
+    req: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
     let token = req
         .headers()
         .get(header::AUTHORIZATION)
@@ -746,12 +1045,20 @@ fn apply_info(doc: &mut utoipa::openapi::OpenApi) {
 }
 
 /// 构建 API 路由与 OpenAPI 文档（同一来源：路由即文档，契约测试校验 openapi.json 同步）。
-pub fn build_router(state: AppState, serve_dir: Option<PathBuf>) -> (Router, utoipa::openapi::OpenApi) {
+pub fn build_router(
+    state: AppState,
+    serve_dir: Option<PathBuf>,
+) -> (Router, utoipa::openapi::OpenApi) {
     let (api_router, mut doc) = OpenApiRouter::new()
         .routes(routes!(startup))
         .routes(routes!(list_projects, create_project, remove_project))
         .routes(routes!(project_tree))
-        .routes(routes!(read_project_file, write_project_file, create_project_file))
+        .routes(routes!(project_excerpts))
+        .routes(routes!(
+            read_project_file,
+            write_project_file,
+            create_project_file
+        ))
         .routes(routes!(create_project_dir, remove_project_dir))
         // 注意：utoipa-axum 的 routes! 会把同一次调用的 handler 的 MethodRouter 合并成一个，
         // 只能组合「同路径不同方法」；不同路径必须分开注册
@@ -762,8 +1069,7 @@ pub fn build_router(state: AppState, serve_dir: Option<PathBuf>) -> (Router, uto
     SecurityAddon.modify(&mut doc);
     apply_info(&mut doc);
 
-    let api_router = api_router
-        .layer(axum::middleware::from_fn_with_state(state.clone(), auth));
+    let api_router = api_router.layer(axum::middleware::from_fn_with_state(state.clone(), auth));
 
     let mut router = Router::new()
         .merge(api_router)
@@ -790,7 +1096,12 @@ mod tests {
     /// 改 API 后执行 `cargo run -- --dump-openapi > openapi.json` 重新固化。
     #[test]
     fn openapi_json_in_sync() {
-        let (_, doc) = build_router(AppState { token: String::new() }, None);
+        let (_, doc) = build_router(
+            AppState {
+                token: String::new(),
+            },
+            None,
+        );
         let generated = serde_json::to_string_pretty(&doc).unwrap();
         let frozen = include_str!("../openapi.json");
         assert_eq!(

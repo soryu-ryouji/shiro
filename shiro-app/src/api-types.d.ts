@@ -81,6 +81,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/excerpts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 目录内全部文稿的正文预览（每篇取开头几行，Ulysses 式列表） */
+        get: operations["project_excerpts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/file": {
         parameters: {
             query?: never;
@@ -160,6 +177,9 @@ export interface components {
         ErrorResponse: {
             message: string;
         };
+        ExcerptsResponse: {
+            excerpts: components["schemas"]["SheetExcerpt"][];
+        };
         FileContent: {
             content: string;
             /**
@@ -192,6 +212,12 @@ export interface components {
             new_name: string;
             /** @description 项目当前绝对路径 */
             path: string;
+        };
+        SheetExcerpt: {
+            /** @description 正文预览（剥离 markdown 标记，取开头约 160 字） */
+            excerpt: string;
+            /** @description 文稿在项目内的相对路径 */
+            file: string;
         };
         StartupResponse: {
             status: components["schemas"]["StartupStatus"];
@@ -511,6 +537,47 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
+            };
+        };
+    };
+    project_excerpts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 项目根目录绝对路径 */
+                path: string;
+                /** @description 项目内相对路径（'' = 项目根） */
+                dir: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 预览列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExcerptsResponse"];
+                };
+            };
+            /** @description 路径非法 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

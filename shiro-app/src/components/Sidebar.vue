@@ -3,8 +3,7 @@
 // - Windows/Linux：窗口控制在右上角，左上角无占用——Activity 图标行直接放顶条（与收起按钮同行）
 // - macOS：红绿灯在左上角——顶条左侧完全留白，图标行挪到第二行
 // - 收起按钮无论如何都在顶条右端
-// - 第三行面板标题；正文按 Activity 切换面板组件
-import { computed } from 'vue'
+// - 无通用面板标题（与 Activity 图标语义重复），各面板自带小节头；正文按 Activity 切换面板组件
 import { hasShell, isMac, shell } from '../platform'
 import type { NavItem, NavKey } from '../types'
 import ActivityBar from './ActivityBar.vue'
@@ -15,13 +14,6 @@ import ModelPanel from '../panels/ModelPanel.vue'
 
 const props = defineProps<{ items: NavItem[]; active: NavKey }>()
 const emit = defineEmits<{ activate: [key: NavKey]; toggle: [] }>()
-
-const PANEL_TITLES: Record<NavKey, string> = {
-  project: 'Project',
-  database: 'Database',
-  model: 'Model',
-}
-const title = computed(() => PANEL_TITLES[props.active])
 
 /** macOS 红绿灯占左上角：图标行让位到第二行（仅真 Electron macOS；浏览器形态无窗口控制，不启用） */
 const trafficOnTop = hasShell && isMac
@@ -46,7 +38,6 @@ function onHeadDblClick(e: MouseEvent) {
     <div v-if="trafficOnTop" class="activity-row" @dblclick="onHeadDblClick">
       <ActivityBar :items="items" :active="active" @activate="emit('activate', $event)" />
     </div>
-    <div class="panel-title">{{ title }}</div>
     <div class="sidebar-body">
       <ProjectPanel v-if="active === 'project'" />
       <DatabasePanel v-else-if="active === 'database'" />
@@ -116,19 +107,9 @@ function onHeadDblClick(e: MouseEvent) {
   }
 }
 
-.panel-title {
-  flex: none;
-  padding: 2px 12px 8px;
-  font-size: calc(12px * var(--font-scale-ui));
-  font-weight: 600;
-  letter-spacing: 0.4px;
-  color: var(--text-dim);
-  white-space: nowrap;
-}
-
 .sidebar-body {
   flex: 1;
-  padding: 0 8px 8px;
+  padding: 8px;
   overflow-y: auto;
 }
 </style>

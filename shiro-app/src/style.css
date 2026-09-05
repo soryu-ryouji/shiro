@@ -14,6 +14,9 @@
   /* 界面字体（默认系统无衬线）与正文字体（默认霞鹜文楷）分设，utils/font.ts 可覆盖 */
   --font-ui: system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
   --font-editor: 'LXGW WenKai', system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  /* 编辑区排版（行高倍数与段间距，设置面板外观驱动） */
+  --editor-line-height: 1.8;
+  --editor-para-gap: 0px;
 }
 
 * {

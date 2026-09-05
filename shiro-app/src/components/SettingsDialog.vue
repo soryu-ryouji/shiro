@@ -11,15 +11,26 @@ import { useDialogMask } from '../composables/useDialog'
 import {
   applyEditorFont,
   applyEditorFontSize,
+  applyEditorLineHeight,
+  applyEditorParaGap,
   applyUiFont,
   applyUiFontSize,
   currentEditorFontKey,
   currentEditorFontSize,
+  currentEditorLineHeight,
+  currentEditorParaGap,
+  currentEditorParaMode,
   currentUiFontKey,
   currentUiFontSize,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
+  LINE_HEIGHT_MAX,
+  LINE_HEIGHT_MIN,
+  PARA_GAP_MAX,
+  PARA_GAP_MIN,
+  applyEditorParaMode,
   listSystemFonts,
+  type ParaMode,
 } from '../utils/font'
 import pkg from '../../package.json'
 
@@ -60,6 +71,29 @@ function onEditorSizeInput(e: Event) {
   if (Number.isNaN(v)) return
   applyEditorFontSize(v)
   editorFontSize.value = currentEditorFontSize()
+}
+
+// 编辑区排版：行间距（行高倍数）与段间距（段落首行额外间距 px），实时生效
+const editorLineHeight = ref(currentEditorLineHeight())
+const editorParaGap = ref(currentEditorParaGap())
+function onEditorLineHeightInput(e: Event) {
+  const v = Number((e.target as HTMLInputElement).value)
+  if (Number.isNaN(v)) return
+  applyEditorLineHeight(v)
+  editorLineHeight.value = currentEditorLineHeight()
+}
+function onEditorParaGapInput(e: Event) {
+  const v = Number((e.target as HTMLInputElement).value)
+  if (Number.isNaN(v)) return
+  applyEditorParaGap(v)
+  editorParaGap.value = currentEditorParaGap()
+}
+
+// 分段方式：决定哪些行算「新段落」（段落间距的生效范围），切换后编辑器即时重算
+const editorParaMode = ref(currentEditorParaMode())
+function selectParaMode(m: ParaMode) {
+  applyEditorParaMode(m)
+  editorParaMode.value = m
 }
 
 // 系统字体（Local Font Access API；桌面端可用。选项名统一用界面字体渲染——符号字体的字母码位不可读）
@@ -139,7 +173,56 @@ onMounted(async () => {
                 <span class="size-unit">px</span>
               </div>
             </div>
+            <div class="grow">
+              <span class="glabel">分段方式</span>
+              <div class="editor-font-row">
+                <select
+                  class="select"
+                  :value="editorParaMode"
+                  title="决定哪些行算新段落（段落间距的生效范围）"
+                  @change="selectParaMode(($event.target as HTMLSelectElement).value as ParaMode)"
+                >
+                  <option value="enter">回车分段（每行一段）</option>
+                  <option value="blank">空行分段（Markdown 式）</option>
+                </select>
+              </div>
+            </div>
+            <div class="grow">
+              <span class="glabel">段内行距</span>
+              <div class="editor-font-row">
+                <input
+                  type="number"
+                  class="size-num"
+                  :min="LINE_HEIGHT_MIN"
+                  :max="LINE_HEIGHT_MAX"
+                  :step="0.1"
+                  :value="editorLineHeight"
+                  title="一段文字自动折行后，行与行之间的距离"
+                  @change="onEditorLineHeightInput"
+                />
+                <span class="size-unit">倍</span>
+              </div>
+            </div>
+            <div class="grow">
+              <span class="glabel">段落间距</span>
+              <div class="editor-font-row">
+                <input
+                  type="number"
+                  class="size-num"
+                  :min="PARA_GAP_MIN"
+                  :max="PARA_GAP_MAX"
+                  :step="1"
+                  :value="editorParaGap"
+                  title="按回车换行的行与行之间的额外距离"
+                  @change="onEditorParaGapInput"
+                />
+                <span class="size-unit">px</span>
+              </div>
+            </div>
           </div>
+          <p class="pane-hint">
+            段内行距：一段长文字自动折行后，同一段内行与行的间距，调小更紧凑。段落间距：新段落首行的额外距离，哪些行算新段落由「分段方式」决定。
+          </p>
         </section>
 
         <section v-show="section === 'general'" class="pane">

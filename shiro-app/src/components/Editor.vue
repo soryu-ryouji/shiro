@@ -5,9 +5,10 @@ import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { apiFetch } from '../api'
 import { projectStore } from '../stores/project'
 import { countWords } from '../utils/wordcount'
+import { editorParaMode } from '../utils/font'
 import type { components } from '../api-types'
-import { EditorView, keymap, drawSelection } from '@codemirror/view'
-import { EditorState } from '@codemirror/state'
+import { EditorView, keymap, drawSelection, ViewPlugin, Decoration, type DecorationSet, type ViewUpdate } from '@codemirror/view'
+import { EditorState, RangeSetBuilder } from '@codemirror/state'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
@@ -72,10 +73,55 @@ const theme = EditorView.theme({
     maxWidth: '760px',
     margin: '0 auto',
   },
-  '.cm-scroller': { lineHeight: '1.8', overflow: 'auto' },
+  '.cm-scroller': { lineHeight: 'var(--editor-line-height)', overflow: 'auto' },
+  // 段间距：段落首行的额外上间距（--editor-para-gap 默认 0 = 关闭）
+  '.cm-line.cm-para-start': { paddingTop: 'var(--editor-para-gap)' },
   '&.cm-focused': { outline: 'none' },
   '.cm-cursor': { borderLeftColor: 'var(--text)' },
 })
+
+// ---- 段间距装饰：段落间距只加在「新段落首行」上，哪些行算新段落由分段方式决定（editorParaMode）；
+// 段内行距管折行密度，段落间距管段落之间的额外距离，两者独立 ----
+const paraStartDeco = Decoration.line({ class: 'cm-para-start' })
+
+function buildParaDecorations(view: EditorView): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>()
+  const doc = view.state.doc
+  const blankSeparated = editorParaMode.value === 'blank'
+  for (const { from, to } of view.visibleRanges) {
+    const first = Math.max(doc.lineAt(from).number, 2)
+    const last = doc.lineAt(to).number
+    for (let n = first; n <= last; n++) {
+      const line = doc.line(n)
+      if (blankSeparated) {
+        // 空行分段：空行本身不加（分隔由空行行高承担），仅空行后的新段落首行加
+        if (line.text.trim() === '') continue
+        if (doc.line(n - 1).text.trim() !== '') continue
+      }
+      // 回车分段：每行都加，含刚回车出的空行——否则光标紧贴上一行，打出字后才跳下去
+      builder.add(line.from, line.from, paraStartDeco)
+    }
+  }
+  return builder.finish()
+}
+
+const paraSpacingPlugin = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet
+    mode: string
+    constructor(view: EditorView) {
+      this.mode = editorParaMode.value
+      this.decorations = buildParaDecorations(view)
+    }
+    update(update: ViewUpdate) {
+      if (update.docChanged || update.viewportChanged || this.mode !== editorParaMode.value) {
+        this.mode = editorParaMode.value
+        this.decorations = buildParaDecorations(update.view)
+      }
+    }
+  },
+  { decorations: (v) => v.decorations },
+)
 
 function makeState(doc: string): EditorState {
   return EditorState.create({
@@ -89,6 +135,7 @@ function makeState(doc: string): EditorState {
       EditorView.updateListener.of((update) => {
         if (update.docChanged) scheduleSave(update.state.doc.toString())
       }),
+      paraSpacingPlugin,
       theme,
     ],
   })

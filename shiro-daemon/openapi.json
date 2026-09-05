@@ -334,6 +334,65 @@
         ]
       }
     },
+    "/api/v1/projects/excerpts": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "目录内全部文稿的正文预览（每篇取开头几行，Ulysses 式列表）",
+        "operationId": "project_excerpts",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "description": "项目根目录绝对路径",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dir",
+            "in": "path",
+            "description": "项目内相对路径（'' = 项目根）",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "预览列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExcerptsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "路径非法",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
     "/api/v1/projects/file": {
       "get": {
         "tags": [
@@ -761,6 +820,20 @@
           }
         }
       },
+      "ExcerptsResponse": {
+        "type": "object",
+        "required": [
+          "excerpts"
+        ],
+        "properties": {
+          "excerpts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SheetExcerpt"
+            }
+          }
+        }
+      },
       "FileContent": {
         "type": "object",
         "required": [
@@ -851,6 +924,23 @@
           "path": {
             "type": "string",
             "description": "项目当前绝对路径"
+          }
+        }
+      },
+      "SheetExcerpt": {
+        "type": "object",
+        "required": [
+          "file",
+          "excerpt"
+        ],
+        "properties": {
+          "excerpt": {
+            "type": "string",
+            "description": "正文预览（剥离 markdown 标记，取开头约 160 字）"
+          },
+          "file": {
+            "type": "string",
+            "description": "文稿在项目内的相对路径"
           }
         }
       },
