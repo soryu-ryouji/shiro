@@ -1,22 +1,17 @@
 <script setup lang="ts">
-// 中栏顶栏（只覆盖中栏，左右栏通高）：当前模块标题 · 右端设置按钮。
+// 中栏顶栏：纯拖拽区 + 右端设置按钮（无标题——当前模块由 Activity 图标表达）。
 // 整条为窗口拖拽区（双击空白切换最大化），按钮退出拖拽。
-// 侧栏收起时：Activity 图标随侧栏整栏隐藏，展开入口挪到本栏左端；
-// 且 macOS 红绿灯改压本栏左端（避让 78px）。
+// 侧栏收起时：展开入口在本栏左端，且 macOS 红绿灯改压本栏左端（避让 78px）；
+// 详情栏已移除，顶栏恒通窗口右缘：Windows/Linux 右端恒避让 fixed 窗口控制按钮。
 import { computed } from 'vue'
 import { hasShell, isMac, shell } from '../platform'
 import Icon from './Icon.vue'
 
-const props = defineProps<{
-  title: string
-  sidebarVisible: boolean
-  /** 窗口控制按钮是否压在本栏右上（详情栏隐藏、顶栏通到窗口右缘时） */
-  controlsOverlay?: boolean
-}>()
+const props = defineProps<{ sidebarVisible: boolean }>()
 const emit = defineEmits<{ 'toggle-sidebar': []; 'open-settings': [] }>()
 
 const reserveTraffic = computed(() => hasShell && isMac && !props.sidebarVisible)
-const reserveControls = computed(() => hasShell && !isMac && props.controlsOverlay)
+const reserveControls = computed(() => hasShell && !isMac)
 
 function onDblClick(e: MouseEvent) {
   if ((e.target as HTMLElement).closest('button')) return
@@ -29,7 +24,6 @@ function onDblClick(e: MouseEvent) {
     <button v-if="!sidebarVisible" class="bar-btn" title="侧栏" @click="emit('toggle-sidebar')">
       <Icon name="panelLeft" :size="16" />
     </button>
-    <span class="title">{{ title }}</span>
     <div class="spacer" />
     <button class="bar-btn" title="设置" @click="emit('open-settings')">
       <Icon name="settings" :size="16" />
@@ -45,8 +39,6 @@ function onDblClick(e: MouseEvent) {
   align-items: center;
   gap: 8px;
   padding: 0 10px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
   -webkit-app-region: drag;
 }
 
@@ -60,15 +52,9 @@ function onDblClick(e: MouseEvent) {
   padding-left: 78px;
 }
 
-/* 窗口控制按钮（fixed 右上角 3 × 42px + 间隙）压在本栏时右端避让 */
+/* 窗口控制按钮（fixed 右上角 3 × 42px + 间隙）恒压本栏右端 */
 .titlebar.reserve-controls {
   padding-right: 130px;
-}
-
-.title {
-  font-size: calc(13px * var(--font-scale-ui));
-  font-weight: 600;
-  white-space: nowrap;
 }
 
 .spacer {

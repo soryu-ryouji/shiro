@@ -5,7 +5,6 @@ import { hasShell, shell } from './platform'
 import type { NavItem, NavKey } from './types'
 import Sidebar from './components/Sidebar.vue'
 import TitleBar from './components/TitleBar.vue'
-import Inspector from './components/Inspector.vue'
 import WindowControls from './components/WindowControls.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import ProjectView from './views/ProjectView.vue'
@@ -19,7 +18,6 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'model', label: 'Model', icon: 'model' },
 ]
 const active = ref<NavKey>('project')
-const activeTitle = computed(() => NAV_ITEMS.find((i) => i.key === active.value)?.label ?? '')
 
 /** 侧栏图标行点击：点当前激活图标收起侧栏（VSCode 行为）；切换模块直接生效 */
 function onActivity(key: NavKey) {
@@ -77,11 +75,8 @@ const showSettings = ref(false)
 // ---- 侧栏显隐与栏宽（localStorage 持久化） ----
 const SIDEBAR_MIN = 180
 const SIDEBAR_MAX = 480
-const INSPECTOR_MIN = 240
-const INSPECTOR_MAX = 560
 const sidebarVisible = ref(localStorage.getItem('shiro.sidebarVisible') !== '0')
 const sidebarWidth = ref(220)
-const inspectorWidth = ref(280)
 
 function clamp(v: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.round(v)))
@@ -93,17 +88,13 @@ function toggleSidebar() {
 }
 
 {
-  const saved = JSON.parse(localStorage.getItem('shiro.panelWidths') ?? '{}') as {
-    sidebar?: number
-    inspector?: number
-  }
+  const saved = JSON.parse(localStorage.getItem('shiro.panelWidths') ?? '{}') as { sidebar?: number }
   if (typeof saved.sidebar === 'number') sidebarWidth.value = clamp(saved.sidebar, SIDEBAR_MIN, SIDEBAR_MAX)
-  if (typeof saved.inspector === 'number') inspectorWidth.value = clamp(saved.inspector, INSPECTOR_MIN, INSPECTOR_MAX)
 }
 
-const dragSide = ref<'left' | 'right' | null>(null)
+const dragSide = ref<'left' | null>(null)
 
-function startResize(side: 'left' | 'right') {
+function startResize(side: 'left') {
   dragSide.value = side
   document.body.classList.add('col-resizing')
   window.addEventListener('mousemove', onResizeMove)
@@ -113,8 +104,6 @@ function startResize(side: 'left' | 'right') {
 function onResizeMove(e: MouseEvent) {
   if (dragSide.value === 'left') {
     sidebarWidth.value = clamp(e.clientX, SIDEBAR_MIN, SIDEBAR_MAX)
-  } else if (dragSide.value === 'right') {
-    inspectorWidth.value = clamp(window.innerWidth - e.clientX, INSPECTOR_MIN, INSPECTOR_MAX)
   }
 }
 
@@ -123,15 +112,11 @@ function stopResize() {
   document.body.classList.remove('col-resizing')
   window.removeEventListener('mousemove', onResizeMove)
   window.removeEventListener('mouseup', stopResize)
-  localStorage.setItem(
-    'shiro.panelWidths',
-    JSON.stringify({ sidebar: sidebarWidth.value, inspector: inspectorWidth.value }),
-  )
+  localStorage.setItem('shiro.panelWidths', JSON.stringify({ sidebar: sidebarWidth.value }))
 }
 
 const gridStyle = computed(() => ({
-  // 写作模式（项目已打开）下详情栏让位给编辑器
-  gridTemplateColumns: `${sidebarVisible.value ? sidebarWidth.value : 0}px minmax(0, 1fr) ${projectStore.current ? 0 : inspectorWidth.value}px`,
+  gridTemplateColumns: `${sidebarVisible.value ? sidebarWidth.value : 0}px minmax(0, 1fr)`,
 }))
 </script>
 
@@ -145,18 +130,12 @@ const gridStyle = computed(() => ({
     <WindowControls />
   </div>
 
-  <!-- 侧栏（Activity 图标置顶）+ 中栏 + 详情栏：左右栏通高，顶栏只覆盖中栏 -->
+  <!-- 侧栏（Activity 图标置顶）+ 中栏：左栏通高，顶栏只覆盖中栏 -->
   <div v-else class="app" :style="gridStyle">
     <Sidebar :items="NAV_ITEMS" :active="active" @activate="onActivity" @toggle="toggleSidebar" />
 
     <div class="center">
-      <TitleBar
-        :title="activeTitle"
-        :sidebar-visible="sidebarVisible"
-        :controls-overlay="!!projectStore.current"
-        @toggle-sidebar="toggleSidebar"
-        @open-settings="showSettings = true"
-      />
+      <TitleBar :sidebar-visible="sidebarVisible" @toggle-sidebar="toggleSidebar" @open-settings="showSettings = true" />
       <div class="content-body">
         <ProjectView v-if="active === 'project'" />
         <DatabaseView v-else-if="active === 'database'" />
@@ -164,23 +143,15 @@ const gridStyle = computed(() => ({
       </div>
     </div>
 
-    <Inspector v-if="!projectStore.current" />
     <WindowControls />
 
-    <!-- 栏宽拖拽手柄：4px 命中区紧贴分界线；写作模式下右侧手柄隐藏 -->
+    <!-- 栏宽拖拽手柄：4px 命中区紧贴分界线 -->
     <div
       v-show="sidebarVisible"
       class="col-resize-handle"
       :class="{ active: dragSide === 'left' }"
       :style="{ left: `${sidebarWidth}px` }"
       @mousedown.prevent="startResize('left')"
-    />
-    <div
-      v-show="!projectStore.current"
-      class="col-resize-handle"
-      :class="{ active: dragSide === 'right' }"
-      :style="{ left: `calc(100% - ${inspectorWidth}px)` }"
-      @mousedown.prevent="startResize('right')"
     />
 
     <SettingsDialog v-if="showSettings" @close="showSettings = false" />
