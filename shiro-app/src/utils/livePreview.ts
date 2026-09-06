@@ -1,8 +1,13 @@
 // Markdown 实时预览（Obsidian 式）：光标不在处渲染格式并隐藏语法记号，光标所在处显示原文可编辑。
 // 范围：标题（# 记号以挂件挂在内容列左缘留白，Ulysses 式）、引用（记号隐藏，行内细竖线贴文本左缘）、无序列表符号、粗体、斜体、删除线、行内码、代码围栏。
+// 表格例外：始终整块渲染为挂件就地编辑（块级装饰由 utils/tableView.ts 的 tableField 提供——
+// 块级装饰不允许来自 ViewPlugin，这里只负责跳过表内行不做行内装饰），不参与「光标处显示原文」。
 // 有意从简（v1）：不解析嵌套/跨行标记、不支持转义、有序列表保持原样、围栏内无语法高亮。
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view'
 import { RangeSetBuilder, type Extension } from '@codemirror/state'
+import { visibleTableBlocks, FENCE_RE, HEADING_RE, type TableBlock } from './tableView'
+
+export { FENCE_RE, HEADING_RE } from './tableView'
 
 // ---- 行内标记扫描（单行、扁平不嵌套）：行内码 > 粗体/删除线 > 斜体 ----
 // 扫描严格从左到右，命中后直接跳到标记末尾继续，因此结果按位置升序且天然互不重叠。
@@ -116,8 +121,6 @@ class BulletWidget extends WidgetType {
 }
 const bulletDeco = Decoration.replace({ widget: new BulletWidget() })
 
-export const FENCE_RE = /^ {0,3}`{3,}/
-export const HEADING_RE = /^(#{1,6})(?: +|$)/
 const QUOTE_RE = /^>(?: +|$)/
 const LIST_RE = /^[-*+] +/
 const INDENT_RE = /^ */
@@ -139,14 +142,29 @@ function buildDecorations(view: EditorView): DecorationSet {
     }
   }
 
+  // 表格块：挂件渲染在 tableView 的 tableField；这里只需要跳过块内行
+  const tableByStart = new Map<number, TableBlock>()
+  for (const b of visibleTableBlocks(view)) tableByStart.set(b.startLine, b)
+
   for (const visible of view.visibleRanges) {
-    const first = doc.lineAt(visible.from).number
+    let first = doc.lineAt(visible.from).number
     const last = doc.lineAt(visible.to).number
+    // 表格块首行可能在视口上方（上下滚动到表格中部）：从块首行开始遍历，保证跳过完整块
+    for (const b of tableByStart.values()) {
+      if (b.startLine < first && b.endLine >= first) first = b.startLine
+    }
     for (let n = first; n <= last; n++) {
       const line = doc.line(n)
       const text = line.text
       let lineClass = ''
       const items: { from: number; to: number; deco: Decoration }[] = []
+
+      // 表格区域：跳过块内其余行（块内无围栏，不影响围栏状态跟踪）
+      const tableBlock = tableByStart.get(n)
+      if (tableBlock) {
+        n = tableBlock.endLine
+        continue
+      }
 
       // 代码围栏：开/闭行与内容行整行染色，内部不做行内解析
       if (FENCE_RE.test(text)) {

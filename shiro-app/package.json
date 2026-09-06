@@ -19,6 +19,8 @@
     "build:web": "vite build",
     "typecheck": "vue-tsc --noEmit",
     "gen:types": "openapi-typescript ../shiro-daemon/openapi.json -o src/api-types.d.ts",
+    "test": "node tools/test-tableview.mjs && node tools/test-table-electron.mjs",
+    "test:ui": "node tools/ui-check.mjs",
     "build:electron": "node scripts/build-electron.mjs",
     "build:daemon": "node scripts/build-daemon.mjs",
     "pack": "npm run build && npm run build:electron && npm run build:daemon && node scripts/pack.mjs",

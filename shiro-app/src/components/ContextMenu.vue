@@ -3,11 +3,13 @@
 import { computed, onMounted, onUnmounted } from 'vue'
 
 export interface MenuItem {
-  label: string
+  label?: string
+  /** 分隔线（忽略其余字段） */
+  divider?: boolean
   danger?: boolean
   /** 定义即渲染勾选列（单选式菜单项，如排序方式）：true 显示 ✓，false 留空占位 */
   checked?: boolean
-  action: () => void
+  action?: () => void
 }
 
 const props = defineProps<{ x: number; y: number; items: MenuItem[] }>()
@@ -15,10 +17,11 @@ const emit = defineEmits<{ close: [] }>()
 
 const MENU_WIDTH = 168
 const ITEM_HEIGHT = 32
+const DIVIDER_HEIGHT = 9
 
 const pos = computed(() => ({
   left: `${Math.min(props.x, window.innerWidth - MENU_WIDTH - 8)}px`,
-  top: `${Math.min(props.y, window.innerHeight - props.items.length * ITEM_HEIGHT - 16)}px`,
+  top: `${Math.min(props.y, window.innerHeight - props.items.reduce((h, it) => h + (it.divider ? DIVIDER_HEIGHT : ITEM_HEIGHT), 0) - 24)}px`,
 }))
 
 function onDocDown(e: MouseEvent) {
@@ -41,15 +44,12 @@ onUnmounted(() => {
 
 <template>
   <div class="ctx-menu" :style="pos" @contextmenu.prevent>
-    <button
-      v-for="(item, i) in items"
-      :key="i"
-      class="ctx-item"
-      :class="{ danger: item.danger }"
-      @click="item.action(); emit('close')"
-    >
-      <span v-if="item.checked !== undefined" class="ctx-tick">{{ item.checked ? '✓' : '' }}</span>{{ item.label }}
-    </button>
+    <template v-for="(item, i) in items" :key="i">
+      <div v-if="item.divider" class="ctx-sep" />
+      <button v-else class="ctx-item" :class="{ danger: item.danger }" @click="item.action?.(); emit('close')">
+        <span v-if="item.checked !== undefined" class="ctx-tick">{{ item.checked ? '✓' : '' }}</span>{{ item.label }}
+      </button>
+    </template>
   </div>
 </template>
 
@@ -93,6 +93,13 @@ onUnmounted(() => {
 
 .ctx-item.danger {
   color: var(--danger);
+}
+
+/* 分隔线 */
+.ctx-sep {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--border);
 }
 
 /* 勾选列（单选式菜单项） */

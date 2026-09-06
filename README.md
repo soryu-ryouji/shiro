@@ -48,3 +48,7 @@ cd shiro-app && npm run gen:types
 
 - [存储设计](docs/backend/storage.md)：真实文件夹项目、明文内容库、同步边界
 - [模型接入设计](docs/backend/model-access.md)：provider 抽象、配置、能力场景
+
+**前端**
+
+- [正文编辑器](docs/frontend/editor.md)：实时预览、表格编辑、底部工具栏、自动保存

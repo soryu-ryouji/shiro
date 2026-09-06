@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Markdown 编辑器（CodeMirror 6）：防抖自动保存（daemon 原子写入）。
-// 底部工具栏（Ulysses 式）：块级标记（标题/列表/引用）切换居中，字数（有选中时为「选中 / 总数」）与保存失败提示在右端。
+// 底部工具栏（Ulysses 式）：块级标记（标题/列表/引用/表格）切换居中，字数（有选中时为「选中 / 总数」）与保存失败提示在右端。
 // 切换文稿/卸载前先 flush 保存；磁盘外部变动（其他编辑器/同步盘/AI 写稿）经 daemon 监听推送，由 onExternalFileChange 回调重载。
 // 排版对齐：正文首行与次栏列表首项同高（顶栏 40px + 标签页条 36px + 间距 24px = .cm-content 上内边距 24px）。
 import { onMounted, onUnmounted, ref, watch } from 'vue'
@@ -9,6 +9,8 @@ import { projectStore, onExternalFileChange } from '../stores/project'
 import { countWords } from '../utils/wordcount'
 import { editorParaMode } from '../utils/font'
 import { livePreview, FENCE_RE, HEADING_RE } from '../utils/livePreview'
+import { tableEditing, insertTable, visibleTableBlocks, TABLE_MENU_EVENT, type TableMenuItem } from '../utils/tableView'
+import ContextMenu from './ContextMenu.vue'
 import { attachOverlayScrollbar } from '../utils/overlayScrollbar'
 import type { components } from '../api-types'
 import { EditorView, keymap, drawSelection, ViewPlugin, Decoration, type DecorationSet, type ViewUpdate } from '@codemirror/view'
@@ -79,13 +81,19 @@ function applyExternalChange(file: string, content: string | null) {
 
 // ---- 选中字数：有选区时浮层显示「选中 / 总数」（与总数同一统计策略） ----
 const selectedCount = ref(0)
-
 function countSelection(state: EditorState): number {
   let n = 0
   for (const r of state.selection.ranges) {
     if (!r.empty) n += countWords(state.sliceDoc(r.from, r.to))
   }
   return n
+}
+
+// ---- 表格右键/手柄菜单：挂件内 contextmenu 经 CustomEvent 桥接过来（挂件在 Vue 树外，见 utils/tableView.ts）----
+const tableMenu = ref<{ x: number; y: number; items: TableMenuItem[] } | null>(null)
+
+function onTableMenu(e: Event) {
+  tableMenu.value = (e as CustomEvent<{ x: number; y: number; items: TableMenuItem[] }>).detail
 }
 
 // ---- 底部工具栏 ----
@@ -199,6 +207,11 @@ function toggleBold() {
   }
 }
 
+/** 工具栏「表格」：光标处插入模板并选中首个表头占位符 */
+function insertTableCmd() {
+  if (view) insertTable(view)
+}
+
 // ---- 大纲：文档标题列表（跳过代码围栏）；宽度足够时浮在右侧留白（不占布局），点击跳转、当前章节高亮 ----
 interface OutlineItem {
   level: number
@@ -268,18 +281,23 @@ const theme = EditorView.theme({
 })
 
 // ---- 段间距装饰：段落间距只加在「新段落首行」上，哪些行算新段落由分段方式决定（editorParaMode）；
-// 段内行距管折行密度，段落间距管段落之间的额外距离，两者独立 ----
+// 段内行距管折行密度，段落间距管段落之间的额外距离，两者独立；表格行保持紧凑不参与分段 ----
 const paraStartDeco = Decoration.line({ class: 'cm-para-start' })
 
 function buildParaDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>()
   const doc = view.state.doc
   const blankSeparated = editorParaMode.value === 'blank'
+  const tableLines = new Set<number>()
+  for (const b of visibleTableBlocks(view)) {
+    for (let n = b.startLine; n <= b.endLine; n++) tableLines.add(n)
+  }
   for (const { from, to } of view.visibleRanges) {
     const first = Math.max(doc.lineAt(from).number, 2)
     const last = doc.lineAt(to).number
     for (let n = first; n <= last; n++) {
       const line = doc.line(n)
+      if (tableLines.has(n)) continue
       if (blankSeparated) {
         // 空行分段：空行本身不加（分隔由空行行高承担），仅空行后的新段落首行加
         if (line.text.trim() === '') continue
@@ -326,6 +344,7 @@ function makeState(doc: string): EditorState {
         else if (update.selectionSet) updateOutlineActive(update.state)
       }),
       paraSpacingPlugin,
+      tableEditing(),
       livePreview(),
       theme,
     ],
@@ -355,6 +374,7 @@ async function loadFile() {
 
 onMounted(() => {
   view = new EditorView({ state: makeState(''), parent: editorEl.value! })
+  editorEl.value!.addEventListener(TABLE_MENU_EVENT, onTableMenu)
   // CodeMirror 滚动区由视图内部生成，走命令式挂载自绘滚动条
   detachScrollbar = attachOverlayScrollbar(view.scrollDOM)
   onExternalFileChange(applyExternalChange)
@@ -370,6 +390,7 @@ watch(
 )
 onUnmounted(() => {
   onExternalFileChange(null)
+  editorEl.value?.removeEventListener(TABLE_MENU_EVENT, onTableMenu)
   resizeObserver?.disconnect()
   detachScrollbar?.()
   void flushSave()
@@ -397,6 +418,8 @@ onUnmounted(() => {
         {{ it.text || '（无标题）' }}
       </button>
     </nav>
+    <!-- 表格单元格右键/手柄菜单（事件来自编辑器内的表格挂件） -->
+    <ContextMenu v-if="tableMenu" :x="tableMenu.x" :y="tableMenu.y" :items="tableMenu.items" @close="tableMenu = null" />
     <!-- 底部工具栏（Ulysses 式）：块级标记切换居中；字数与保存失败提示在右端。
          按钮用 mousedown.prevent：不夺编辑器焦点，选区与输入状态不中断 -->
     <div v-if="projectStore.currentFile" class="editor-bar">
@@ -404,6 +427,7 @@ onUnmounted(() => {
       <button class="bar-item" title="加粗（无选区时作用于整行）" @mousedown.prevent @click="toggleBold"><span class="mark">**</span>加粗</button>
       <button class="bar-item" title="列表" @mousedown.prevent @click="toggleLineMark(LIST_MARK_RE, '- ')"><span class="mark">-</span>列表</button>
       <button class="bar-item" title="引用" @mousedown.prevent @click="toggleLineMark(QUOTE_MARK_RE, '> ')"><span class="mark">&gt;</span>引用</button>
+      <button class="bar-item" title="表格（点击单元格编辑，Tab 跳格，右键更多操作）" @mousedown.prevent @click="insertTableCmd"><span class="mark">|-|</span>表格</button>
       <div class="editor-status">
         <span v-if="projectStore.saveState === 'error'" class="save-error">保存失败 · </span>
         <span><template v-if="selectedCount">{{ selectedCount }} / </template>{{ projectStore.wordCount }} 字</span>
@@ -501,6 +525,108 @@ onUnmounted(() => {
 .editor :deep(.md-fence) {
   background: var(--bg-soft);
   font-family: ui-monospace, Consolas, monospace;
+}
+
+/* 表格挂件：顶部/左侧留白放列手柄与行手柄（左缘负外边距保持表格与正文对齐）；宽于正文列时容器内横向滚动 */
+.editor :deep(.md-table-wrap) {
+  position: relative;
+  padding: 16px 0 0 16px;
+  margin-left: -16px;
+}
+.editor :deep(.md-table-scroll) {
+  max-width: 100%;
+  overflow-x: auto;
+}
+/* 表格吃满正文列宽：新增列只是把宽度重新分配给各列 */
+.editor :deep(.md-table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 2px 0;
+}
+.editor :deep(.md-table th),
+.editor :deep(.md-table td) {
+  border: 1px solid var(--border);
+  padding: 2px 12px;
+  cursor: text;
+}
+.editor :deep(.md-table th) {
+  background: var(--bg-soft);
+  font-weight: 600;
+}
+/* 活动单元格：正在编辑的格子 */
+.editor :deep(.md-cell-active) {
+  outline: 1.5px solid var(--accent);
+  outline-offset: -1.5px;
+}
+
+/* 行/列手柄：定位在表格左缘/上缘留白（编辑中才渲染） */
+.editor :deep(.md-tgrip) {
+  position: absolute;
+  z-index: 2;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+.editor :deep(.md-tgrip-row) {
+  left: 1px;
+}
+.editor :deep(.md-tgrip-col) {
+  top: 1px;
+}
+
+/* 加行/加列按钮：平时隐藏，悬停表格或编辑中显示 */
+.editor :deep(.md-table-addrow),
+.editor :deep(.md-table-addcol) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
+.editor :deep(.md-table-addcol) {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  width: 18px;
+  height: 14px;
+}
+.editor :deep(.md-table-addrow) {
+  width: 100%;
+  height: 18px;
+}
+.editor :deep(.md-table-wrap:hover .md-table-addrow),
+.editor :deep(.md-table-wrap:hover .md-table-addcol),
+.editor :deep(.md-table-active .md-table-addrow),
+.editor :deep(.md-table-active .md-table-addcol) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: hover) {
+  .editor :deep(.md-tgrip:hover),
+  .editor :deep(.md-table-addrow:hover),
+  .editor :deep(.md-table-addcol:hover) {
+    background: var(--bg-soft);
+    color: var(--text);
+  }
 }
 
 .editor-empty {
