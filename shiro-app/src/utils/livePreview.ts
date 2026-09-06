@@ -116,8 +116,8 @@ class BulletWidget extends WidgetType {
 }
 const bulletDeco = Decoration.replace({ widget: new BulletWidget() })
 
-const FENCE_RE = /^ {0,3}`{3,}/
-const HEADING_RE = /^(#{1,6})(?: +|$)/
+export const FENCE_RE = /^ {0,3}`{3,}/
+export const HEADING_RE = /^(#{1,6})(?: +|$)/
 const QUOTE_RE = /^>(?: +|$)/
 const LIST_RE = /^[-*+] +/
 const INDENT_RE = /^ */

@@ -8,7 +8,7 @@ import { apiFetch } from '../api'
 import { projectStore, onExternalFileChange } from '../stores/project'
 import { countWords } from '../utils/wordcount'
 import { editorParaMode } from '../utils/font'
-import { livePreview } from '../utils/livePreview'
+import { livePreview, FENCE_RE, HEADING_RE } from '../utils/livePreview'
 import type { components } from '../api-types'
 import { EditorView, keymap, drawSelection, ViewPlugin, Decoration, type DecorationSet, type ViewUpdate } from '@codemirror/view'
 import { EditorState, RangeSetBuilder } from '@codemirror/state'
@@ -196,6 +196,57 @@ function toggleBold() {
   }
 }
 
+// ---- 大纲：文档标题列表（跳过代码围栏）；宽度足够时浮在右侧留白（不占布局），点击跳转、当前章节高亮 ----
+interface OutlineItem {
+  level: number
+  text: string
+  pos: number
+}
+const outline = ref<OutlineItem[]>([])
+const outlineActive = ref(-1)
+
+function collectOutline(state: EditorState) {
+  const items: OutlineItem[] = []
+  let inFence = false
+  for (let n = 1; n <= state.doc.lines; n++) {
+    const line = state.doc.line(n)
+    if (FENCE_RE.test(line.text)) {
+      inFence = !inFence
+      continue
+    }
+    if (inFence) continue
+    const m = line.text.match(HEADING_RE)
+    if (m) items.push({ level: m[1].length, text: line.text.slice(m[0].length), pos: line.from })
+  }
+  outline.value = items
+  updateOutlineActive(state)
+}
+
+/** 当前章节：光标上方最近的一个标题 */
+function updateOutlineActive(state: EditorState) {
+  const head = state.selection.main.head
+  let pos = -1
+  for (const it of outline.value) {
+    if (it.pos <= head) pos = it.pos
+    else break
+  }
+  outlineActive.value = pos
+}
+
+function jumpToHeading(pos: number) {
+  if (!view) return
+  view.dispatch({
+    selection: { anchor: pos },
+    effects: EditorView.scrollIntoView(pos, { y: 'start', yMargin: 12 }),
+  })
+  view.focus()
+}
+
+// 大纲面板只在右侧留白放得下时显示（浮于留白、可探入正文列内边距，不压文字 → 阈值 1040px）
+const wrapEl = ref<HTMLElement | null>(null)
+const outlineVisible = ref(false)
+let resizeObserver: ResizeObserver | null = null
+
 const theme = EditorView.theme({
   // 字号基数须与 font.ts EDITOR_FONT_SIZE_DEFAULT 一致（渲染值 = 基数 × 设定值 ÷ 默认值）
   '&': { fontSize: 'calc(17px * var(--font-scale-editor))', backgroundColor: 'transparent' },
@@ -267,6 +318,8 @@ function makeState(doc: string): EditorState {
       EditorView.updateListener.of((update) => {
         if (update.docChanged && !suppressSave) scheduleSave(update.state.doc.toString())
         if (update.selectionSet || update.docChanged) selectedCount.value = countSelection(update.state)
+        if (update.docChanged) collectOutline(update.state)
+        else if (update.selectionSet) updateOutlineActive(update.state)
       }),
       paraSpacingPlugin,
       livePreview(),
@@ -285,6 +338,8 @@ async function loadFile() {
       `/api/v1/projects/file?path=${encodeURIComponent(projectStore.current.path)}&file=${encodeURIComponent(file)}`,
     )
     view.setState(makeState(res.content ?? ''))
+    collectOutline(view.state)
+    selectedCount.value = 0
     projectStore.wordCount = countWords(res.content ?? '')
     pending = null
     projectStore.saveState = 'saved'
@@ -296,6 +351,10 @@ async function loadFile() {
 onMounted(() => {
   view = new EditorView({ state: makeState(''), parent: editorEl.value! })
   onExternalFileChange(applyExternalChange)
+  resizeObserver = new ResizeObserver((entries) => {
+    outlineVisible.value = (entries[0]?.contentRect.width ?? 0) >= 1040
+  })
+  resizeObserver.observe(wrapEl.value!)
   if (projectStore.currentFile) void loadFile()
 })
 watch(
@@ -304,17 +363,32 @@ watch(
 )
 onUnmounted(() => {
   onExternalFileChange(null)
+  resizeObserver?.disconnect()
   void flushSave()
   view?.destroy()
 })
 </script>
 
 <template>
-  <div class="editor-wrap">
+  <div ref="wrapEl" class="editor-wrap">
     <!-- 编辑器容器常驻（v-show 控制显隐）：CodeMirror 视图在 onMounted 即挂载，
          放进 v-if 分支会因挂载时机晚于视图创建而导致 DOM 不渲染 -->
     <div ref="editorEl" v-show="projectStore.currentFile" class="editor" />
     <div v-if="!projectStore.currentFile" class="editor-empty">从中间列表选择文稿，或新建一篇</div>
+    <!-- 大纲（Notion 式）：宽度足够时浮在右侧留白（绝对定位，不占布局；无边框无底色）；
+         按级别缩进，点击跳转，当前章节高亮 -->
+    <nav v-if="outlineVisible && outline.length" class="outline">
+      <button
+        v-for="it in outline"
+        :key="it.pos"
+        class="outline-item"
+        :class="{ active: it.pos === outlineActive }"
+        :style="{ paddingLeft: `${(it.level - 1) * 12 + 8}px` }"
+        @click="jumpToHeading(it.pos)"
+      >
+        {{ it.text || '（无标题）' }}
+      </button>
+    </nav>
     <!-- 底部工具栏（Ulysses 式）：块级标记切换居中；字数与保存失败提示在右端。
          按钮用 mousedown.prevent：不夺编辑器焦点，选区与输入状态不中断 -->
     <div v-if="projectStore.currentFile" class="editor-bar">
@@ -473,6 +547,49 @@ onUnmounted(() => {
     background: var(--bg-soft);
     color: var(--text);
   }
+}
+
+/* 大纲：浮在正文列右侧留白（绝对定位，无边框无底色、不占布局）；顶部与正文首行同高 */
+.outline {
+  position: absolute;
+  top: 24px;
+  right: 12px;
+  z-index: 10;
+  width: 160px;
+  max-height: calc(100% - 60px);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  user-select: none;
+}
+
+.outline-item {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  font-size: calc(12px * var(--font-scale-ui));
+  color: var(--text-dim);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .outline-item:hover {
+    background: var(--bg-soft);
+    color: var(--text);
+  }
+}
+
+.outline-item.active {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 /* 字数与保存失败提示：工具栏右端（绝对定位，不挤压按钮居中） */
