@@ -227,6 +227,24 @@ try {
   await evaljs(`[...document.querySelectorAll('.editor-head .bar-btn')].find((b) => b.title.startsWith('大纲')).click()`)
   const outlineTitle1 = await evaljs(`[...document.querySelectorAll('.editor-head .bar-btn')].find((b) => b.title.startsWith('大纲'))?.title ?? ''`)
   check('大纲按钮循环切换', outlineTitle0 !== outlineTitle1, true)
+  // 大纲参与布局：面板出现且与正文不重叠（正文被往左挤）
+  check(
+    '大纲挤压正文不遮挡',
+    await waitFor(
+      () =>
+        evaljs(`(() => {
+          const nav = document.querySelector('.outline')
+          const content = document.querySelector('.cm-content')
+          if (!nav || !content) return null
+          const nr = nav.getBoundingClientRect()
+          const cr = content.getBoundingClientRect()
+          return nr.width > 0 && cr.right <= nr.left + 1
+        })()`),
+      10_000,
+      '大纲布局',
+    ),
+    true,
+  )
 
   // 纯文本（.txt）：列表显示、纯文本编辑模式（无 markdown 渲染、无标记按钮）
   check('文稿列表显示 txt 文稿', await evaljs(`[...document.querySelectorAll('.sheets .sheet')].some((el) => el.textContent.includes('笔记'))`), true)

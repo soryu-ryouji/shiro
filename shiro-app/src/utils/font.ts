@@ -173,15 +173,15 @@ export function applyEditorParaMode(mode: ParaMode): void {
   editorParaMode.value = mode
 }
 
-// ---- 正文宽度（内容列 max-width px） ----
+// ---- 正文宽度（内容列宽度上限 px；空间不足——如大纲展开挤压——时自动收窄，不强制最小宽度） ----
 
 export const CONTENT_WIDTH_MIN = 560
-export const CONTENT_WIDTH_MAX = 1400
+export const CONTENT_WIDTH_MAX = 2400
 export const CONTENT_WIDTH_DEFAULT = 760
 
 const CONTENT_WIDTH_KEY = 'shiro.editor.contentWidth'
 
-/** 正文内容列宽度（px，默认 760） */
+/** 正文内容列宽度上限（px，默认 760）；空间不足时正文列自动收窄（max-width 语义） */
 export function currentContentWidth(): number {
   return readInRange(CONTENT_WIDTH_KEY, CONTENT_WIDTH_DEFAULT, CONTENT_WIDTH_MIN, CONTENT_WIDTH_MAX)
 }

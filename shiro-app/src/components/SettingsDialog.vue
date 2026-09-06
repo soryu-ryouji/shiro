@@ -278,7 +278,7 @@ onMounted(async () => {
                   :max="CONTENT_WIDTH_MAX"
                   :step="10"
                   :value="contentWidth"
-                  title="正文内容列的最大宽度"
+                  title="正文内容列的最大宽度（空间不足时自动收窄）"
                   @change="onContentWidthInput"
                 />
                 <span class="size-unit">px</span>

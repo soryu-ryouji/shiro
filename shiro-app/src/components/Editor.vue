@@ -413,29 +413,17 @@ onUnmounted(() => {
 
 <template>
   <div ref="wrapEl" class="editor-wrap">
-    <!-- 编辑器容器常驻（v-show 控制显隐）：CodeMirror 视图在 onMounted 即挂载，
-         放进 v-if 分支会因挂载时机晚于视图创建而导致 DOM 不渲染 -->
-    <div ref="editorEl" v-show="projectStore.currentFile" class="editor" />
-    <div v-if="!projectStore.currentFile" class="editor-empty">从中间列表选择文稿，或新建一篇</div>
-    <!-- 大纲（Notion 式）：浮在右侧留白（绝对定位，不占布局；无边框无底色）；
-         显示与否由三态决定（自动 = 宽度足够；顶栏按钮循环切换）；按级别缩进，点击跳转，当前章节高亮 -->
-    <nav v-if="outlineVisible" v-overlay-scrollbar class="outline">
-      <button
-        v-for="it in outline"
-        :key="it.pos"
-        class="outline-item"
-        :class="{ active: it.pos === outlineActive }"
-        :style="{ paddingLeft: `${(it.level - 1) * 12 + 8}px` }"
-        @click="jumpToHeading(it.pos)"
-      >
-        {{ it.text || '（无标题）' }}
-      </button>
-    </nav>
-    <!-- 表格单元格右键/手柄菜单（事件来自编辑器内的表格挂件） -->
-    <ContextMenu v-if="tableMenu" :x="tableMenu.x" :y="tableMenu.y" :items="tableMenu.items" @close="tableMenu = null" />
-    <!-- 底部工具栏（Ulysses 式）：块级标记切换居中；字数与保存失败提示在右端。
-         按钮用 mousedown.prevent：不夺编辑器焦点，选区与输入状态不中断；纯文本（.txt）无标记按钮 -->
-    <div v-if="projectStore.currentFile" class="editor-bar">
+    <div class="editor-main">
+      <div class="editor-side">
+        <!-- 编辑器容器常驻（v-show 控制显隐）：CodeMirror 视图在 onMounted 即挂载，
+             放进 v-if 分支会因挂载时机晚于视图创建而导致 DOM 不渲染 -->
+        <div ref="editorEl" v-show="projectStore.currentFile" class="editor" />
+        <div v-if="!projectStore.currentFile" class="editor-empty">从中间列表选择文稿，或新建一篇</div>
+        <!-- 表格单元格右键/手柄菜单（事件来自编辑器内的表格挂件） -->
+        <ContextMenu v-if="tableMenu" :x="tableMenu.x" :y="tableMenu.y" :items="tableMenu.items" @close="tableMenu = null" />
+        <!-- 底部工具栏（Ulysses 式）：块级标记切换居中；字数与保存失败提示在右端。
+             按钮用 mousedown.prevent：不夺编辑器焦点，选区与输入状态不中断；纯文本（.txt）无标记按钮 -->
+        <div v-if="projectStore.currentFile" class="editor-bar">
       <template v-if="!isPlainFile">
         <button class="bar-item" title="标题（连点在一至四级间切换）" @mousedown.prevent @click="cycleHeading"><span class="mark">#</span>标题</button>
         <button class="bar-item" title="加粗（无选区时作用于整行）" @mousedown.prevent @click="toggleBold"><span class="mark">**</span>加粗</button>
@@ -447,6 +435,23 @@ onUnmounted(() => {
         <span v-if="projectStore.saveState === 'error'" class="save-error">保存失败 · </span>
         <span><template v-if="selectedCount">{{ selectedCount }} / </template>{{ projectStore.wordCount }} 字</span>
       </div>
+        </div>
+      </div>
+      <!-- 大纲（Notion 式）：参与布局的右侧面板——显示时把正文区域往左挤（不遮挡文字）；
+           无边框无底色；显示与否由三态决定（自动 = 宽度足够；顶栏按钮循环切换）；
+           按级别缩进，点击跳转，当前章节高亮 -->
+      <nav v-if="outlineVisible" v-overlay-scrollbar class="outline">
+        <button
+          v-for="it in outline"
+          :key="it.pos"
+          class="outline-item"
+          :class="{ active: it.pos === outlineActive }"
+          :style="{ paddingLeft: `${(it.level - 1) * 12 + 8}px` }"
+          @click="jumpToHeading(it.pos)"
+        >
+          {{ it.text || '（无标题）' }}
+        </button>
+      </nav>
     </div>
   </div>
 </template>
@@ -459,6 +464,24 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* 主体行：编辑列 + 大纲面板（大纲显示时占布局，把编辑列往左挤） */
+.editor-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+}
+
+/* 编辑列：编辑器 + 底部工具栏（大纲挤压时收窄，正文列宽受 --editor-content-width 上限约束） */
+.editor-side {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
 }
 
 .editor {
@@ -702,15 +725,11 @@ onUnmounted(() => {
   }
 }
 
-/* 大纲：浮在正文列右侧留白（绝对定位，无边框无底色、不占布局）；顶部与正文首行同高 */
+/* 大纲：布局内的右侧面板（把正文往左挤，不遮挡）；无边框无底色；顶部与正文首行同高 */
 .outline {
-  position: absolute;
-  top: 24px;
-  right: 12px;
-  z-index: 10;
+  flex: none;
   width: 160px;
-  max-height: calc(100% - 60px);
-  padding: 4px;
+  padding: 28px 8px 16px 4px;
   display: flex;
   flex-direction: column;
   gap: 1px;
