@@ -37,7 +37,9 @@ import {
   PARA_GAP_MAX,
   PARA_GAP_MIN,
   applyEditorParaMode,
+  applyPreviewFirstLineIndent,
   listSystemFonts,
+  previewFirstLineIndent,
   resetAppearance,
   type ParaMode,
 } from '../utils/font'
@@ -322,6 +324,15 @@ onMounted(async () => {
                 />
                 <span class="size-unit">px</span>
               </div>
+            </div>
+            <div class="grow">
+              <span class="glabel">预览首行缩进</span>
+              <input
+                type="checkbox"
+                :checked="previewFirstLineIndent"
+                title="手机预览阅读视图里，每个段落首行缩进 2 字符"
+                @change="applyPreviewFirstLineIndent(($event.target as HTMLInputElement).checked)"
+              />
             </div>
             <div class="grow">
               <span class="glabel">重置外观</span>

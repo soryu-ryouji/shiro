@@ -6,7 +6,7 @@
 import { computed } from 'vue'
 import { projectStore } from '../stores/project'
 import { renderMarkdown } from '../utils/mdRender'
-import { editorParaMode } from '../utils/font'
+import { editorParaMode, previewFirstLineIndent } from '../utils/font'
 import { isPlainSheet, stripSheetExt } from '../utils/sheet'
 import { useDialogMask } from '../composables/useDialog'
 import Icon from './Icon.vue'
@@ -35,9 +35,9 @@ const html = computed(() => renderMarkdown(projectStore.currentContent, editorPa
           <Icon name="close" :size="12" />
         </button>
       </div>
-      <!-- 阅读视图（markdown 渲染 / 纯文本原样显示） -->
+      <!-- 阅读视图（markdown 渲染 / 纯文本原样显示）；indent = 首行缩进 -->
       <!-- eslint-disable-next-line vue/no-v-html -->
-      <div v-if="!plain" v-overlay-scrollbar class="reading" v-html="html" />
+      <div v-if="!plain" v-overlay-scrollbar class="reading" :class="{ indent: previewFirstLineIndent }" v-html="html" />
       <div v-else v-overlay-scrollbar class="reading plain">{{ projectStore.currentContent }}</div>
     </div>
   </div>
@@ -124,6 +124,15 @@ const html = computed(() => renderMarkdown(projectStore.currentContent, editorPa
 .reading.plain {
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* 首行缩进（设置面板开关）：段落首行缩进 2 字符；列表内段落除外 */
+.reading.indent :deep(p) {
+  text-indent: 2em;
+}
+
+.reading.indent :deep(li p) {
+  text-indent: 0;
 }
 
 .reading :deep(p) {

@@ -312,9 +312,21 @@ try {
     return n === countBefore + 1 ? n : null
   }, 5_000, '字数重算')
   check('字数统计切换为含标点（+1）', countAfter - countBefore, 1)
+  // 预览首行缩进：外观页打开开关 → 预览阅读视图里段落首行缩进生效
+  await evaljs(`[...document.querySelectorAll('.dialog-nav-item')].find((b) => b.textContent.includes('外观')).click()`)
+  await evaljs(`(() => { const c = [...document.querySelectorAll('.grow')].find((r) => r.textContent.includes('首行缩进'))?.querySelector('input[type="checkbox"]'); if (c && !c.checked) c.click() })()`)
+  check('首行缩进开关写入', await evaljs(`localStorage.getItem('shiro.preview.firstLineIndent')`), '1')
   // 关闭设置（Esc）
   await evaljs(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`)
   await waitFor(async () => evaljs(`!document.querySelector('.dialog-body')`), 10_000, '设置面板关闭')
+
+  // 预览（markdown 文稿）：打开手机预览，段落首行缩进应为非 0
+  await evaljs(`[...document.querySelectorAll('.sheets .sheet')].find((el) => el.textContent.includes('测试文稿')).click()`)
+  await waitFor(async () => evaljs(`document.querySelector('.cm-content')?.textContent?.includes('外部写入段落') ?? false`), 15_000, '切回 md 文稿')
+  await evaljs(`[...document.querySelectorAll('.editor-head .bar-btn')].find((b) => b.title === '手机预览').click()`)
+  await waitFor(async () => evaljs(`!!document.querySelector('.reading p')`), 10_000, '预览打开')
+  check('预览首行缩进生效', await evaljs(`getComputedStyle(document.querySelector('.reading p')).textIndent !== '0px'`), true)
+  await evaljs(`document.querySelector('.phone-close').click()`)
 
   const { data } = await send('Page.captureScreenshot', { format: 'png' })
   fs.writeFileSync(path.join(tmp, 'ui-check.png'), Buffer.from(data, 'base64'))

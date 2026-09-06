@@ -219,6 +219,23 @@ export function applyPreviewParaGap(v: number): void {
   localStorage.setItem(PREVIEW_PARA_GAP_KEY, String(n))
 }
 
+// ---- 预览首行缩进（段落首行缩进 2 字符；默认关） ----
+
+const PREVIEW_INDENT_KEY = 'shiro.preview.firstLineIndent'
+export const PREVIEW_INDENT_DEFAULT = false
+
+export function currentPreviewFirstLineIndent(): boolean {
+  return localStorage.getItem(PREVIEW_INDENT_KEY) === '1'
+}
+
+/** 响应式副本：设置面板与预览浮层共享，切换即时生效 */
+export const previewFirstLineIndent = ref<boolean>(currentPreviewFirstLineIndent())
+
+export function applyPreviewFirstLineIndent(on: boolean): void {
+  localStorage.setItem(PREVIEW_INDENT_KEY, on ? '1' : '0')
+  previewFirstLineIndent.value = on
+}
+
 // ---- 大纲显示模式：自动（宽度足够才显示）/ 开启 / 关闭 ----
 
 export type OutlineMode = 'auto' | 'on' | 'off'
@@ -253,5 +270,6 @@ export function resetAppearance(): void {
   applyContentWidth(CONTENT_WIDTH_DEFAULT)
   applyPreviewLineHeight(LINE_HEIGHT_DEFAULT)
   applyPreviewParaGap(PARA_GAP_DEFAULT)
+  applyPreviewFirstLineIndent(PREVIEW_INDENT_DEFAULT)
   applyOutlineMode(OUTLINE_MODE_DEFAULT)
 }
