@@ -24,6 +24,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/db/characters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 全局人物库角色列表 */
+        get: operations["list_characters"];
+        put?: never;
+        /** 新建角色卡（骨架）：同名自动追加 -2/-3 序号；返回可直接进入编辑的详情 */
+        post: operations["create_character"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/db/characters/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 角色详情（frontmatter 字段 + 正文 markdown） */
+        get: operations["get_character"];
+        /**
+         * 保存角色卡：临时文件 + rename 原子覆盖（同文稿保存）。
+         *     宽容策略：解析失败也保存（用户手改中途不丢内容），但返回 parse_error 提示该卡会从列表消失。
+         */
+        put: operations["save_character"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects": {
         parameters: {
             query?: never;
@@ -177,6 +216,46 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        CharacterDetail: {
+            archetype: string[];
+            /** @description 正文 markdown（frontmatter 之后，含「可迁移 / 本作设定」区块） */
+            body: string;
+            id: string;
+            name: string;
+            /** @description 文件原始内容（含 frontmatter，编辑用） */
+            raw: string;
+            role?: string | null;
+            source?: string | null;
+            tags: string[];
+        };
+        CharacterListResponse: {
+            characters: components["schemas"]["CharacterSummary"][];
+        };
+        CharacterSummary: {
+            /** @description 原型标签（可多个） */
+            archetype: string[];
+            /** @description 正文预览（剥离 markdown 标记后取开头） */
+            excerpt: string;
+            /** @description 角色 id（db/人物/ 下文件名去掉 .md） */
+            id: string;
+            /**
+             * Format: int64
+             * @description 文件修改时间（epoch 秒）
+             */
+            modified: number;
+            /** @description 显示名（frontmatter 的 name；缺失回退文件名） */
+            name: string;
+            /** @description 功能角色（主角 / 对手 / 盟友 / …） */
+            role?: string | null;
+            /** @description 来源标注（应用的全局原型，如 db://characters/xxx） */
+            source?: string | null;
+            /** @description 自由标签 */
+            tags: string[];
+        };
+        CreateCharacterRequest: {
+            /** @description 角色显示名（写入 frontmatter 的 name） */
+            name: string;
+        };
         CreateDirRequest: {
             /** @description 项目内相对路径（多级自动创建） */
             dir: string;
@@ -233,6 +312,16 @@ export interface components {
             new_name: string;
             /** @description 项目当前绝对路径 */
             path: string;
+        };
+        SaveCharacterRequest: {
+            /** @description 完整文件内容（含 frontmatter） */
+            content: string;
+        };
+        SaveCharacterResponse: {
+            character?: null | components["schemas"]["CharacterSummary"];
+            parse_error?: string | null;
+            /** @description 保存后能否仍解析为角色卡（false = frontmatter 缺失/损坏/未标记类型，该卡不进列表） */
+            parsed: boolean;
         };
         SheetExcerpt: {
             /** @description 正文预览（markdown 剥离标记后取开头约 160 字；纯文本直接取开头） */
@@ -303,6 +392,191 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    list_characters: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 角色列表（按显示名排序） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterListResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    create_character: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCharacterRequest"];
+            };
+        };
+        responses: {
+            /** @description 已创建 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterDetail"];
+                };
+            };
+            /** @description 名称为空 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 写入失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_character: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 角色 id（db/人物/ 下文件名去掉 .md） */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 角色详情 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterDetail"];
+                };
+            };
+            /** @description 非法 id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 角色不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    save_character: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 角色 id（db/人物/ 下文件名去掉 .md） */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveCharacterRequest"];
+            };
+        };
+        responses: {
+            /** @description 已保存（含解析反馈） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaveCharacterResponse"];
+                };
+            };
+            /** @description 非法 id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 角色不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 写入失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
         };
     };

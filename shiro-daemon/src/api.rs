@@ -74,12 +74,14 @@ struct HistoryEntry {
     opened_at: u64,
 }
 
-fn config_dir() -> PathBuf {
+pub(crate) fn config_dir() -> PathBuf {
     std::env::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".config")
         .join("shiro")
 }
+
+
 
 fn load_history() -> History {
     let Ok(text) = std::fs::read_to_string(config_dir().join("history.toml")) else {
@@ -94,7 +96,7 @@ fn save_history(history: &History) -> std::io::Result<()> {
     std::fs::write(config_dir().join("history.toml"), text)
 }
 
-fn now_secs() -> u64 {
+pub(crate) fn now_secs() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -154,9 +156,9 @@ pub struct ErrorResponse {
     pub message: String,
 }
 
-type ApiError = (StatusCode, Json<ErrorResponse>);
+pub(crate) type ApiError = (StatusCode, Json<ErrorResponse>);
 
-fn bad_request(message: &str) -> ApiError {
+pub(crate) fn bad_request(message: &str) -> ApiError {
     (
         StatusCode::BAD_REQUEST,
         Json(ErrorResponse {
@@ -165,7 +167,7 @@ fn bad_request(message: &str) -> ApiError {
     )
 }
 
-fn internal_error(e: std::io::Error) -> ApiError {
+pub(crate) fn internal_error(e: std::io::Error) -> ApiError {
     (
         StatusCode::INTERNAL_SERVER_ERROR,
         Json(ErrorResponse {
@@ -548,7 +550,7 @@ fn strip_inline_markdown(s: &str) -> String {
 }
 
 /// 从文稿内容提取正文预览：markdown 逐行剥离标记，纯文本直接取开头约 max_chars 字
-fn excerpt_from_content(content: &str, max_chars: usize, is_markdown: bool) -> String {
+pub(crate) fn excerpt_from_content(content: &str, max_chars: usize, is_markdown: bool) -> String {
     let mut out = String::new();
     for line in content.lines() {
         let text = if is_markdown {
@@ -647,7 +649,7 @@ pub struct FileContent {
     pub modified: u64,
 }
 
-fn file_mtime(path: &Path) -> u64 {
+pub(crate) fn file_mtime(path: &Path) -> u64 {
     path.metadata()
         .and_then(|m| m.modified())
         .ok()
@@ -1131,6 +1133,10 @@ pub fn build_router(
         .routes(routes!(rename_entry))
         .routes(routes!(remove_project_file))
         .routes(routes!(watch_project))
+        .routes(routes!(crate::assets::list_characters))
+        .routes(routes!(crate::assets::get_character))
+        .routes(routes!(crate::assets::save_character))
+        .routes(routes!(crate::assets::create_character))
         .split_for_parts();
     SecurityAddon.modify(&mut doc);
     apply_info(&mut doc);

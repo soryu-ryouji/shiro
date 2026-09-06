@@ -1,17 +1,28 @@
 <script setup lang="ts">
-// Database 面板（侧栏）：内容库分类列表（写作规范/基底套路/推进模式/人物库）。
-// 条目与计数后续接内容库 API；本期为静态占位。
-const CATEGORIES = [
+// Database 面板（侧栏）：元数据分组（角色，接内容库资产 API，见 docs/asset-format.md）+ 内容库分类（静态占位）。
+import { dbStore } from '../stores/database'
+
+const LIB_CATEGORIES = [
   { key: 'conventions', label: '写作规范' },
   { key: 'tropes', label: '基底套路' },
   { key: 'patterns', label: '推进模式' },
-  { key: 'characters', label: '人物库' },
 ]
 </script>
 
 <template>
   <div class="panel">
-    <button v-for="c in CATEGORIES" :key="c.key" class="entry" disabled>
+    <div class="group-title">元数据</div>
+    <button
+      class="entry"
+      :class="{ active: dbStore.category === 'characters' }"
+      @click="dbStore.selectCategory('characters')"
+    >
+      <span class="label">角色</span>
+      <span class="count">{{ dbStore.charactersLoaded ? dbStore.characters.length : '—' }}</span>
+    </button>
+
+    <div class="group-title">内容库</div>
+    <button v-for="c in LIB_CATEGORIES" :key="c.key" class="entry" disabled>
       <span class="label">{{ c.label }}</span>
       <span class="count">—</span>
     </button>
@@ -25,6 +36,13 @@ const CATEGORIES = [
   gap: 2px;
 }
 
+.group-title {
+  margin: 10px 10px 4px;
+  font-size: calc(11px * var(--font-scale-ui));
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+}
+
 .entry {
   display: flex;
   align-items: center;
@@ -36,6 +54,16 @@ const CATEGORIES = [
   color: var(--text);
   text-align: left;
   cursor: pointer;
+}
+
+@media (hover: hover) {
+  .entry:not(:disabled):hover {
+    background: var(--border);
+  }
+}
+
+.entry.active {
+  background: var(--accent-soft);
 }
 
 .entry:disabled {

@@ -73,6 +73,19 @@ const ICONS: Record<string, IconDef> = {
       { d: 'M6 4h7.5M6 8h7.5M6 12h7.5' },
     ],
   },
+  // 刷新（循环箭头，lucide rotate-cw 24px 网格）
+  refresh: {
+    vb: '0 0 24 24',
+    paths: [
+      { d: 'M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8' },
+      { d: 'M21 3v5h-5' },
+    ],
+  },
+  // 铅笔（编辑，lucide pencil 24px 网格）
+  edit: {
+    vb: '0 0 24 24',
+    paths: [{ d: 'M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z' }],
+  },
   // 关闭（×）
   close: { paths: [{ d: 'M3.5 3.5l9 9M12.5 3.5l-9 9' }] },
   // 眼睛（预览，lucide eye 24px 网格）

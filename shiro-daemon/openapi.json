@@ -43,6 +43,230 @@
         ]
       }
     },
+    "/api/v1/db/characters": {
+      "get": {
+        "tags": [
+          "db"
+        ],
+        "summary": "全局人物库角色列表",
+        "operationId": "list_characters",
+        "responses": {
+          "200": {
+            "description": "角色列表（按显示名排序）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CharacterListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "db"
+        ],
+        "summary": "新建角色卡（骨架）：同名自动追加 -2/-3 序号；返回可直接进入编辑的详情",
+        "operationId": "create_character",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCharacterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "已创建",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CharacterDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "名称为空",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "500": {
+            "description": "写入失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/db/characters/{id}": {
+      "get": {
+        "tags": [
+          "db"
+        ],
+        "summary": "角色详情（frontmatter 字段 + 正文 markdown）",
+        "operationId": "get_character",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "角色 id（db/人物/ 下文件名去掉 .md）",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "角色详情",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CharacterDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "非法 id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "角色不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "db"
+        ],
+        "summary": "保存角色卡：临时文件 + rename 原子覆盖（同文稿保存）。\n宽容策略：解析失败也保存（用户手改中途不丢内容），但返回 parse_error 提示该卡会从列表消失。",
+        "operationId": "save_character",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "角色 id（db/人物/ 下文件名去掉 .md）",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveCharacterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "已保存（含解析反馈）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveCharacterResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "非法 id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "角色不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "写入失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
     "/api/v1/projects": {
       "get": {
         "tags": [
@@ -791,6 +1015,142 @@
   },
   "components": {
     "schemas": {
+      "CharacterDetail": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "archetype",
+          "tags",
+          "body",
+          "raw"
+        ],
+        "properties": {
+          "archetype": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "body": {
+            "type": "string",
+            "description": "正文 markdown（frontmatter 之后，含「可迁移 / 本作设定」区块）"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "raw": {
+            "type": "string",
+            "description": "文件原始内容（含 frontmatter，编辑用）"
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "CharacterListResponse": {
+        "type": "object",
+        "required": [
+          "characters"
+        ],
+        "properties": {
+          "characters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CharacterSummary"
+            }
+          }
+        }
+      },
+      "CharacterSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "archetype",
+          "tags",
+          "excerpt",
+          "modified"
+        ],
+        "properties": {
+          "archetype": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "原型标签（可多个）"
+          },
+          "excerpt": {
+            "type": "string",
+            "description": "正文预览（剥离 markdown 标记后取开头）"
+          },
+          "id": {
+            "type": "string",
+            "description": "角色 id（db/人物/ 下文件名去掉 .md）"
+          },
+          "modified": {
+            "type": "integer",
+            "format": "int64",
+            "description": "文件修改时间（epoch 秒）",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string",
+            "description": "显示名（frontmatter 的 name；缺失回退文件名）"
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "功能角色（主角 / 对手 / 盟友 / …）"
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "来源标注（应用的全局原型，如 db://characters/xxx）"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "自由标签"
+          }
+        }
+      },
+      "CreateCharacterRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "角色显示名（写入 frontmatter 的 name）"
+          }
+        }
+      },
       "CreateDirRequest": {
         "type": "object",
         "required": [
@@ -956,6 +1316,47 @@
           "path": {
             "type": "string",
             "description": "项目当前绝对路径"
+          }
+        }
+      },
+      "SaveCharacterRequest": {
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "完整文件内容（含 frontmatter）"
+          }
+        }
+      },
+      "SaveCharacterResponse": {
+        "type": "object",
+        "required": [
+          "parsed"
+        ],
+        "properties": {
+          "character": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CharacterSummary",
+                "description": "保存后重新解析出的摘要（parsed 为 false 时为空）"
+              }
+            ]
+          },
+          "parse_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parsed": {
+            "type": "boolean",
+            "description": "保存后能否仍解析为角色卡（false = frontmatter 缺失/损坏/未标记类型，该卡不进列表）"
           }
         }
       },

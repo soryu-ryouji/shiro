@@ -1,4 +1,5 @@
 mod api;
+mod assets;
 mod watch;
 
 use api::AppState;
