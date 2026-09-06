@@ -356,6 +356,7 @@ onMounted(async () => {
               >
                 <option value="cjk">仅中文字符</option>
                 <option value="cjkPunct">中文字符与标点</option>
+                <option value="cjkPunctEn">中文字符、标点与英文单词</option>
               </select>
             </div>
             <div class="grow">

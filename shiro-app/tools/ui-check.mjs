@@ -61,7 +61,7 @@ function check(name, actual, expected) {
 fs.rmSync(tmp, { recursive: true, force: true })
 fs.mkdirSync(path.dirname(sheetAbs), { recursive: true })
 fs.writeFileSync(sheetAbs, '# 自检文稿\n\n种子段落文本。\n')
-fs.writeFileSync(path.join(projDir, '正文', '笔记.txt'), '纯文本笔记。\n# 不是标题\n')
+fs.writeFileSync(path.join(projDir, '正文', '笔记.txt'), '纯文本笔记。\n# 不是标题\nhello bug\n')
 
 // ---------- 构建主进程与 preload（同 scripts/dev.mjs） ----------
 
@@ -312,6 +312,13 @@ try {
     return n === countBefore + 1 ? n : null
   }, 5_000, '字数重算')
   check('字数统计切换为含标点（+1）', countAfter - countBefore, 1)
+  // 再切换到「中文字符、标点与英文单词」（当前文稿有 2 个英文单词：hello、bug）
+  await evaljs(`(() => { const s = [...document.querySelectorAll('.grow')].find((r) => r.textContent.includes('字数统计'))?.querySelector('select'); if (s) { s.value = 'cjkPunctEn'; s.dispatchEvent(new Event('change')) } })()`)
+  const countEn = await waitFor(async () => {
+    const n = await evaljs(`Number(document.querySelector('.editor-status').textContent.match(/(\\d+)\\s*字/)?.[1] ?? 0)`)
+    return n === countAfter + 2 ? n : null
+  }, 5_000, '字数含英文')
+  check('字数统计含英文单词（+2）', countEn - countAfter, 2)
   // 预览首行缩进：外观页打开开关 → 预览阅读视图里段落首行缩进生效
   await evaljs(`[...document.querySelectorAll('.dialog-nav-item')].find((b) => b.textContent.includes('外观')).click()`)
   await evaljs(`(() => { const c = [...document.querySelectorAll('.grow')].find((r) => r.textContent.includes('首行缩进'))?.querySelector('input[type="checkbox"]'); if (c && !c.checked) c.click() })()`)
