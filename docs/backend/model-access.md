@@ -13,6 +13,7 @@
 provider 配置与 API key 存 `~/.config/shiro/config.toml`（见[存储设计](storage.md)）：
 
 - 支持多个 provider 档案（base_url、api_key、model），可指定默认档案
+- 按任务类型路由：规划 / 正文 / 审核等环节可各自绑定模型档位（未配置时用默认档案），允许「强模型跑规划、性价比模型跑审核」
 - app 内提供配置界面，写入 config.toml；daemon 重读生效
 - 密钥只在 daemon 侧使用：上游请求由 daemon 发出，前端永远拿不到 key
 

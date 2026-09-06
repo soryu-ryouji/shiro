@@ -43,6 +43,7 @@ cd shiro-app && npm run gen:types
 
 - [架构设计](docs/architecture.md)：总体架构、核心原则、部署形态（桌面版/局域网访问/服务器版）、仓库结构
 - [技术栈](docs/tech-stack.md)：语言与框架选型
+- [AI写作工具制作思考](./docs/AI写作工具制作思考.md): 制作思考说明
 
 **后端**
 
