@@ -74,7 +74,8 @@ function applyExternalChange(file: string, content: string | null) {
 }
 
 const theme = EditorView.theme({
-  '&': { fontSize: 'calc(15px * var(--font-scale-editor))', backgroundColor: 'transparent' },
+  // 字号基数须与 font.ts EDITOR_FONT_SIZE_DEFAULT 一致（渲染值 = 基数 × 设定值 ÷ 默认值）
+  '&': { fontSize: 'calc(17px * var(--font-scale-editor))', backgroundColor: 'transparent' },
   '.cm-content': {
     fontFamily: 'var(--font-editor)',
     padding: '24px 32px 28px',
@@ -82,7 +83,7 @@ const theme = EditorView.theme({
     margin: '0 auto',
   },
   '.cm-scroller': { lineHeight: 'var(--editor-line-height)', overflow: 'auto' },
-  // 段间距：段落首行的额外上间距（--editor-para-gap 默认 0 = 关闭）
+  // 段间距：段落首行的额外上间距（--editor-para-gap 默认 15px）
   '.cm-line.cm-para-start': { paddingTop: 'var(--editor-para-gap)' },
   '&.cm-focused': { outline: 'none' },
   '.cm-cursor': { borderLeftColor: 'var(--text)' },

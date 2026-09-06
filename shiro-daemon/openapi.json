@@ -75,7 +75,7 @@
         "tags": [
           "projects"
         ],
-        "summary": "新建项目：在父目录下创建项目文件夹（初始化 .shiro/ 与 正文/），并导入记录。\n目录已存在时：空目录或已是 shiro 项目（含 .shiro/）则直接导入，否则 409。",
+        "summary": "新建项目：在父目录下创建项目文件夹（初始化 .shiro/ 元数据目录），并导入记录。\n目录已存在时：空目录或已是 shiro 项目（含 .shiro/）则直接导入，否则 409。",
         "operationId": "create_project",
         "requestBody": {
           "content": {

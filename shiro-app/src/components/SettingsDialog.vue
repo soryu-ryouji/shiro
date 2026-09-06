@@ -30,6 +30,7 @@ import {
   PARA_GAP_MIN,
   applyEditorParaMode,
   listSystemFonts,
+  resetAppearance,
   type ParaMode,
 } from '../utils/font'
 import pkg from '../../package.json'
@@ -94,6 +95,18 @@ const editorParaMode = ref(currentEditorParaMode())
 function selectParaMode(m: ParaMode) {
   applyEditorParaMode(m)
   editorParaMode.value = m
+}
+
+// 恢复默认：经 font.ts 统一重置后，回读各控件值
+function onResetAppearance() {
+  resetAppearance()
+  uiFontKey.value = currentUiFontKey()
+  editorFontKey.value = currentEditorFontKey()
+  uiFontSize.value = currentUiFontSize()
+  editorFontSize.value = currentEditorFontSize()
+  editorLineHeight.value = currentEditorLineHeight()
+  editorParaGap.value = currentEditorParaGap()
+  editorParaMode.value = currentEditorParaMode()
 }
 
 // 系统字体（Local Font Access API；桌面端可用。选项名统一用界面字体渲染——符号字体的字母码位不可读）
@@ -218,6 +231,10 @@ onMounted(async () => {
                 />
                 <span class="size-unit">px</span>
               </div>
+            </div>
+            <div class="grow">
+              <span class="glabel">重置外观</span>
+              <button class="gbtn" @click="onResetAppearance">恢复默认</button>
             </div>
           </div>
           <p class="pane-hint">
@@ -413,5 +430,24 @@ onMounted(async () => {
 .size-unit {
   color: var(--text-dim);
   font-size: calc(12px * var(--font-scale-ui));
+}
+
+/* 行内按钮（恢复默认等） */
+.gbtn {
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  font-size: calc(13px * var(--font-scale-ui));
+  color: var(--text);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .gbtn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
 }
 </style>

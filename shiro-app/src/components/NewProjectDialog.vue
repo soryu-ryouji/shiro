@@ -59,7 +59,7 @@ async function create() {
           <button class="btn" :disabled="!hasShell" @click="pickParent">选择…</button>
         </div>
       </label>
-      <p class="hint">将在存放目录下创建同名项目文件夹，并初始化 .shiro/ 与「正文」目录。</p>
+      <p class="hint">将在存放目录下创建同名项目文件夹，并初始化 .shiro/ 元数据目录。</p>
 
       <p v-if="error" class="error">{{ error }}</p>
 

@@ -207,7 +207,7 @@ pub struct CreateProjectRequest {
     pub name: String,
 }
 
-/// 新建项目：在父目录下创建项目文件夹（初始化 .shiro/ 与 正文/），并导入记录。
+/// 新建项目：在父目录下创建项目文件夹（初始化 .shiro/ 元数据目录），并导入记录。
 /// 目录已存在时：空目录或已是 shiro 项目（含 .shiro/）则直接导入，否则 409。
 #[utoipa::path(
     post,
@@ -257,9 +257,8 @@ async fn create_project(
         std::fs::create_dir_all(&target).map_err(internal_error)?;
     }
 
-    // 初始化项目结构（见 docs/backend/storage.md 推荐目录）
+    // 只初始化 .shiro/ 元数据目录；正文/、大纲/ 等是推荐约定而非强制结构，不主动创建（见 docs/backend/storage.md）
     std::fs::create_dir_all(target.join(".shiro")).map_err(internal_error)?;
-    std::fs::create_dir_all(target.join("正文")).map_err(internal_error)?;
     let project_toml = target.join(".shiro").join("project.toml");
     if !project_toml.exists() {
         std::fs::write(&project_toml, format!("name = {:?}\n", name)).map_err(internal_error)?;

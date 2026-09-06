@@ -22,6 +22,9 @@ const UI_FONT_KEY = 'shiro.font.ui'
 const EDITOR_FONT_KEY = 'shiro.font.editor'
 const LEGACY_FONT_KEY = 'shiro.font'
 
+export const UI_FONT_DEFAULT = 'lxgw'
+export const EDITOR_FONT_DEFAULT = 'lxgw'
+
 function stackFor(key: string): string {
   const builtin = FONT_OPTIONS.find((o) => o.key === key)
   return builtin ? builtin.stack : `'${key}', ${SANS_STACK}`
@@ -32,14 +35,14 @@ function readFontKey(storageKey: string, fallback: string): string {
   return localStorage.getItem(storageKey) ?? localStorage.getItem(LEGACY_FONT_KEY) ?? fallback
 }
 
-/** 界面字体（默认系统无衬线） */
+/** 界面字体（默认霞鹜文楷，与正文一致） */
 export function currentUiFontKey(): string {
-  return readFontKey(UI_FONT_KEY, 'sans')
+  return readFontKey(UI_FONT_KEY, UI_FONT_DEFAULT)
 }
 
 /** 正文字体（默认霞鹜文楷） */
 export function currentEditorFontKey(): string {
-  return readFontKey(EDITOR_FONT_KEY, 'lxgw')
+  return readFontKey(EDITOR_FONT_KEY, EDITOR_FONT_DEFAULT)
 }
 
 export function applyUiFont(key: string): void {
@@ -66,7 +69,7 @@ export async function listSystemFonts(): Promise<string[] | null> {
 export const FONT_SIZE_MIN = 12
 export const FONT_SIZE_MAX = 24
 export const UI_FONT_SIZE_DEFAULT = 14
-export const EDITOR_FONT_SIZE_DEFAULT = 15
+export const EDITOR_FONT_SIZE_DEFAULT = 17
 
 const UI_SIZE_KEY = 'shiro.fontSize.ui'
 const EDITOR_SIZE_KEY = 'shiro.fontSize.editor'
@@ -88,7 +91,7 @@ export function currentUiFontSize(): number {
   return v !== null && n >= FONT_SIZE_MIN && n <= FONT_SIZE_MAX ? n : UI_FONT_SIZE_DEFAULT
 }
 
-/** 正文字号（旧全局值是缩放语义不沿用，回退默认 15） */
+/** 正文字号（旧全局值是缩放语义不沿用，回退默认 17） */
 export function currentEditorFontSize(): number {
   return readSize(EDITOR_SIZE_KEY, EDITOR_FONT_SIZE_DEFAULT)
 }
@@ -112,7 +115,7 @@ export const LINE_HEIGHT_MAX = 3
 export const LINE_HEIGHT_DEFAULT = 1.8
 export const PARA_GAP_MIN = 0
 export const PARA_GAP_MAX = 64
-export const PARA_GAP_DEFAULT = 0
+export const PARA_GAP_DEFAULT = 15
 
 const LINE_HEIGHT_KEY = 'shiro.editor.lineHeight'
 const PARA_GAP_KEY = 'shiro.editor.paraSpacing'
@@ -137,7 +140,7 @@ export function applyEditorLineHeight(v: number): void {
   localStorage.setItem(LINE_HEIGHT_KEY, String(n))
 }
 
-/** 编辑区段间距（px，段落首行的额外上间距，0 = 关闭） */
+/** 编辑区段间距（px，段落首行的额外上间距，默认 15） */
 export function currentEditorParaGap(): number {
   return readInRange(PARA_GAP_KEY, PARA_GAP_DEFAULT, PARA_GAP_MIN, PARA_GAP_MAX)
 }
@@ -167,4 +170,17 @@ export const editorParaMode = ref<ParaMode>(currentEditorParaMode())
 export function applyEditorParaMode(mode: ParaMode): void {
   localStorage.setItem(PARA_MODE_KEY, mode)
   editorParaMode.value = mode
+}
+
+// ---- 恢复默认 ----
+
+/** 外观全部恢复默认：界面/正文字体与字号、分段方式、段内行距、段落间距 */
+export function resetAppearance(): void {
+  applyUiFont(UI_FONT_DEFAULT)
+  applyEditorFont(EDITOR_FONT_DEFAULT)
+  applyUiFontSize(UI_FONT_SIZE_DEFAULT)
+  applyEditorFontSize(EDITOR_FONT_SIZE_DEFAULT)
+  applyEditorLineHeight(LINE_HEIGHT_DEFAULT)
+  applyEditorParaGap(PARA_GAP_DEFAULT)
+  applyEditorParaMode(PARA_MODE_DEFAULT)
 }
