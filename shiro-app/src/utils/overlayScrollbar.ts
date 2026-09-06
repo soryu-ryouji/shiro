@@ -61,9 +61,16 @@ export function attachOverlayScrollbar(el: HTMLElement, host?: HTMLElement): () 
       const x = a.vertical ? compX + pinW - THUMB - GAP : compX + offset
       const y = a.vertical ? compY + offset : compY + vh - THUMB - GAP
       const t = a.thumb.style
-      if (a.vertical) t.height = `${size}px`
-      else t.width = `${size}px`
-      t.transform = `translate(${x}px, ${y}px)`
+      const nextH = `${size}px`
+      const nextT = `translate(${x}px, ${y}px)`
+      // 只在变化时写入：相同值也会产生产变异，与 MutationObserver 配合时防自激
+      if (a.vertical) {
+        if (t.height !== nextH) t.height = nextH
+      } else {
+        const nextW = `${size}px`
+        if (t.width !== nextW) t.width = nextW
+      }
+      if (t.transform !== nextT) t.transform = nextT
       if (reveal) a.thumb.classList.add('osb-on')
     }
   }
@@ -140,11 +147,19 @@ export function attachOverlayScrollbar(el: HTMLElement, host?: HTMLElement): () 
   const ro = new ResizeObserver(() => update())
   ro.observe(el)
   if (outside) ro.observe(pinned)
+  // 内容变化（子项增删、v-show 显隐、文本编辑）时刷新：RO 只看容器盒子，看不到内容高度变化；
+  // 不刷新的话滑块会带着过期尺寸/可见状态残留（如设置面板切换分页后短页面还挂着长滑块）
+  const mo = new MutationObserver((recs) => {
+    // 滑块自身也是被观察元素的子节点：update 写滑块 style/class 会再触发本回调——必须过滤，否则自激死循环
+    if (recs.some((r) => !(r.target as HTMLElement).classList?.contains?.('osb-thumb'))) update()
+  })
+  mo.observe(el, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style', 'class'] })
   update()
 
   return () => {
     el.removeEventListener('scroll', onScroll)
     ro.disconnect()
+    mo.disconnect()
     if (hideTimer !== undefined) clearTimeout(hideTimer)
     axes.forEach((a, i) => {
       a.thumb.removeEventListener('pointerdown', downs[i])

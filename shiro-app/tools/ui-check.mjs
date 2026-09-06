@@ -10,6 +10,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
+import { killStrays } from './kill-strays.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(import.meta.url)
@@ -17,6 +18,15 @@ const tmp = path.join(root, 'tools', '.tmp', 'ui-check')
 const projDir = path.join(tmp, 'project')
 const sheetRel = '正文/测试文稿.md'
 const sheetAbs = path.join(projDir, '正文', '测试文稿.md')
+
+// ---------- 预检：清理此前运行残留的进程（electron/vite/daemon），防止占端口、锁 exe、抢 CDP ----------
+
+const strays = killStrays(path.resolve(root, '..'))
+if (strays > 0) {
+  console.log(`预检清理：杀掉 ${strays} 个游离进程`)
+  // 等端口与文件锁释放
+  await new Promise((r) => setTimeout(r, 800))
+}
 
 // ---------- 工具 ----------
 
@@ -101,6 +111,11 @@ process.on('exit', () => {
 let exitCode = 1
 // 失败诊断要用 evaljs，声明在 try 外（catch 可访问）
 let evaljs = async () => null
+// 全局看门狗：任何环节挂死都不让脚本无限等待
+const watchdog = setTimeout(() => {
+  console.error('ui-check 全局超时，强制退出')
+  process.exit(2)
+}, 240_000)
 try {
   await waitFor(async () => (await fetch('http://localhost:5173/').catch(() => null))?.ok, 60_000, 'vite 就绪')
 
@@ -124,11 +139,23 @@ try {
 
   const ws = new WebSocket(target.webSocketDebuggerUrl)
   await new Promise((resolve, reject) => {
-    ws.onopen = resolve
-    ws.onerror = reject
+    const timer = setTimeout(() => reject(new Error('CDP WebSocket 连接超时')), 10_000)
+    ws.onopen = () => {
+      clearTimeout(timer)
+      resolve()
+    }
+    ws.onerror = () => {
+      clearTimeout(timer)
+      reject(new Error('CDP WebSocket 连接失败'))
+    }
   })
   let msgId = 0
   const pending = new Map()
+  // 断连（页面崩溃/electron 被杀）时拒绝所有在途请求，避免无限挂起
+  ws.onclose = () => {
+    for (const p of pending.values()) p({ error: { message: 'CDP 连接已断开' } })
+    pending.clear()
+  }
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data)
     if (msg.id && pending.has(msg.id)) {
@@ -271,6 +298,12 @@ try {
   await evaljs(`(() => { const b = document.querySelector('.dialog-body'); b.scrollTop = 200; b.dispatchEvent(new Event('scroll')) })()`)
   await evaljs(`[...document.querySelectorAll('.dialog-nav-item')].find((b) => b.textContent.includes('通用')).click()`)
   check('设置切换分页后从顶部开始', await evaljs(`document.querySelector('.dialog-body').scrollTop`), 0)
+  // 通用页无溢出：滚动条应立即消失（不残留上一页的滑块）
+  check(
+    '设置切换分页后滚动条不残留',
+    await waitFor(async () => evaljs(`!document.querySelector('.dialog-body .osb-v')?.classList.contains('osb-on') ?? false`), 5_000, '滚动条残留'),
+    true,
+  )
   // 关闭设置（Esc）
   await evaljs(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`)
   await waitFor(async () => evaljs(`!document.querySelector('.dialog-body')`), 10_000, '设置面板关闭')
@@ -280,6 +313,7 @@ try {
 
   exitCode = fail ? 1 : 0
   console.log(`\nui-check: ${pass} passed, ${fail} failed`)
+  clearTimeout(watchdog)
 } catch (e) {
   console.error('ui-check 异常:', e.message ?? e)
   // 失败诊断：页面地址/挂载状态/正文长度，帮助区分「app 没挂载」与「业务断言失败」

@@ -54,9 +54,11 @@ const SECTIONS = [
 type SectionKey = (typeof SECTIONS)[number]['key']
 const section = ref<SectionKey>('appearance')
 
-// 分页共用一个滚动容器：切换分页时滚回顶部，不把上个分页的滚动位置带过去
+// 分页共用一个滚动容器：切换分页时滚回顶部，不把上个分页的滚动位置带过去。
+// flush: post——等 DOM 切到新分页后再动滚动位置：新分页无溢出时浏览器已把 scrollTop 压为 0，
+// 不会产生 scroll 事件、不会让自绘滚动条以旧分页尺寸重现
 const bodyEl = ref<HTMLElement | null>(null)
-watch(section, () => bodyEl.value?.scrollTo({ top: 0 }))
+watch(section, () => bodyEl.value?.scrollTo({ top: 0 }), { flush: 'post' })
 
 // 字体（界面/正文分设，实时生效；key 为内置选项 key 或系统字体 family 名）
 const uiFontKey = ref(currentUiFontKey())

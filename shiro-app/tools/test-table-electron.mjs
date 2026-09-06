@@ -2,8 +2,16 @@
 // 用法：cd shiro-app && node tools/test-table-electron.mjs
 import { build } from 'esbuild'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { spawn } from 'node:child_process'
+import { killStrays } from './kill-strays.mjs'
+
+// 预检：清理此前中断运行残留的 electron 实例（隐藏窗口在父进程被杀后会残留）
+const strays = killStrays(resolve(process.cwd(), '..'))
+if (strays > 0) {
+  console.log(`预检清理：杀掉 ${strays} 个游离进程`)
+  await new Promise((r) => setTimeout(r, 800))
+}
 
 const outDir = mkdtempSync(join(process.cwd(), 'tools', '.etest-'))
 let exitCode = 1
