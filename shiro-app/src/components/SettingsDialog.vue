@@ -4,7 +4,7 @@
 // - Esc 关闭
 // - 打开期间挂 body.dialog-open 挂起窗口拖拽区
 // 分区视觉：macOS 设置式——灰底、白色分组卡片、行式布局（标签左、控件右、行间细分隔线）。
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { apiBase } from '../api'
 import { hasShell } from '../platform'
 import { useDialogMask } from '../composables/useDialog'
@@ -53,6 +53,10 @@ const SECTIONS = [
 ] as const
 type SectionKey = (typeof SECTIONS)[number]['key']
 const section = ref<SectionKey>('appearance')
+
+// 分页共用一个滚动容器：切换分页时滚回顶部，不把上个分页的滚动位置带过去
+const bodyEl = ref<HTMLElement | null>(null)
+watch(section, () => bodyEl.value?.scrollTo({ top: 0 }))
 
 // 字体（界面/正文分设，实时生效；key 为内置选项 key 或系统字体 family 名）
 const uiFontKey = ref(currentUiFontKey())
@@ -171,7 +175,7 @@ onMounted(async () => {
         </button>
       </nav>
 
-      <div v-overlay-scrollbar class="dialog-body">
+      <div ref="bodyEl" v-overlay-scrollbar class="dialog-body">
         <section v-show="section === 'appearance'" class="pane">
           <div class="group">
             <div class="grow">

@@ -265,6 +265,16 @@ try {
   check('txt 不做 markdown 渲染（# 不成标题）', await evaljs(`document.querySelector('.cm-content .md-h') === null`), true)
   check('txt 隐藏标记工具栏按钮', await evaljs(`document.querySelectorAll('.editor-bar .bar-item').length === 0`), true)
 
+  // 设置面板：分页共用滚动容器——外观页滚动后切到通用页，通用页应从顶部开始
+  await evaljs(`[...document.querySelectorAll('.editor-head .bar-btn')].find((b) => b.title === '设置').click()`)
+  await waitFor(async () => evaljs(`!!document.querySelector('.dialog-body')`), 10_000, '设置面板打开')
+  await evaljs(`(() => { const b = document.querySelector('.dialog-body'); b.scrollTop = 200; b.dispatchEvent(new Event('scroll')) })()`)
+  await evaljs(`[...document.querySelectorAll('.dialog-nav-item')].find((b) => b.textContent.includes('通用')).click()`)
+  check('设置切换分页后从顶部开始', await evaljs(`document.querySelector('.dialog-body').scrollTop`), 0)
+  // 关闭设置（Esc）
+  await evaljs(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`)
+  await waitFor(async () => evaljs(`!document.querySelector('.dialog-body')`), 10_000, '设置面板关闭')
+
   const { data } = await send('Page.captureScreenshot', { format: 'png' })
   fs.writeFileSync(path.join(tmp, 'ui-check.png'), Buffer.from(data, 'base64'))
 
