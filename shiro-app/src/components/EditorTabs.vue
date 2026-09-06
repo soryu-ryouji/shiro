@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 编辑区顶栏（窗口拖拽区）：右端设置按钮；Windows/Linux 避让窗口控制按钮。
 // 其下为标签页条（VSCode 式 tabs：点击切换、右侧 x 关闭、HTML5 拖拽排序），恒占高度：标签 ≤1 时留空，显隐不推动内容块。
-// 字数与保存状态在 Editor.vue 右上角浮层（不占布局高度）。
+// 字数与保存状态在 Editor.vue 底部工具栏右端。
 import { ref } from 'vue'
 import { hasShell, isMac, shell } from '../platform'
 import { projectStore } from '../stores/project'

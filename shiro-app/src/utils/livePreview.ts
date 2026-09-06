@@ -1,5 +1,5 @@
 // Markdown 实时预览（Obsidian 式）：光标不在处渲染格式并隐藏语法记号，光标所在处显示原文可编辑。
-// 范围：标题（# 记号以挂件挂在内容列左缘留白，Ulysses 式）、引用、无序列表符号、粗体、斜体、删除线、行内码、代码围栏。
+// 范围：标题（# 记号以挂件挂在内容列左缘留白，Ulysses 式）、引用（记号隐藏，行内细竖线贴文本左缘）、无序列表符号、粗体、斜体、删除线、行内码、代码围栏。
 // 有意从简（v1）：不解析嵌套/跨行标记、不支持转义、有序列表保持原样、围栏内无语法高亮。
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view'
 import { RangeSetBuilder, type Extension } from '@codemirror/state'
@@ -81,25 +81,25 @@ const markDeco: Record<MarkKind, Decoration> = {
   strike: Decoration.mark({ class: 'md-strike' }),
 }
 
-/** 标题记号挂件：替换原文的 # 记号，渲染到内容列左缘留白（CSS 负外边距使净宽度为零，正文位置不动）。
- *  挂件是行内元素，与标题文本天然基线对齐，不受字号、行高与段间距影响。 */
-class HeadingMarkWidget extends WidgetType {
+/** 行首记号挂件：替换原文行首记号（标题 #、引用 >），渲染到内容列左缘留白（CSS 负外边距使净宽度为零，正文位置不动）。
+ *  挂件是行内元素，与文本天然基线对齐，不受字号、行高与段间距影响。 */
+class GutterMarkWidget extends WidgetType {
   constructor(readonly marks: string) {
     super()
   }
-  eq(other: HeadingMarkWidget): boolean {
+  eq(other: GutterMarkWidget): boolean {
     return other.marks === this.marks
   }
   toDOM(): HTMLElement {
     const span = document.createElement('span')
-    span.className = 'md-hmark'
+    span.className = 'md-gmark'
     span.textContent = this.marks
     return span
   }
 }
-// 1-6 级记号各一份共享装饰实例
+// 1-6 级标题记号各一份共享装饰实例
 const headingDeco = Array.from({ length: 6 }, (_, i) =>
-  Decoration.replace({ widget: new HeadingMarkWidget('#'.repeat(i + 1)) }),
+  Decoration.replace({ widget: new GutterMarkWidget('#'.repeat(i + 1)) }),
 )
 
 /** 无序列表符号挂件：- / * / + 渲染为圆点 */
@@ -170,6 +170,7 @@ function buildDecorations(view: EditorView): DecorationSet {
               lineClass = 'md-h'
               if (!raw) items.push({ from, to, deco: headingDeco[heading[1].length - 1] })
             } else if (quote) {
+              // 极简引用：隐藏 > 记号，行内细竖线贴文本块左缘（样式见 Editor.vue .md-quote）
               lineClass = 'md-quote'
               if (!raw) items.push({ from, to, deco: hideDeco })
             } else if (!raw) {

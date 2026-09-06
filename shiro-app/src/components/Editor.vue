@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// Markdown 编辑器（CodeMirror 6）：防抖自动保存（daemon 原子写入）；右上角浮层显示字数（有选中时为「选中 / 总数」）与保存失败提示。
+// Markdown 编辑器（CodeMirror 6）：防抖自动保存（daemon 原子写入）。
+// 底部工具栏（Ulysses 式）：块级标记（标题/列表/引用）切换居中，字数（有选中时为「选中 / 总数」）与保存失败提示在右端。
 // 切换文稿/卸载前先 flush 保存；磁盘外部变动（其他编辑器/同步盘/AI 写稿）经 daemon 监听推送，由 onExternalFileChange 回调重载。
 // 排版对齐：正文首行与次栏列表首项同高（顶栏 40px + 标签页条 36px + 间距 24px = .cm-content 上内边距 24px）。
 import { onMounted, onUnmounted, ref, watch } from 'vue'
@@ -82,6 +83,117 @@ function countSelection(state: EditorState): number {
     if (!r.empty) n += countWords(state.sliceDoc(r.from, r.to))
   }
   return n
+}
+
+// ---- 底部工具栏 ----
+// 行首标记切换（选区覆盖的所有行：全部已带则统一移除，否则统一补齐）
+const LIST_MARK_RE = /^- /
+const QUOTE_MARK_RE = /^> /
+
+function toggleLineMark(re: RegExp, mark: string) {
+  if (!view) return
+  const state = view.state
+  const main = state.selection.main
+  const first = state.doc.lineAt(main.from).number
+  const last = state.doc.lineAt(main.to).number
+  const lines = Array.from({ length: last - first + 1 }, (_, i) => state.doc.line(first + i))
+  const allMarked = lines.every((l) => re.test(l.text))
+  const changes: { from: number; to?: number; insert?: string }[] = []
+  for (const l of lines) {
+    const m = l.text.match(re)
+    if (allMarked) {
+      changes.push({ from: l.from, to: l.from + (m?.[0].length ?? 0) })
+    } else if (!m) {
+      changes.push({ from: l.from, insert: mark })
+    }
+  }
+  const cs = state.changes(changes)
+  // selection.map 用 assoc=1：行首恰在光标处的插入把光标推到标记之后（可直接输入）
+  view.dispatch({ changes: cs, selection: state.selection.map(cs, 1) })
+}
+
+/** 标题层级循环（选区每行独立）：无 → 一级 → 二级 → 三级 → 四级 → 移除 */
+function cycleHeading() {
+  if (!view) return
+  const state = view.state
+  const main = state.selection.main
+  const first = state.doc.lineAt(main.from).number
+  const last = state.doc.lineAt(main.to).number
+  const changes: { from: number; to?: number; insert?: string }[] = []
+  for (let n = first; n <= last; n++) {
+    const line = state.doc.line(n)
+    const m = line.text.match(/^#{1,6}(?: |$)/)
+    const level = m ? m[0].trimEnd().length : 0
+    if (level === 0) {
+      changes.push({ from: line.from, insert: '# ' })
+    } else if (level >= 4) {
+      changes.push({ from: line.from, to: line.from + (m?.[0].length ?? 0) })
+    } else {
+      changes.push({ from: line.from, to: line.from + (m?.[0].length ?? 0), insert: `${'#'.repeat(level + 1)} ` })
+    }
+  }
+  const cs = state.changes(changes)
+  view.dispatch({ changes: cs, selection: state.selection.map(cs, 1) })
+}
+
+/** 加粗切换：有选区包选区（已包裹或身处 ** 内则解除）；无选区作用于整行内容（空行插入 **** 并把光标放进中间） */
+function toggleBold() {
+  if (!view) return
+  const state = view.state
+  const sel = state.selection.main
+  if (sel.empty) {
+    const line = state.doc.lineAt(sel.from)
+    const m = line.text.match(/^(\s*)(.*?)(\s*)$/)!
+    const content = m[2] ?? ''
+    const contentFrom = line.from + (m[1]?.length ?? 0)
+    const contentTo = contentFrom + content.length
+    if (!content) {
+      view.dispatch({ changes: { from: line.from, to: line.to, insert: '****' }, selection: { anchor: line.from + 2 } })
+      return
+    }
+    if (content.startsWith('**') && content.endsWith('**') && content.length > 4) {
+      view.dispatch({
+        changes: [
+          { from: contentFrom, to: contentFrom + 2 },
+          { from: contentTo - 2, to: contentTo },
+        ],
+      })
+    } else {
+      view.dispatch({
+        changes: [
+          { from: contentFrom, insert: '**' },
+          { from: contentTo, insert: '**' },
+        ],
+      })
+    }
+    return
+  }
+  const { from, to } = sel
+  const text = state.sliceDoc(from, to)
+  if (text.startsWith('**') && text.endsWith('**') && text.length > 4) {
+    // 选区自带标记
+    view.dispatch({
+      changes: [
+        { from, to: from + 2 },
+        { from: to - 2, to },
+      ],
+    })
+  } else if (state.sliceDoc(Math.max(0, from - 2), from) === '**' && state.sliceDoc(to, to + 2) === '**') {
+    // 选区被标记包围（如选中 **foo** 中的 foo）
+    view.dispatch({
+      changes: [
+        { from: from - 2, to: from },
+        { from: to, to: to + 2 },
+      ],
+    })
+  } else {
+    view.dispatch({
+      changes: [
+        { from, insert: '**' },
+        { from: to, insert: '**' },
+      ],
+    })
+  }
 }
 
 const theme = EditorView.theme({
@@ -203,10 +315,17 @@ onUnmounted(() => {
          放进 v-if 分支会因挂载时机晚于视图创建而导致 DOM 不渲染 -->
     <div ref="editorEl" v-show="projectStore.currentFile" class="editor" />
     <div v-if="!projectStore.currentFile" class="editor-empty">从中间列表选择文稿，或新建一篇</div>
-    <!-- 字数（有选中时为「选中 | 总数」）与保存失败（仅出错时）：右上角浮层，不占布局高度 -->
-    <div v-if="projectStore.currentFile" class="editor-status">
-      <span v-if="projectStore.saveState === 'error'" class="save-error">保存失败 · </span>
-      <span><template v-if="selectedCount">{{ selectedCount }} / </template>{{ projectStore.wordCount }} 字</span>
+    <!-- 底部工具栏（Ulysses 式）：块级标记切换居中；字数与保存失败提示在右端。
+         按钮用 mousedown.prevent：不夺编辑器焦点，选区与输入状态不中断 -->
+    <div v-if="projectStore.currentFile" class="editor-bar">
+      <button class="bar-item" title="标题（连点在一至四级间切换）" @mousedown.prevent @click="cycleHeading"><span class="mark">#</span>标题</button>
+      <button class="bar-item" title="加粗（无选区时作用于整行）" @mousedown.prevent @click="toggleBold"><span class="mark">**</span>加粗</button>
+      <button class="bar-item" title="列表" @mousedown.prevent @click="toggleLineMark(LIST_MARK_RE, '- ')"><span class="mark">-</span>列表</button>
+      <button class="bar-item" title="引用" @mousedown.prevent @click="toggleLineMark(QUOTE_MARK_RE, '> ')"><span class="mark">&gt;</span>引用</button>
+      <div class="editor-status">
+        <span v-if="projectStore.saveState === 'error'" class="save-error">保存失败 · </span>
+        <span><template v-if="selectedCount">{{ selectedCount }} / </template>{{ projectStore.wordCount }} 字</span>
+      </div>
     </div>
   </div>
 </template>
@@ -236,7 +355,7 @@ onUnmounted(() => {
 .editor :deep(.md-h) {
   font-weight: 700;
 }
-.editor :deep(.md-hmark) {
+.editor :deep(.md-gmark) {
   display: inline-block;
   width: 2em;
   margin-left: -2em;
@@ -247,19 +366,25 @@ onUnmounted(() => {
   color: var(--text-dim);
 }
 
-/* 引用：竖线挂行左缘外，正文淡色斜体 */
+/* 引用（极简）：> 记号隐藏，行内细竖线贴文本块左缘，正文不加颜色/斜体 */
 .editor :deep(.md-quote) {
   position: relative;
-  color: var(--text-dim);
-  font-style: italic;
+  padding-left: 12px;
 }
 .editor :deep(.md-quote)::before {
   content: '';
   position: absolute;
-  left: -20px;
-  top: 0;
-  bottom: 0;
-  border-left: 3px solid var(--border);
+  left: 0;
+  top: 3px;
+  bottom: 3px;
+  width: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--text-dim) 30%, transparent);
+}
+
+/* 段间距行的竖线起点下移，只包住文本区（行盒含 padding-top，否则会富到上一行空间） */
+.editor :deep(.md-quote.cm-para-start)::before {
+  top: calc(var(--editor-para-gap) + 3px);
 }
 
 /* 列表圆点 */
@@ -301,21 +426,67 @@ onUnmounted(() => {
   font-size: calc(13px * var(--font-scale-ui));
 }
 
-/* 字数与保存失败提示：编辑器右上角浮层（pointer-events 放行下方文本点击） */
-.editor-status {
+/* 底部工具栏（Ulysses 式）：块级标记按钮居中，字数右端 */
+.editor-bar {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 36px;
+  user-select: none;
+}
+
+/* 顶部分隔线：与正文列同宽（760px）居中，左右不封闭（Ulysses 式） */
+.editor-bar::before {
+  content: '';
   position: absolute;
   top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(760px, calc(100% - 48px));
+  height: 1px;
+  background: var(--border);
+}
+
+.bar-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-size: calc(13px * var(--font-scale-ui));
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.bar-item .mark {
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+@media (hover: hover) {
+  .bar-item:hover {
+    background: var(--bg-soft);
+    color: var(--text);
+  }
+}
+
+/* 字数与保存失败提示：工具栏右端（绝对定位，不挤压按钮居中） */
+.editor-status {
+  position: absolute;
+  top: 50%;
   right: 12px;
-  z-index: 10;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 22px;
   font-size: calc(11px * var(--font-scale-ui));
   color: var(--text-dim);
-  user-select: none;
   white-space: nowrap;
-  pointer-events: none;
 }
 
 .save-error {
