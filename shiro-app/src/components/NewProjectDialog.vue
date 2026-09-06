@@ -1,6 +1,7 @@
 <script setup lang="ts">
-// 新建项目对话框：项目名 + 父目录（系统目录选择框，经 IPC）→ daemon 创建并导入记录。
-// 遮罩/Esc 关闭行为见 useDialog。
+// 新建项目对话框：项目名（选填，写入 .shiro/project.toml 的 name 用于显示）+
+// 项目文件夹（系统目录选择框，经 IPC；任意已有文件夹，VSCode「打开文件夹」式）。
+// 显示名与文件夹名解耦；遮罩/Esc 关闭行为见 useDialog。
 import { computed, ref } from 'vue'
 import { apiFetch } from '../api'
 import { hasShell, shell } from '../platform'
@@ -11,15 +12,15 @@ const emit = defineEmits<{ close: []; created: [] }>()
 const { onMaskDown, onMaskUp } = useDialogMask(() => emit('close'))
 
 const name = ref('')
-const parent = ref('')
+const dir = ref('')
 const busy = ref(false)
 const error = ref('')
 
-const canCreate = computed(() => name.value.trim() !== '' && parent.value !== '' && !busy.value)
+const canCreate = computed(() => dir.value !== '' && !busy.value)
 
-async function pickParent() {
-  const picked = await shell.pickDirectory('选择项目存放目录')
-  if (picked) parent.value = picked
+async function pickDir() {
+  const picked = await shell.pickDirectory('选择项目文件夹')
+  if (picked) dir.value = picked
 }
 
 async function create() {
@@ -30,7 +31,7 @@ async function create() {
     await apiFetch<components['schemas']['ProjectItem']>('/api/v1/projects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ parent: parent.value, name: name.value.trim() }),
+      body: JSON.stringify({ path: dir.value, name: name.value.trim() }),
     })
     emit('created')
     emit('close')
@@ -48,18 +49,18 @@ async function create() {
       <h3 class="dialog-title">新建项目</h3>
 
       <label class="field">
-        <span class="field-label">项目名</span>
-        <input v-model="name" class="input" type="text" placeholder="例如：我的第一部长篇" autofocus @keydown.enter="create" />
+        <span class="field-label">项目文件夹</span>
+        <div class="dir-row">
+          <input :value="dir" class="input" type="text" placeholder="选择已有的文件夹" readonly />
+          <button class="btn" :disabled="!hasShell" @click="pickDir">选择…</button>
+        </div>
       </label>
 
       <label class="field">
-        <span class="field-label">存放目录</span>
-        <div class="dir-row">
-          <input :value="parent" class="input" type="text" placeholder="选择父目录" readonly />
-          <button class="btn" :disabled="!hasShell" @click="pickParent">选择…</button>
-        </div>
+        <span class="field-label">项目名</span>
+        <input v-model="name" class="input" type="text" placeholder="选填，默认使用文件夹名" @keydown.enter="create" />
       </label>
-      <p class="hint">将在存放目录下创建同名项目文件夹，并初始化 .shiro/ 元数据目录。</p>
+      <p class="hint">项目名写入项目配置（.shiro/project.toml）用于显示，文件夹保持原名不动；文件夹内的已有内容不受影响。</p>
 
       <p v-if="error" class="error">{{ error }}</p>
 

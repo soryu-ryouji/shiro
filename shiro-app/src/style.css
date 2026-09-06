@@ -37,6 +37,76 @@ body {
   background: var(--bg);
 }
 
+/* ---- 滚动条：自绘覆盖条（VSCode/Ulysses 式，见 utils/overlayScrollbar.ts） ---- */
+
+/* 未挂自绘条的容器（v-html 生成的 pre 等）：细胶囊兜底，隐藏为常态、无轨道无按钮 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgb(0 0 0 / 18%);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(0 0 0 / 32%);
+}
+
+/* 自绘条宿主：隐藏原生条 */
+.osb-host {
+  scrollbar-width: none;
+}
+
+.osb-host::-webkit-scrollbar {
+  display: none;
+}
+
+/* 自绘滑块：绝对定位于宿主内，JS 用 translate 钉在视口边缘；隐藏时不吃不点 */
+.osb-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 40;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 18%);
+  opacity: 0;
+  transition:
+    opacity 0.25s ease,
+    background 0.15s ease;
+  pointer-events: none;
+  user-select: none;
+  touch-action: none;
+}
+
+.osb-v {
+  width: 8px;
+}
+
+.osb-h {
+  height: 8px;
+}
+
+.osb-thumb.osb-on {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.osb-thumb:hover,
+.osb-thumb.osb-drag {
+  background: rgb(0 0 0 / 32%);
+}
+
 /* ---- 启动/错误屏（前置阶段） ---- */
 .standalone {
   height: 100%;
@@ -108,10 +178,13 @@ body.col-resizing {
 }
 
 /* 对话框/浮层打开期间挂起窗口拖拽区（drag 由 OS 命中测试优先消费，
-   不挂起点遮罩盖住的标题栏会变成拖动窗口） */
+   不挂起点遮罩盖住的标题栏会变成拖动窗口；含写作模式各栏顶栏拖拽条） */
 body.dialog-open .drag-strip,
 body.dialog-open .sidebar-head,
 body.dialog-open .titlebar,
-body.dialog-open .inspector-head {
+body.dialog-open .inspector-head,
+body.dialog-open .editor-head,
+body.dialog-open .tabs-row,
+body.dialog-open .sheet-head {
   -webkit-app-region: no-drag;
 }

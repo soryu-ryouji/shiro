@@ -35,8 +35,8 @@ export interface paths {
         get: operations["list_projects"];
         put?: never;
         /**
-         * 新建项目：在父目录下创建项目文件夹（初始化 .shiro/ 与 正文/），并导入记录。
-         *     目录已存在时：空目录或已是 shiro 项目（含 .shiro/）则直接导入，否则 409。
+         * 新建项目：把选中的已有文件夹登记为项目（VSCode「打开文件夹」式），并导入记录。
+         *     项目显示名写入 .shiro/project.toml 的 name（与文件夹名解耦）；留空则保留已有或用文件夹名。
          */
         post: operations["create_project"];
         /** 删除项目记录（只从 history.toml 移除，不删除文件夹本身） */
@@ -162,7 +162,7 @@ export interface paths {
         /**
          * 监听项目目录变动：SSE 推送防抖 300ms 后的变更相对路径集合（`.` 开头路径段与临时文件已过滤）。
          *     每帧 data 为 JSON：`{"changed":["正文/a.md"]}`；changed 为空数组表示事件滞后溢出，订阅方应全量刷新。
-         *     监听随连接建立而启动、所有订阅断开后停止。
+         *     鉴权走 `?key=` 查询参数（EventSource 无法自定义 header）。监听随连接建立而启动、所有订阅断开后停止。
          */
         get: operations["watch_project"];
         put?: never;
@@ -190,10 +190,10 @@ export interface components {
             path: string;
         };
         CreateProjectRequest: {
-            /** @description 项目名（即新建的子目录名） */
-            name: string;
-            /** @description 父目录绝对路径（须已存在） */
-            parent: string;
+            /** @description 项目显示名（选填；写入 .shiro/project.toml 的 name，留空则保留已有或用文件夹名） */
+            name?: string;
+            /** @description 项目文件夹绝对路径（须已存在；任意内容的文件夹均可） */
+            path: string;
         };
         ErrorResponse: {
             message: string;
@@ -357,15 +357,6 @@ export interface operations {
             };
             /** @description 参数错误 */
             400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 目录已存在且非空 */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -907,7 +898,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description SSE 事件流（text/event-stream）：data 为 {"changed":[...]} */
+            /** @description SSE 事件流（text/event-stream）：data 为 {"changed":[...]}；鉴权走 ?key= 查询参数 */
             200: {
                 headers: {
                     [name: string]: unknown;

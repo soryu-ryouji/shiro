@@ -18,6 +18,7 @@ import {
   currentUiFontKey,
   currentUiFontSize,
 } from './utils/font'
+import { vOverlayScrollbar } from './utils/overlayScrollbar'
 
 applyUiFont(currentUiFontKey())
 applyEditorFont(currentEditorFontKey())
@@ -26,4 +27,4 @@ applyEditorFontSize(currentEditorFontSize())
 applyEditorLineHeight(currentEditorLineHeight())
 applyEditorParaGap(currentEditorParaGap())
 
-createApp(App).mount('#app')
+createApp(App).directive('overlay-scrollbar', vOverlayScrollbar).mount('#app')

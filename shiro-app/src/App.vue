@@ -144,7 +144,7 @@ const writing = computed(() => active.value === 'project' && !!projectStore.curr
         @toggle-sidebar="toggleSidebar"
         @open-settings="showSettings = true"
       />
-      <div class="content-body" :class="{ flush: writing }">
+      <div v-overlay-scrollbar class="content-body" :class="{ flush: writing }">
         <ProjectView
           v-if="active === 'project'"
           :sidebar-visible="sidebarVisible"

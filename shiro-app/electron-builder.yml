@@ -9,7 +9,9 @@ electronLanguages:
   - zh-CN
   - en-US
 directories:
-  output: dist
+  # 与 vite 的 dist 分离：避免 electron-builder 产物（win-unpacked 等）匹配 files 的 dist/**/*
+  # 被递归打进 app.asar，体积逐次滚雪球
+  output: release
 files:
   - dist-electron/**/*
   - dist/**/*

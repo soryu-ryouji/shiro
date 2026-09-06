@@ -1,4 +1,4 @@
-# 发包：构建 shiro 桌面应用的分发包并归置到仓库根目录的 out/（Windows 为免安装 shiro-windows-x64.zip）。
+﻿# 发包：构建 shiro 桌面应用的分发包并归置到仓库根目录的 out/（Windows 为免安装 shiro-windows-x64.zip）。
 #
 # 用法: ./tools/build.ps1
 # 前置: 最新 Node.js 与 Rust 工具链（https://rustup.rs/）
@@ -25,7 +25,7 @@ try {
     Pop-Location
 }
 
-$package = Join-Path $AppDir 'dist\shiro-windows-x64.zip'
+$package = Join-Path $AppDir 'release\shiro-windows-x64.zip'
 if (-not (Test-Path $package)) {
     throw "打包产物不存在: $package（electron-builder 未产出 shiro-windows-x64.zip）"
 }

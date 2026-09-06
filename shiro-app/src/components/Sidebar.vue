@@ -38,7 +38,7 @@ function onHeadDblClick(e: MouseEvent) {
     <div v-if="trafficOnTop" class="activity-row" @dblclick="onHeadDblClick">
       <ActivityBar :items="items" :active="active" @activate="emit('activate', $event)" />
     </div>
-    <div class="sidebar-body">
+    <div v-overlay-scrollbar class="sidebar-body">
       <ProjectPanel v-if="active === 'project'" />
       <DatabasePanel v-else-if="active === 'database'" />
       <ModelPanel v-else />

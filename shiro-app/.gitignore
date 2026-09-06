@@ -1,6 +1,7 @@
 node_modules/
 web/dist/
 dist/
+release/
 resources/
 tools/.tmp/
 

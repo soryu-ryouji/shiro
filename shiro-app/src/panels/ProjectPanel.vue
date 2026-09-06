@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Project 面板（侧栏）：区块结构，首个区块为「项目列表」。
-// - 区块右上 +：新建项目（指定目录创建工程文件夹并导入记录，见 NewProjectDialog）
+// - 区块右上 +：新建项目（选已有文件夹作项目目录，项目名写入 .shiro/project.toml 显示，见 NewProjectDialog）
 // - 列表项悬停浮现 ···（单击或右键调出菜单）：打开文件位置（仅桌面端）/ 删除记录（不删文件夹）
 import { nextTick, onMounted, provide, ref } from 'vue'
 import { apiFetch } from '../api'
@@ -100,7 +100,7 @@ function menuItems(item: ProjectItem): MenuItem[] {
     items.push({ label: '打开文件位置', action: () => void shell.showInFolder(item.path) })
   }
   if (item.exists) {
-    items.push({ label: '重命名…', action: () => (renamingProject.value = item) })
+    items.push({ label: '重命名文件夹…', action: () => (renamingProject.value = item) })
   }
   items.push({
     label: '从列表移除',
@@ -129,18 +129,23 @@ async function removeRecord(item: ProjectItem) {
 // ---- 项目重命名（文件夹本体改名，history 同步） ----
 const renamingProject = ref<ProjectItem | null>(null)
 
+/** 文件夹名（path 末段）；重命名文件夹对话框预填用——与项目显示名（project.toml 的 name）解耦，不能混用 */
+function dirName(path: string): string {
+  return path.split(/[\\/]/).pop() ?? path
+}
+
 async function submitRename(newName: string) {
   const item = renamingProject.value
   if (!item) return
   try {
-    await apiFetch('/api/v1/projects/rename', {
+    const renamed = await apiFetch<ProjectItem>('/api/v1/projects/rename', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: item.path, new_name: newName }),
     })
-    // 写作模式下重命名当前打开的项目时，同步项目头标题
+    // 写作模式下重命名当前打开的项目时，同步项目头标题与路径（后端返回新 path 与显示名）
     if (projectStore.current?.path === item.path) {
-      projectStore.current = { ...projectStore.current, name: newName }
+      projectStore.current = renamed
     }
     await refresh()
   } catch (e) {
@@ -176,7 +181,7 @@ function openProjectMenu(e: MouseEvent) {
   if (hasShell) {
     items.push({ label: '在文件夹中打开', action: () => void shell.openPath(cur.path) })
   }
-  items.push({ label: '重命名…', action: () => (renamingProject.value = cur) })
+  items.push({ label: '重命名文件夹…', action: () => (renamingProject.value = cur) })
   items.push({ label: '删除文件夹…', danger: true, action: () => (deletingProject.value = cur) })
   projMenu.value = { x: rect.left, y: rect.bottom + 4, items }
 }
@@ -247,7 +252,7 @@ function openProjectMenu(e: MouseEvent) {
     <section class="section">
       <header class="section-head">
         <span class="section-title">项目列表</span>
-        <button class="add-btn" title="新建项目" @click="showNew = true">
+        <button class="add-btn" title="新建项目（选择已有文件夹）" @click="showNew = true">
           <Icon name="plus" :size="14" />
         </button>
       </header>
@@ -287,8 +292,8 @@ function openProjectMenu(e: MouseEvent) {
   <!-- 项目重命名 / 删除文件夹确认：列表右键菜单与写作模式 ··· 菜单共用 -->
   <PromptDialog
     v-if="renamingProject"
-    title="重命名项目"
-    :initial="renamingProject.name"
+    title="重命名文件夹"
+    :initial="dirName(renamingProject.path)"
     placeholder="新名称"
     @close="renamingProject = null"
     @submit="submitRename"
@@ -336,6 +341,11 @@ function openProjectMenu(e: MouseEvent) {
   background: transparent;
   color: var(--text-dim);
   cursor: pointer;
+}
+
+.add-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 @media (hover: hover) {

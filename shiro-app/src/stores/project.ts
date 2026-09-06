@@ -26,6 +26,8 @@ export const projectStore = reactive({
   /** 编辑器状态（Editor 写入；字数常驻右上角浮层，保存失败以错误色提示） */
   wordCount: 0,
   saveState: 'saved' as 'saved' | 'saving' | 'error',
+  /** 当前文稿的最新内容（含未保存输入，Editor 同步；预览实时渲染用） */
+  currentContent: '',
 
   async open(project: ProjectItem) {
     this.current = project

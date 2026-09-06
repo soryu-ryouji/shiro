@@ -66,6 +66,16 @@ const ICONS: Record<string, IconDef> = {
   filter: { paths: [{ d: 'M2.5 3h11L9.3 7.8v4.2l-2.6 1.3V7.8z' }] },
   // 关闭（×）
   close: { paths: [{ d: 'M3.5 3.5l9 9M12.5 3.5l-9 9' }] },
+  // 眼睛（预览，lucide eye 24px 网格）
+  eye: {
+    vb: '0 0 24 24',
+    paths: [
+      {
+        d: 'M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0',
+      },
+      { d: 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z' },
+    ],
+  },
 }
 
 const def = computed(() => ICONS[props.name] ?? { paths: [] })

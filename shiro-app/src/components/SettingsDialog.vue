@@ -135,7 +135,7 @@ onMounted(async () => {
         </button>
       </nav>
 
-      <div class="dialog-body">
+      <div v-overlay-scrollbar class="dialog-body">
         <section v-show="section === 'appearance'" class="pane">
           <div class="group">
             <div class="grow">

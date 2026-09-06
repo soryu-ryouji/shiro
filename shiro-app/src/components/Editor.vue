@@ -9,6 +9,7 @@ import { projectStore, onExternalFileChange } from '../stores/project'
 import { countWords } from '../utils/wordcount'
 import { editorParaMode } from '../utils/font'
 import { livePreview, FENCE_RE, HEADING_RE } from '../utils/livePreview'
+import { attachOverlayScrollbar } from '../utils/overlayScrollbar'
 import type { components } from '../api-types'
 import { EditorView, keymap, drawSelection, ViewPlugin, Decoration, type DecorationSet, type ViewUpdate } from '@codemirror/view'
 import { EditorState, RangeSetBuilder } from '@codemirror/state'
@@ -50,6 +51,7 @@ function scheduleSave(content: string) {
   if (!file) return
   pending = { file, content }
   projectStore.wordCount = countWords(content)
+  projectStore.currentContent = content
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => void flushSave(), 800)
 }
@@ -72,6 +74,7 @@ function applyExternalChange(file: string, content: string | null) {
   view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } })
   suppressSave = false
   projectStore.wordCount = countWords(content)
+  projectStore.currentContent = content
 }
 
 // ---- 选中字数：有选区时浮层显示「选中 / 总数」（与总数同一统计策略） ----
@@ -246,6 +249,7 @@ function jumpToHeading(pos: number) {
 const wrapEl = ref<HTMLElement | null>(null)
 const outlineVisible = ref(false)
 let resizeObserver: ResizeObserver | null = null
+let detachScrollbar: (() => void) | null = null
 
 const theme = EditorView.theme({
   // 字号基数须与 font.ts EDITOR_FONT_SIZE_DEFAULT 一致（渲染值 = 基数 × 设定值 ÷ 默认值）
@@ -341,6 +345,7 @@ async function loadFile() {
     collectOutline(view.state)
     selectedCount.value = 0
     projectStore.wordCount = countWords(res.content ?? '')
+    projectStore.currentContent = res.content ?? ''
     pending = null
     projectStore.saveState = 'saved'
   } finally {
@@ -350,6 +355,8 @@ async function loadFile() {
 
 onMounted(() => {
   view = new EditorView({ state: makeState(''), parent: editorEl.value! })
+  // CodeMirror 滚动区由视图内部生成，走命令式挂载自绘滚动条
+  detachScrollbar = attachOverlayScrollbar(view.scrollDOM)
   onExternalFileChange(applyExternalChange)
   resizeObserver = new ResizeObserver((entries) => {
     outlineVisible.value = (entries[0]?.contentRect.width ?? 0) >= 1040
@@ -364,6 +371,7 @@ watch(
 onUnmounted(() => {
   onExternalFileChange(null)
   resizeObserver?.disconnect()
+  detachScrollbar?.()
   void flushSave()
   view?.destroy()
 })
@@ -377,7 +385,7 @@ onUnmounted(() => {
     <div v-if="!projectStore.currentFile" class="editor-empty">从中间列表选择文稿，或新建一篇</div>
     <!-- 大纲（Notion 式）：宽度足够时浮在右侧留白（绝对定位，不占布局；无边框无底色）；
          按级别缩进，点击跳转，当前章节高亮 -->
-    <nav v-if="outlineVisible && outline.length" class="outline">
+    <nav v-if="outlineVisible && outline.length" v-overlay-scrollbar class="outline">
       <button
         v-for="it in outline"
         :key="it.pos"
@@ -436,6 +444,9 @@ onUnmounted(() => {
   padding-right: 0.6em;
   box-sizing: border-box;
   text-align: right;
+  /* CM lineWrapping 给内容域设了 overflow-wrap:anywhere，三级以上 # 串会在盒内断行；
+     禁掉断行，超宽部分向右对齐溢出到左侧留白（text-align:right 锚定右缘） */
+  white-space: nowrap;
   font-weight: 400;
   color: var(--text-dim);
 }
@@ -461,9 +472,10 @@ onUnmounted(() => {
   top: calc(var(--editor-para-gap) + 3px);
 }
 
-/* 列表圆点 */
+/* 列表圆点（nowrap 同理，防 break-spaces 在 • 与空格间断行） */
 .editor :deep(.md-bullet) {
   color: var(--text-dim);
+  white-space: nowrap;
 }
 
 /* 行内格式 */
@@ -562,7 +574,6 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 1px;
   overflow-y: auto;
-  scrollbar-width: thin;
   user-select: none;
 }
 

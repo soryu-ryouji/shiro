@@ -21,15 +21,15 @@ npm run pack
 mkdir -p "$OUT_DIR"
 case "$(uname -s)" in
   Darwin)
-    APP="$(ls -d dist/mac*/shiro.app 2>/dev/null | head -n1)"
-    [ -n "$APP" ] || { echo "打包产物不存在: dist/mac*/shiro.app（electron-builder 未产出）"; exit 1; }
+    APP="$(ls -d release/mac*/shiro.app 2>/dev/null | head -n1)"
+    [ -n "$APP" ] || { echo "打包产物不存在: release/mac*/shiro.app（electron-builder 未产出）"; exit 1; }
     rm -rf "/Applications/shiro.app"
     cp -R "$APP" "/Applications/shiro.app"
     echo "完成：应用已安装到 /Applications/shiro.app。"
     ;;
   Linux)
-    APPIMAGE="$(ls dist/*.AppImage 2>/dev/null | head -n1)"
-    [ -n "$APPIMAGE" ] || { echo "打包产物不存在: dist/*.AppImage（electron-builder 未产出）"; exit 1; }
+    APPIMAGE="$(ls release/*.AppImage 2>/dev/null | head -n1)"
+    [ -n "$APPIMAGE" ] || { echo "打包产物不存在: release/*.AppImage（electron-builder 未产出）"; exit 1; }
     cp "$APPIMAGE" "$OUT_DIR/"
     chmod +x "$OUT_DIR/$(basename "$APPIMAGE")"
     echo "完成：应用已归置到 $OUT_DIR/$(basename "$APPIMAGE")（已赋予执行权限）。"

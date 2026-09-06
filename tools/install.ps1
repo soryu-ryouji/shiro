@@ -1,4 +1,4 @@
-# 本机安装：构建 shiro 桌面应用，把可运行文件归置到目标目录（默认仓库根目录的 out/）。
+﻿# 本机安装：构建 shiro 桌面应用，把可运行文件归置到目标目录（默认仓库根目录的 out/）。
 # Windows 产物为免安装目录（shiro.exe 就地可运行）。
 #
 # 用法: ./tools/install.ps1 [-Path <输出目录>]（--path / --path= 写法亦可）
@@ -34,11 +34,14 @@ try {
     }
     # pack:dir 跳过 zip 压缩——install 只需要未打包目录
     npm run pack:dir
+    if ($LASTEXITCODE -ne 0) {
+        throw "npm run pack:dir 失败（exit $LASTEXITCODE）"
+    }
 } finally {
     Pop-Location
 }
 
-$unpacked = Join-Path $AppDir 'dist\win-unpacked'
+$unpacked = Join-Path $AppDir 'release\win-unpacked'
 if (-not (Test-Path $unpacked)) {
     throw "打包产物不存在: $unpacked（electron-builder 未产出 win-unpacked）"
 }

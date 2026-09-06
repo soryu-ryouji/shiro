@@ -26,14 +26,14 @@ case "$(uname -s)" in
       x86_64) ARCH=x64 ;;
       *) echo "不支持的架构: $(uname -m)"; exit 1 ;;
     esac
-    APP="$(ls -d dist/mac*/shiro.app 2>/dev/null | head -n1)"
-    [ -n "$APP" ] || { echo "打包产物不存在: dist/mac*/shiro.app（electron-builder 未产出）"; exit 1; }
+    APP="$(ls -d release/mac*/shiro.app 2>/dev/null | head -n1)"
+    [ -n "$APP" ] || { echo "打包产物不存在: release/mac*/shiro.app（electron-builder 未产出）"; exit 1; }
     ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUT_DIR/shiro-mac-$ARCH.zip"
     echo "应用分发包: $OUT_DIR/shiro-mac-$ARCH.zip"
     ;;
   Linux)
-    APPIMAGE="$(ls dist/*.AppImage 2>/dev/null | head -n1)"
-    [ -n "$APPIMAGE" ] || { echo "打包产物不存在: dist/*.AppImage（electron-builder 未产出）"; exit 1; }
+    APPIMAGE="$(ls release/*.AppImage 2>/dev/null | head -n1)"
+    [ -n "$APPIMAGE" ] || { echo "打包产物不存在: release/*.AppImage（electron-builder 未产出）"; exit 1; }
     cp "$APPIMAGE" "$OUT_DIR/"
     chmod +x "$OUT_DIR/$(basename "$APPIMAGE")"
     echo "应用分发包: $OUT_DIR/$(basename "$APPIMAGE")"

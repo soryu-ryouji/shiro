@@ -191,7 +191,7 @@ async fn list_projects() -> Json<ProjectListResponse> {
         .projects
         .iter()
         .map(|e| ProjectItem {
-            name: dir_name(&e.path),
+            name: project_display_name(&e.path),
             path: e.path.clone(),
             exists: Path::new(&e.path).is_dir(),
         })
@@ -201,14 +201,39 @@ async fn list_projects() -> Json<ProjectListResponse> {
 
 #[derive(Deserialize, ToSchema)]
 pub struct CreateProjectRequest {
-    /// 父目录绝对路径（须已存在）
-    pub parent: String,
-    /// 项目名（即新建的子目录名）
+    /// 项目文件夹绝对路径（须已存在；任意内容的文件夹均可）
+    pub path: String,
+    /// 项目显示名（选填；写入 .shiro/project.toml 的 name，留空则保留已有或用文件夹名）
+    #[serde(default)]
     pub name: String,
 }
 
-/// 新建项目：在父目录下创建项目文件夹（初始化 .shiro/ 元数据目录），并导入记录。
-/// 目录已存在时：空目录或已是 shiro 项目（含 .shiro/）则直接导入，否则 409。
+/// 项目显示名：.shiro/project.toml 的 name（缺失、损坏或为空时回退目录 basename）
+fn project_display_name(path: &str) -> String {
+    let toml_path = Path::new(path).join(".shiro").join("project.toml");
+    std::fs::read_to_string(&toml_path)
+        .ok()
+        .and_then(|s| s.parse::<toml::Table>().ok())
+        .and_then(|t| t.get("name").and_then(|n| n.as_str()).map(String::from))
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| dir_name(path))
+}
+
+/// 写项目显示名到 .shiro/project.toml（解析保留其他字段；文件不存在或损坏则新建）
+fn write_project_name(target: &Path, name: &str) -> Result<(), ApiError> {
+    let toml_path = target.join(".shiro").join("project.toml");
+    let mut doc: toml::Table = std::fs::read_to_string(&toml_path)
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_default();
+    doc.insert("name".into(), toml::Value::String(name.into()));
+    let text = toml::to_string_pretty(&doc)
+        .map_err(|e| bad_request(&format!("配置写入失败：{e}")))?;
+    std::fs::write(&toml_path, text).map_err(internal_error)
+}
+
+/// 新建项目：把选中的已有文件夹登记为项目（VSCode「打开文件夹」式），并导入记录。
+/// 项目显示名写入 .shiro/project.toml 的 name（与文件夹名解耦）；留空则保留已有或用文件夹名。
 #[utoipa::path(
     post,
     path = "/api/v1/projects",
@@ -217,7 +242,6 @@ pub struct CreateProjectRequest {
     responses(
         (status = 201, description = "已创建", body = ProjectItem),
         (status = 400, description = "参数错误", body = ErrorResponse),
-        (status = 409, description = "目录已存在且非空", body = ErrorResponse),
         (status = 500, description = "写入失败", body = ErrorResponse)
     ),
     security(("bearer_token" = []))
@@ -225,43 +249,38 @@ pub struct CreateProjectRequest {
 async fn create_project(
     Json(req): Json<CreateProjectRequest>,
 ) -> Result<(StatusCode, Json<ProjectItem>), ApiError> {
+    let target = PathBuf::from(req.path.trim());
+    if !target.is_dir() {
+        return Err(bad_request("项目文件夹不存在"));
+    }
     let name = req.name.trim();
-    const INVALID: [char; 9] = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
-    if name.is_empty() || name == "." || name == ".." || name.chars().any(|c| INVALID.contains(&c))
-    {
-        return Err(bad_request(
-            "项目名不能为空，且不能包含 \\ / : * ? \" < > | 字符",
-        ));
-    }
-    let parent = PathBuf::from(req.parent.trim());
-    if !parent.is_dir() {
-        return Err(bad_request("父目录不存在"));
-    }
+    let display_name = (!name.is_empty()).then_some(name);
+    let key = register_project(&target, display_name)?;
+    Ok((
+        StatusCode::CREATED,
+        Json(ProjectItem {
+            path: key,
+            name: project_display_name(&target.to_string_lossy()),
+            exists: true,
+        }),
+    ))
+}
 
-    let target = parent.join(name);
-    if target.exists() {
-        let is_empty = target
-            .read_dir()
-            .map(|mut d| d.next().is_none())
-            .unwrap_or(false);
-        let is_shiro_project = target.join(".shiro").is_dir();
-        if !is_empty && !is_shiro_project {
-            return Err((
-                StatusCode::CONFLICT,
-                Json(ErrorResponse {
-                    message: "目录已存在且非空".into(),
-                }),
-            ));
-        }
-    } else {
-        std::fs::create_dir_all(&target).map_err(internal_error)?;
-    }
-
+/// 项目登记：补齐缺失的 .shiro/ 元数据并写入 history（去重、最新在前），返回项目路径。
+/// display_name 有值时写入 project.toml 的 name（保留其他字段），无值时仅在配置缺失时以文件夹名初始化。
+fn register_project(target: &Path, display_name: Option<&str>) -> Result<String, ApiError> {
     // 只初始化 .shiro/ 元数据目录；正文/、大纲/ 等是推荐约定而非强制结构，不主动创建（见 docs/backend/storage.md）
     std::fs::create_dir_all(target.join(".shiro")).map_err(internal_error)?;
-    let project_toml = target.join(".shiro").join("project.toml");
-    if !project_toml.exists() {
-        std::fs::write(&project_toml, format!("name = {:?}\n", name)).map_err(internal_error)?;
+    match display_name {
+        Some(name) => write_project_name(target, name)?,
+        None => {
+            let project_toml = target.join(".shiro").join("project.toml");
+            if !project_toml.exists() {
+                let name = dir_name(&target.to_string_lossy());
+                std::fs::write(&project_toml, format!("name = {:?}\n", name))
+                    .map_err(internal_error)?;
+            }
+        }
     }
 
     // 导入记录：去重、最新在前
@@ -276,15 +295,7 @@ async fn create_project(
         },
     );
     save_history(&history).map_err(internal_error)?;
-
-    Ok((
-        StatusCode::CREATED,
-        Json(ProjectItem {
-            path: key,
-            name: name.to_string(),
-            exists: true,
-        }),
-    ))
+    Ok(key)
 }
 
 #[derive(Deserialize, IntoParams)]
@@ -885,21 +896,7 @@ async fn rename_project(
     }
     std::fs::rename(&src, &dst).map_err(internal_error)?;
 
-    // .shiro/project.toml 的 name 同步（保留其他字段）
-    let project_toml = dst.join(".shiro").join("project.toml");
-    if project_toml.is_file() {
-        if let Ok(text) = std::fs::read_to_string(&project_toml) {
-            if let Ok(mut doc) = text.parse::<toml::Value>() {
-                if let Some(table) = doc.as_table_mut() {
-                    table.insert("name".into(), toml::Value::String(name.into()));
-                    let _ = std::fs::write(
-                        &project_toml,
-                        toml::to_string_pretty(&doc).unwrap_or_default(),
-                    );
-                }
-            }
-        }
-    }
+    // 文件夹名与项目显示名（.shiro/project.toml 的 name）解耦：重命名文件夹不改显示名
 
     // history 记录换为新路径
     let new_path = dst.to_string_lossy().to_string();
@@ -912,9 +909,10 @@ async fn rename_project(
     }
     save_history(&history).map_err(internal_error)?;
 
+    let display_name = project_display_name(&new_path);
     Ok(Json(ProjectItem {
         path: new_path,
-        name: name.into(),
+        name: display_name,
         exists: true,
     }))
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 编辑区顶栏（窗口拖拽区）：右端设置按钮；Windows/Linux 避让窗口控制按钮。
+// 编辑区顶栏（窗口拖拽区）：预览与设置按钮；Windows/Linux 避让窗口控制按钮。
 // 其下为标签页条（VSCode 式 tabs：点击切换、右侧 x 关闭、HTML5 拖拽排序），恒占高度：标签 ≤1 时留空，显隐不推动内容块。
 // 字数与保存状态在 Editor.vue 底部工具栏右端。
 import { ref } from 'vue'
@@ -7,7 +7,7 @@ import { hasShell, isMac, shell } from '../platform'
 import { projectStore } from '../stores/project'
 import Icon from './Icon.vue'
 
-const emit = defineEmits<{ 'open-settings': [] }>()
+const emit = defineEmits<{ 'open-settings': []; 'open-preview': [] }>()
 
 /** Windows/Linux 桌面端：窗口控制按钮（fixed 右上角）压本行右端 */
 const reserveControls = hasShell && !isMac
@@ -56,8 +56,11 @@ function onDragEnd() {
 </script>
 
 <template>
-  <!-- 顶栏常驻（窗口拖拽区）：右端设置 -->
+  <!-- 顶栏常驻（窗口拖拽区）：预览（有文稿时可用）与设置 -->
   <div class="editor-head" :class="{ 'reserve-controls': reserveControls }" @dblclick="onDblClick">
+    <button class="bar-btn" title="手机预览" :disabled="!projectStore.currentFile" @click="emit('open-preview')">
+      <Icon name="eye" :size="15" />
+    </button>
     <button class="bar-btn" title="设置" @click="emit('open-settings')">
       <Icon name="settings" :size="15" />
     </button>
@@ -151,6 +154,16 @@ function onDragEnd() {
     background: var(--bg-soft);
     color: var(--text);
   }
+}
+
+.bar-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.bar-btn:disabled:hover {
+  background: transparent;
+  color: var(--text-dim);
 }
 
 /* 标签区：横向滚动（滚动条隐藏），不挤压右侧状态区 */

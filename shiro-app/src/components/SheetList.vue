@@ -296,7 +296,7 @@ async function confirmRename(path: string) {
       <p v-if="createError" class="naming-error">{{ createError }}</p>
     </div>
 
-    <ul v-if="shownSheets.length" class="sheets">
+    <ul v-if="shownSheets.length" v-overlay-scrollbar class="sheets">
       <li
         v-for="s in shownSheets"
         :key="s.path"
