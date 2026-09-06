@@ -42,6 +42,7 @@ import {
   type ParaMode,
 } from '../utils/font'
 import pkg from '../../package.json'
+import { applyCountStrategy, countStrategy, type CountStrategyKey } from '../utils/wordcount'
 
 const emit = defineEmits<{ close: [] }>()
 const { onMaskDown, onMaskUp } = useDialogMask(() => emit('close'))
@@ -334,6 +335,18 @@ onMounted(async () => {
 
         <section v-show="section === 'general'" class="pane">
           <div class="group">
+            <div class="grow">
+              <span class="glabel">字数统计</span>
+              <select
+                class="select"
+                :value="countStrategy"
+                title="状态栏字数的统计口径"
+                @change="applyCountStrategy(($event.target as HTMLSelectElement).value as CountStrategyKey)"
+              >
+                <option value="cjk">仅中文字符</option>
+                <option value="cjkPunct">中文字符与标点</option>
+              </select>
+            </div>
             <div class="grow">
               <span class="glabel">版本</span>
               <span class="gvalue">shiro {{ pkg.version }}</span>

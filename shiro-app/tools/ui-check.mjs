@@ -61,7 +61,7 @@ function check(name, actual, expected) {
 fs.rmSync(tmp, { recursive: true, force: true })
 fs.mkdirSync(path.dirname(sheetAbs), { recursive: true })
 fs.writeFileSync(sheetAbs, '# 自检文稿\n\n种子段落文本。\n')
-fs.writeFileSync(path.join(projDir, '正文', '笔记.txt'), '纯文本笔记\n# 不是标题\n')
+fs.writeFileSync(path.join(projDir, '正文', '笔记.txt'), '纯文本笔记。\n# 不是标题\n')
 
 // ---------- 构建主进程与 preload（同 scripts/dev.mjs） ----------
 
@@ -304,6 +304,14 @@ try {
     await waitFor(async () => evaljs(`!document.querySelector('.dialog-body .osb-v')?.classList.contains('osb-on') ?? false`), 5_000, '滚动条残留'),
     true,
   )
+  // 字数统计策略：通用页切换到「中文字符与标点」→ 状态栏字数即时重算（当前 txt 文稿恰有 1 个句号）
+  const countBefore = await evaljs(`Number(document.querySelector('.editor-status').textContent.match(/(\\d+)\\s*字/)?.[1] ?? 0)`)
+  await evaljs(`(() => { const s = [...document.querySelectorAll('.grow')].find((r) => r.textContent.includes('字数统计'))?.querySelector('select'); if (s) { s.value = 'cjkPunct'; s.dispatchEvent(new Event('change')) } })()`)
+  const countAfter = await waitFor(async () => {
+    const n = await evaljs(`Number(document.querySelector('.editor-status').textContent.match(/(\\d+)\\s*字/)?.[1] ?? 0)`)
+    return n === countBefore + 1 ? n : null
+  }, 5_000, '字数重算')
+  check('字数统计切换为含标点（+1）', countAfter - countBefore, 1)
   // 关闭设置（Esc）
   await evaljs(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`)
   await waitFor(async () => evaljs(`!document.querySelector('.dialog-body')`), 10_000, '设置面板关闭')

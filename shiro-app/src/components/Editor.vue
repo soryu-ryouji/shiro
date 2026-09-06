@@ -6,7 +6,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { apiFetch } from '../api'
 import { projectStore, onExternalFileChange } from '../stores/project'
-import { countWords } from '../utils/wordcount'
+import { countWords, countStrategy } from '../utils/wordcount'
 import { editorParaMode, outlineMode } from '../utils/font'
 import { isPlainSheet } from '../utils/sheet'
 import { livePreview, FENCE_RE, HEADING_RE } from '../utils/livePreview'
@@ -82,6 +82,12 @@ function applyExternalChange(file: string, content: string | null) {
 
 // ---- 选中字数：有选区时浮层显示「选中 / 总数」（与总数同一统计策略） ----
 const selectedCount = ref(0)
+
+// 统计方案切换（设置面板）→ 状态栏字数即时重算
+watch(countStrategy, () => {
+  projectStore.wordCount = countWords(projectStore.currentContent)
+  if (view) selectedCount.value = countSelection(view.state)
+})
 function countSelection(state: EditorState): number {
   let n = 0
   for (const r of state.selection.ranges) {
