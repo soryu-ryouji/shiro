@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 中栏文稿列表（Ulysses 第二栏）：选中目录的直接 .md 文稿。
-// 顶栏（窗口拖拽区）：左侧目录名（侧栏收起时带展开入口），右侧筛选（按标题子串过滤）与新建（列表首行内联命名）。
+// 顶栏（窗口拖拽区）：右侧筛选（按标题子串过滤）与新建（列表首行内联命名）；下方目录名横带（左下对齐 + 底部横线）。
 // 每项展示：时间 + 标题 + 正文预览（daemon excerpts 接口，剥离 markdown 取开头约 160 字，两行截断）。
 import { computed, nextTick, ref, watch } from 'vue'
 import { apiFetch } from '../api'
@@ -195,12 +195,11 @@ async function confirmRename(path: string) {
 
 <template>
   <div class="sheet-list">
-    <!-- 次栏顶栏（窗口拖拽区）：左端目录名（侧栏收起时带展开入口），右端筛选/新建 -->
+    <!-- 次栏顶栏（窗口拖拽区）：右端筛选/新建；侧栏收起时左端带展开入口 -->
     <div class="sheet-head" :class="{ 'reserve-traffic': reserveTraffic }" @dblclick="onHeadDblClick">
       <button v-if="!sidebarVisible" class="head-btn" title="展开侧栏" @click="emit('toggle-sidebar')">
         <Icon name="panelLeft" :size="15" />
       </button>
-      <span class="head-title">{{ dirTitle }}</span>
       <div class="head-actions">
         <!-- mousedown.prevent：阻止按下时筛选输入框失焦（否则 blur 先关闭、click 又打开，开关打架） -->
         <button class="head-btn" :class="{ on: filtering }" title="筛选文稿" @mousedown.prevent @click="toggleFilter">
@@ -210,6 +209,11 @@ async function confirmRename(path: string) {
           <Icon name="plus" :size="14" />
         </button>
       </div>
+    </div>
+
+    <!-- 目录名横带（Ulysses 式列表头）：名称左下对齐，底部横线与列表分隔 -->
+    <div class="dir-band" @dblclick="onHeadDblClick">
+      <span class="dir-band-text">{{ dirTitle }}</span>
     </div>
 
     <!-- 筛选行：顶栏漏斗开关 -->
@@ -307,22 +311,32 @@ async function confirmRename(path: string) {
   padding-left: 78px;
 }
 
-.head-title {
-  flex: 1;
-  min-width: 0;
+/* 目录名横带：名称左下对齐 + 底部横线（Ulysses 式列表头）；与顶栏同高 40px，兼窗口拖拽区 */
+.dir-band {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  height: 40px;
+  padding: 0 12px 7px;
+  border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.dir-band-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: calc(13px * var(--font-scale-ui));
-  font-weight: 600;
+  font-size: calc(14px * var(--font-scale-ui));
+  font-weight: 700;
   color: var(--text);
-  user-select: none;
 }
 
 .head-actions {
   flex: none;
   display: flex;
   gap: 2px;
+  margin-left: auto;
 }
 
 .head-btn {
@@ -374,7 +388,7 @@ async function confirmRename(path: string) {
 
 /* 命名行与列表首项同位（顶部间隙一致） */
 .naming-row {
-  padding: 12px 8px 4px;
+  padding: 20px 8px 4px;
 }
 
 .naming-input {
@@ -397,8 +411,8 @@ async function confirmRename(path: string) {
   flex: 1;
   list-style: none;
   margin: 0;
-  /* 顶部间隙与标签页条（EditorTabs .tabs-row）一致：首项与首签平齐，顶栏下留出呼吸位 */
-  padding: 12px 8px 8px;
+  /* 顶部间隙：顶栏 40px + 目录名横带 40px + 20px 间距——列表首项与正文首行保持同高（100px） */
+  padding: 20px 8px 8px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;

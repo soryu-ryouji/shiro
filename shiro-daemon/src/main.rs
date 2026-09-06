@@ -1,4 +1,5 @@
 mod api;
+mod watch;
 
 use api::AppState;
 use clap::Parser;
@@ -34,6 +35,7 @@ async fn main() {
             eprintln!("[shiro-daemon] SHIRO_TOKEN 未设置，已生成临时 token: {generated}");
             generated
         }),
+        watch_hub: Default::default(),
     };
 
     let (router, doc) = api::build_router(state, cli.serve_dir);

@@ -1,12 +1,18 @@
+use crate::watch;
 use axum::{
     Json, Router,
     extract::{Query, Request, State},
     http::{StatusCode, header},
     middleware::Next,
     response::Response,
+    response::sse::{Event, KeepAlive, Sse},
 };
 use serde::{Deserialize, Serialize};
+use std::convert::Infallible;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
+use tokio_stream::StreamExt;
+use tokio_stream::wrappers::BroadcastStream;
 use tower_http::services::{ServeDir, ServeFile};
 use utoipa::{IntoParams, Modify, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
@@ -14,6 +20,7 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 #[derive(Clone)]
 pub struct AppState {
     pub token: String,
+    pub watch_hub: watch::WatchHub,
 }
 
 #[derive(Serialize, ToSchema, PartialEq, Debug)]
@@ -1006,17 +1013,68 @@ async fn remove_project_file(Query(q): Query<RemoveFileQuery>) -> Result<StatusC
     Ok(StatusCode::NO_CONTENT)
 }
 
+// ---- 项目目录监听（SSE 推送；实现见 watch.rs，供编辑器外部变动重载，后续 AI 写稿可订阅同一 Hub） ----
+
+#[derive(Deserialize, IntoParams)]
+pub struct WatchQuery {
+    /// 项目根目录绝对路径
+    path: String,
+}
+
+/// 监听项目目录变动：SSE 推送防抖 300ms 后的变更相对路径集合（`.` 开头路径段与临时文件已过滤）。
+/// 每帧 data 为 JSON：`{"changed":["正文/a.md"]}`；changed 为空数组表示事件滞后溢出，订阅方应全量刷新。
+/// 鉴权走 `?key=` 查询参数（EventSource 无法自定义 header）。监听随连接建立而启动、所有订阅断开后停止。
+#[utoipa::path(
+    get,
+    path = "/api/v1/projects/watch",
+    tag = "projects",
+    params(WatchQuery),
+    responses(
+        (status = 200, description = "SSE 事件流（text/event-stream）：data 为 {\"changed\":[...]}；鉴权走 ?key= 查询参数"),
+        (status = 400, description = "项目目录不存在", body = ErrorResponse),
+        (status = 401, description = "未鉴权")
+    ),
+    security(("bearer_token" = []))
+)]
+async fn watch_project(
+    State(state): State<AppState>,
+    Query(q): Query<WatchQuery>,
+) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
+    let root = PathBuf::from(&q.path);
+    if !root.is_dir() {
+        return Err(bad_request("项目目录不存在"));
+    }
+    let (rx, guard) = state.watch_hub.subscribe(&root);
+    let stream = BroadcastStream::new(rx).map(move |item| {
+        let _guard = &guard; // 订阅守卫随流存活：客户端断开 → 流 drop → 退订（归零停监听）
+        let changed = item.unwrap_or_default(); // Lagged（消费滞后丢帧）→ 空数组，订阅方全量刷新
+        let data = serde_json::json!({ "changed": changed }).to_string();
+        Ok(Event::default().data(data))
+    });
+    Ok(Sse::new(stream).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(15))
+            .text("ping"),
+    ))
+}
+
 async fn auth(
     State(state): State<AppState>,
     req: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    let token = req
+    let header_token = req
         .headers()
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "));
-    match token {
+    // SSE 走 ?key= 查询参数（EventSource 无法自定义 header，见 docs/architecture.md）；
+    // key 约定为 URL 安全字符（hex/base64url），此处不做反转义
+    let query_token = req
+        .uri()
+        .query()
+        .and_then(|q| q.split('&').find_map(|pair| pair.strip_prefix("key=")));
+    match header_token.or(query_token) {
         Some(t) if t == state.token => Ok(next.run(req).await),
         _ => Err(StatusCode::UNAUTHORIZED),
     }
@@ -1065,6 +1123,7 @@ pub fn build_router(
         .routes(routes!(rename_project))
         .routes(routes!(rename_entry))
         .routes(routes!(remove_project_file))
+        .routes(routes!(watch_project))
         .split_for_parts();
     SecurityAddon.modify(&mut doc);
     apply_info(&mut doc);
@@ -1099,6 +1158,7 @@ mod tests {
         let (_, doc) = build_router(
             AppState {
                 token: String::new(),
+                watch_hub: watch::WatchHub::default(),
             },
             None,
         );

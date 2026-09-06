@@ -152,6 +152,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/watch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 监听项目目录变动：SSE 推送防抖 300ms 后的变更相对路径集合（`.` 开头路径段与临时文件已过滤）。
+         *     每帧 data 为 JSON：`{"changed":["正文/a.md"]}`；changed 为空数组表示事件滞后溢出，订阅方应全量刷新。
+         *     监听随连接建立而启动、所有订阅断开后停止。
+         */
+        get: operations["watch_project"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -855,6 +876,43 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TreeResponse"];
                 };
+            };
+            /** @description 项目目录不存在 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    watch_project: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 项目根目录绝对路径 */
+                path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SSE 事件流（text/event-stream）：data 为 {"changed":[...]} */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description 项目目录不存在 */
             400: {

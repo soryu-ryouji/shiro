@@ -1,9 +1,10 @@
 <script setup lang="ts">
-// Markdown 编辑器（CodeMirror 6）：防抖自动保存（daemon 原子写入）、字数与保存状态（右上角，Ulysses 风格）。
-// 注意：切换文稿/卸载前先 flush 保存；外部修改（其他编辑器/同步盘）的监听同步待 daemon watcher 引入后做。
+// Markdown 编辑器（CodeMirror 6）：防抖自动保存（daemon 原子写入）；字数与保存失败提示在右上角浮层（不占布局高度，无常驻保存提示——类 VSCode）。
+// 切换文稿/卸载前先 flush 保存；磁盘外部变动（其他编辑器/同步盘/AI 写稿）经 daemon 监听推送，由 onExternalFileChange 回调重载。
+// 排版对齐：正文首行与次栏列表首项同高（顶栏 40px + 标签页条 36px + 间距 24px = .cm-content 上内边距 24px）。
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { apiFetch } from '../api'
-import { projectStore } from '../stores/project'
+import { projectStore, onExternalFileChange } from '../stores/project'
 import { countWords } from '../utils/wordcount'
 import { editorParaMode } from '../utils/font'
 import { livePreview } from '../utils/livePreview'
@@ -20,20 +21,6 @@ const editorEl = ref<HTMLElement | null>(null)
 let view: EditorView | null = null
 
 const loading = ref(false)
-let hideTimer: ReturnType<typeof setTimeout> | null = null
-
-// 字数/保存状态提升在 store（本组件写入，编辑区顶行 EditorTabs 显示）
-watch(
-  () => projectStore.saveState,
-  (s) => {
-    if (hideTimer) clearTimeout(hideTimer)
-    if (s === 'saved') {
-      hideTimer = setTimeout(() => (projectStore.saveStatusVisible = false), 1600)
-    } else {
-      projectStore.saveStatusVisible = true
-    }
-  },
-)
 
 /** 待保存内容与其所属文稿（切文稿时 pending 仍指向旧文件，保证不串写） */
 let pending: { file: string; content: string } | null = null
@@ -66,11 +53,31 @@ function scheduleSave(content: string) {
   saveTimer = setTimeout(() => void flushSave(), 800)
 }
 
+// ---- 磁盘外部变动重载（daemon 文件监听，接线见 stores/project.ts）----
+// 冲突策略：该文稿有未保存内容时本地优先（下次 flush 覆盖磁盘），否则静默替换
+let suppressSave = false
+
+function applyExternalChange(file: string, content: string | null) {
+  if (!view) return
+  if (pending && pending.file === file) return
+  if (content === null) {
+    // 外部删除/移走：磁盘为准，关闭标签
+    projectStore.closeTab(file)
+    return
+  }
+  if (view.state.doc.toString() === content) return
+  suppressSave = true
+  // 全量替换为一次变更：光标随变更映射，滚动与撤销历史保留；屏蔽自动保存（内容与磁盘一致，无需回写）
+  view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } })
+  suppressSave = false
+  projectStore.wordCount = countWords(content)
+}
+
 const theme = EditorView.theme({
   '&': { fontSize: 'calc(15px * var(--font-scale-editor))', backgroundColor: 'transparent' },
   '.cm-content': {
     fontFamily: 'var(--font-editor)',
-    padding: '28px 32px',
+    padding: '24px 32px 28px',
     maxWidth: '760px',
     margin: '0 auto',
   },
@@ -134,7 +141,7 @@ function makeState(doc: string): EditorState {
       EditorView.lineWrapping,
       keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
       EditorView.updateListener.of((update) => {
-        if (update.docChanged) scheduleSave(update.state.doc.toString())
+        if (update.docChanged && !suppressSave) scheduleSave(update.state.doc.toString())
       }),
       paraSpacingPlugin,
       livePreview(),
@@ -163,6 +170,7 @@ async function loadFile() {
 
 onMounted(() => {
   view = new EditorView({ state: makeState(''), parent: editorEl.value! })
+  onExternalFileChange(applyExternalChange)
   if (projectStore.currentFile) void loadFile()
 })
 watch(
@@ -170,6 +178,7 @@ watch(
   () => void loadFile(),
 )
 onUnmounted(() => {
+  onExternalFileChange(null)
   void flushSave()
   view?.destroy()
 })
@@ -181,6 +190,11 @@ onUnmounted(() => {
          放进 v-if 分支会因挂载时机晚于视图创建而导致 DOM 不渲染 -->
     <div ref="editorEl" v-show="projectStore.currentFile" class="editor" />
     <div v-if="!projectStore.currentFile" class="editor-empty">从中间列表选择文稿，或新建一篇</div>
+    <!-- 字数（常驻）与保存失败（仅出错时）：右上角浮层，不占布局高度 -->
+    <div v-if="projectStore.currentFile" class="editor-status">
+      <span v-if="projectStore.saveState === 'error'" class="save-error">保存失败 · </span>
+      <span>{{ projectStore.wordCount }} 字</span>
+    </div>
   </div>
 </template>
 
@@ -272,5 +286,26 @@ onUnmounted(() => {
   justify-content: center;
   color: var(--text-dim);
   font-size: calc(13px * var(--font-scale-ui));
+}
+
+/* 字数与保存失败提示：编辑器右上角浮层（pointer-events 放行下方文本点击） */
+.editor-status {
+  position: absolute;
+  top: 0;
+  right: 12px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  font-size: calc(11px * var(--font-scale-ui));
+  color: var(--text-dim);
+  user-select: none;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.save-error {
+  color: var(--danger);
 }
 </style>

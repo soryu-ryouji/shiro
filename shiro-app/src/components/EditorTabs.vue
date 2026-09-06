@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 编辑区顶栏（窗口拖拽区）：右端设置按钮；Windows/Linux 避让窗口控制按钮。
-// 其下依次为标签页条（VSCode 式 tabs：点击切换、右侧 x 关闭、HTML5 拖拽排序）与字数行（编辑器窗口右上角）。
-// 标签页条与字数行恒占高度：标签 ≤1 时标签页条留空，无文稿时字数行留空——显隐均不推动内容块。
+// 其下为标签页条（VSCode 式 tabs：点击切换、右侧 x 关闭、HTML5 拖拽排序），恒占高度：标签 ≤1 时留空，显隐不推动内容块。
+// 字数与保存状态在 Editor.vue 右上角浮层（不占布局高度）。
 import { ref } from 'vue'
 import { hasShell, isMac, shell } from '../platform'
 import { projectStore } from '../stores/project'
@@ -63,7 +63,7 @@ function onDragEnd() {
     </button>
   </div>
 
-  <!-- 标签页条：恒占一行（≤1 个标签时留空）；首签与次栏列表首项平齐 -->
+  <!-- 标签页条：恒占一行（≤1 个标签时留空）；本行底部与次栏列表首项顶部平齐 -->
   <div class="tabs-row" @dblclick="onDblClick">
     <div v-if="projectStore.tabs.length > 1" class="tabs">
       <div
@@ -91,19 +91,6 @@ function onDragEnd() {
       </div>
     </div>
   </div>
-
-  <!-- 字数行：编辑器窗口右上角（标签页条下一行）；恒占一行，无文稿时留空 -->
-  <div class="status-row">
-    <div v-if="projectStore.currentFile" class="editor-status">
-      <template v-if="projectStore.saveStatusVisible">
-        <span v-if="projectStore.saveState === 'saving'">保存中…</span>
-        <span v-else-if="projectStore.saveState === 'error'" class="save-error">保存失败</span>
-        <span v-else>已保存</span>
-        <span class="sep">·</span>
-      </template>
-      <span>{{ projectStore.wordCount }} 字</span>
-    </div>
-  </div>
 </template>
 
 <style scoped>
@@ -129,7 +116,7 @@ function onDragEnd() {
 }
 
 /* 标签页条：恒占一行（12px 上间隙 + 24px 标签），标签显隐不推动内容块；
-   顶部间隙与次栏列表（.sheets padding-top）一致，首签与列表首项平齐 */
+   次栏列表首项与正文首行同起点，与本行底部保持 24px 间距（.sheets padding-top 60px / .cm-content padding-top 24px） */
 .tabs-row {
   flex: none;
   display: flex;
@@ -180,34 +167,6 @@ function onDragEnd() {
 
 .tabs::-webkit-scrollbar {
   display: none;
-}
-
-/* 字数行：编辑器窗口右上角，恒占一行 */
-.status-row {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  height: 22px;
-  padding: 0 12px;
-  user-select: none;
-}
-
-/* 状态区（保存状态 + 字数） */
-.editor-status {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 8px;
-  font-size: calc(11px * var(--font-scale-ui));
-  color: var(--text-dim);
-  user-select: none;
-  white-space: nowrap;
-}
-
-.save-error {
-  color: var(--danger);
 }
 
 .tab {

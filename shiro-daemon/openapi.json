@@ -754,6 +754,49 @@
           }
         ]
       }
+    },
+    "/api/v1/projects/watch": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "监听项目目录变动：SSE 推送防抖 300ms 后的变更相对路径集合（`.` 开头路径段与临时文件已过滤）。\n每帧 data 为 JSON：`{\"changed\":[\"正文/a.md\"]}`；changed 为空数组表示事件滞后溢出，订阅方应全量刷新。\n鉴权走 `?key=` 查询参数（EventSource 无法自定义 header）。监听随连接建立而启动、所有订阅断开后停止。",
+        "operationId": "watch_project",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "description": "项目根目录绝对路径",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE 事件流（text/event-stream）：data 为 {\"changed\":[...]}；鉴权走 ?key= 查询参数"
+          },
+          "400": {
+            "description": "项目目录不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
     }
   },
   "components": {
