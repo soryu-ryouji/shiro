@@ -1,6 +1,8 @@
 // 自绘覆盖滚动条（VSCode/Ulysses 式方案）：隐藏原生条，向滚动容器注入 DOM 胶囊滑块。
 // 滑块为容器的绝对定位子元素（本随内容滚动），JS 用 translate 补偿滚动偏移，使其钉在视口边缘。
 // 行为：滚动时显现、停止约 0.9s 后淡出（DOM 元素支持 transition，原生伪元素做不到）、可拖拽。
+// 可选 host：滑块挂载到另一个不滚动的祖先元素上（钉在 host 右缘/底缘），
+// 用于「滑块越出滚动容器右缘」的场景——如编辑器大纲展开时，编辑器滚动条要在大纲面板右侧。
 import type { Directive } from 'vue'
 
 const HIDE_DELAY = 900
@@ -18,16 +20,19 @@ interface Axis {
 /**
  * 给滚动容器挂自绘覆盖滚动条，返回卸载函数。
  * 容器需可滚动（overflow auto/scroll）；position 为 static 时由本函数补 relative（卸载时还原）。
+ * host：滑块的挂载元素（默认 el 自身）。host 不滚动（如编辑器主区域），滑块钉在 host 右缘，无滚动补偿。
  */
-export function attachOverlayScrollbar(el: HTMLElement): () => void {
-  const fixPosition = getComputedStyle(el).position === 'static'
-  if (fixPosition) el.style.position = 'relative'
+export function attachOverlayScrollbar(el: HTMLElement, host?: HTMLElement): () => void {
+  const pinned = host ?? el
+  const outside = pinned !== el
+  const fixPosition = getComputedStyle(pinned).position === 'static'
+  if (fixPosition) pinned.style.position = 'relative'
   el.classList.add('osb-host')
 
   const axes: Axis[] = [true, false].map((vertical) => {
     const thumb = document.createElement('div')
     thumb.className = vertical ? 'osb-thumb osb-v' : 'osb-thumb osb-h'
-    el.appendChild(thumb)
+    pinned.appendChild(thumb)
     return { thumb, vertical, dragging: false }
   })
 
@@ -37,6 +42,10 @@ export function attachOverlayScrollbar(el: HTMLElement): () => void {
   function update(reveal = false) {
     const { clientWidth: vw, clientHeight: vh, scrollWidth: cw, scrollHeight: ch } = el
     const { scrollLeft: sl, scrollTop: st } = el
+    // 挂载到外部 host 时：host 不滚动，不做滚动补偿；右缘取 host 宽度
+    const pinW = outside ? pinned.clientWidth : vw
+    const compX = outside ? 0 : sl
+    const compY = outside ? 0 : st
     for (const a of axes) {
       const max = a.vertical ? ch - vh : cw - vw
       if (max <= 0) {
@@ -48,9 +57,9 @@ export function attachOverlayScrollbar(el: HTMLElement): () => void {
       const pos = a.vertical ? st : sl
       const size = Math.min(Math.max((view * view) / content, MIN_THUMB), view)
       const offset = (pos / max) * (view - size)
-      // 钉在视口边缘：内容坐标 = 滚动偏移 + 视口内位置
-      const x = a.vertical ? sl + vw - THUMB - GAP : sl + offset
-      const y = a.vertical ? st + offset : st + vh - THUMB - GAP
+      // 钉在视口边缘：滚动容器内需加滚动偏移（内容坐标 = 滚动偏移 + 视口内位置）；外部 host 直接取边缘
+      const x = a.vertical ? compX + pinW - THUMB - GAP : compX + offset
+      const y = a.vertical ? compY + offset : compY + vh - THUMB - GAP
       const t = a.thumb.style
       if (a.vertical) t.height = `${size}px`
       else t.width = `${size}px`
@@ -130,6 +139,7 @@ export function attachOverlayScrollbar(el: HTMLElement): () => void {
   // 容器自身尺寸变化（窗口/栏宽调整）时刷新；内容尺寸变化会在下次滚动时随 onScroll 刷新
   const ro = new ResizeObserver(() => update())
   ro.observe(el)
+  if (outside) ro.observe(pinned)
   update()
 
   return () => {
@@ -142,7 +152,7 @@ export function attachOverlayScrollbar(el: HTMLElement): () => void {
       a.thumb.remove()
     })
     el.classList.remove('osb-host')
-    if (fixPosition) el.style.position = ''
+    if (fixPosition) pinned.style.position = ''
   }
 }
 

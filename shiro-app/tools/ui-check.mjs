@@ -217,8 +217,8 @@ try {
   check('自动保存落盘（单元格输入）', fs.readFileSync(sheetAbs, 'utf8').includes('标题列'), true)
   check('落盘内容为表格语法', fs.readFileSync(sheetAbs, 'utf8').includes('| ----'), true)
 
-  // 外部修改（其他编辑器/AI 写稿）→ daemon 监听推送 → 编辑器静默重载
-  fs.writeFileSync(sheetAbs, '# 外部标题\n\n外部写入段落。\n')
+  // 外部修改（其他编辑器/AI 写稿）→ daemon 监听推送 → 编辑器静默重载（内容加长到可滚动，供滚动条断言）
+  fs.writeFileSync(sheetAbs, '# 外部标题\n\n' + Array.from({ length: 40 }, (_, i) => `外部写入段落 ${i + 1}。`).join('\n\n') + '\n')
   check('文件监听回载', await waitFor(async () => evaljs(`document.querySelector('.cm-content')?.textContent?.includes('外部写入段落') ?? false`), 15_000, '监听回载'), true)
 
   // 大纲按钮：三态循环（自动 → 开启 → 关闭）
@@ -243,6 +243,18 @@ try {
       10_000,
       '大纲布局',
     ),
+    true,
+  )
+  // 编辑器滚动条钉在主区域最右缘（大纲面板右侧）
+  await evaljs(`(() => { const s = document.querySelector('.cm-scroller'); s.scrollTop = 200; s.dispatchEvent(new Event('scroll')) })()`)
+  check(
+    '编辑器滚动条在大纲右侧',
+    await evaljs(`(() => {
+      const main = document.querySelector('.editor-main')?.getBoundingClientRect()
+      const thumb = document.querySelector('.editor-main > .osb-v')?.getBoundingClientRect()
+      if (!main || !thumb) return null
+      return Math.abs(main.right - thumb.right) <= 4
+    })()`),
     true,
   )
 

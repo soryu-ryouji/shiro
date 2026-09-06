@@ -264,6 +264,8 @@ function jumpToHeading(pos: number) {
 
 // 大纲：三态（自动 = 右侧留白放得下才显示，阈值 1040px；开启 = 恒显示；关闭 = 恒隐藏），顶栏按钮循环切换（EditorTabs）
 const wrapEl = ref<HTMLElement | null>(null)
+/** 编辑器主区域（编辑列 + 大纲面板）：自绘滚动条的挂载宿主——滚动条钉在主区域右缘（大纲右侧） */
+const mainEl = ref<HTMLElement | null>(null)
 const outlineAutoFit = ref(false)
 const outlineVisible = computed(
   () =>
@@ -389,7 +391,8 @@ onMounted(() => {
   view = new EditorView({ state: makeState('', isPlainFile.value), parent: editorEl.value! })
   editorEl.value!.addEventListener(TABLE_MENU_EVENT, onTableMenu)
   // CodeMirror 滚动区由视图内部生成，走命令式挂载自绘滚动条
-  detachScrollbar = attachOverlayScrollbar(view.scrollDOM)
+  // CodeMirror 滚动区由视图内部生成，走命令式挂载自绘滚动条；滑块挂到主区域（右缘钉在大纲面板右侧）
+  detachScrollbar = attachOverlayScrollbar(view.scrollDOM, mainEl.value!)
   onExternalFileChange(applyExternalChange)
   resizeObserver = new ResizeObserver((entries) => {
     outlineAutoFit.value = (entries[0]?.contentRect.width ?? 0) >= 1040
@@ -413,7 +416,7 @@ onUnmounted(() => {
 
 <template>
   <div ref="wrapEl" class="editor-wrap">
-    <div class="editor-main">
+    <div ref="mainEl" class="editor-main">
       <div class="editor-side">
         <!-- 编辑器容器常驻（v-show 控制显隐）：CodeMirror 视图在 onMounted 即挂载，
              放进 v-if 分支会因挂载时机晚于视图创建而导致 DOM 不渲染 -->
@@ -466,12 +469,13 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-/* 主体行：编辑列 + 大纲面板（大纲显示时占布局，把编辑列往左挤） */
+/* 主体行：编辑列 + 大纲面板（大纲显示时占布局，把编辑列往左挤）；自绘滚动条的宿主（position 上下文） */
 .editor-main {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: row;
+  position: relative;
 }
 
 /* 编辑列：编辑器 + 底部工具栏（大纲挤压时收窄，正文列宽受 --editor-content-width 上限约束） */
@@ -725,10 +729,12 @@ onUnmounted(() => {
   }
 }
 
-/* 大纲：布局内的右侧面板（把正文往左挤，不遮挡）；无边框无底色；顶部与正文首行同高 */
+/* 大纲：布局内的右侧面板（把正文往左挤，不遮挡）；无边框无底色；顶部与正文首行同高；
+   右缘让出 12px：面板自身的滚动条不与编辑器滚动条（钉在主区域最右缘）相叠 */
 .outline {
   flex: none;
   width: 160px;
+  margin-right: 12px;
   padding: 28px 8px 16px 4px;
   display: flex;
   flex-direction: column;
