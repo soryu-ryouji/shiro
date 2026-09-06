@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Markdown 编辑器（CodeMirror 6）：防抖自动保存（daemon 原子写入）；字数与保存失败提示在右上角浮层（不占布局高度，无常驻保存提示——类 VSCode）。
+// Markdown 编辑器（CodeMirror 6）：防抖自动保存（daemon 原子写入）；右上角浮层显示字数（有选中时为「选中 / 总数」）与保存失败提示。
 // 切换文稿/卸载前先 flush 保存；磁盘外部变动（其他编辑器/同步盘/AI 写稿）经 daemon 监听推送，由 onExternalFileChange 回调重载。
 // 排版对齐：正文首行与次栏列表首项同高（顶栏 40px + 标签页条 36px + 间距 24px = .cm-content 上内边距 24px）。
 import { onMounted, onUnmounted, ref, watch } from 'vue'
@@ -73,6 +73,17 @@ function applyExternalChange(file: string, content: string | null) {
   projectStore.wordCount = countWords(content)
 }
 
+// ---- 选中字数：有选区时浮层显示「选中 / 总数」（与总数同一统计策略） ----
+const selectedCount = ref(0)
+
+function countSelection(state: EditorState): number {
+  let n = 0
+  for (const r of state.selection.ranges) {
+    if (!r.empty) n += countWords(state.sliceDoc(r.from, r.to))
+  }
+  return n
+}
+
 const theme = EditorView.theme({
   // 字号基数须与 font.ts EDITOR_FONT_SIZE_DEFAULT 一致（渲染值 = 基数 × 设定值 ÷ 默认值）
   '&': { fontSize: 'calc(17px * var(--font-scale-editor))', backgroundColor: 'transparent' },
@@ -143,6 +154,7 @@ function makeState(doc: string): EditorState {
       keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
       EditorView.updateListener.of((update) => {
         if (update.docChanged && !suppressSave) scheduleSave(update.state.doc.toString())
+        if (update.selectionSet || update.docChanged) selectedCount.value = countSelection(update.state)
       }),
       paraSpacingPlugin,
       livePreview(),
@@ -191,10 +203,10 @@ onUnmounted(() => {
          放进 v-if 分支会因挂载时机晚于视图创建而导致 DOM 不渲染 -->
     <div ref="editorEl" v-show="projectStore.currentFile" class="editor" />
     <div v-if="!projectStore.currentFile" class="editor-empty">从中间列表选择文稿，或新建一篇</div>
-    <!-- 字数（常驻）与保存失败（仅出错时）：右上角浮层，不占布局高度 -->
+    <!-- 字数（有选中时为「选中 | 总数」）与保存失败（仅出错时）：右上角浮层，不占布局高度 -->
     <div v-if="projectStore.currentFile" class="editor-status">
       <span v-if="projectStore.saveState === 'error'" class="save-error">保存失败 · </span>
-      <span>{{ projectStore.wordCount }} 字</span>
+      <span><template v-if="selectedCount">{{ selectedCount }} / </template>{{ projectStore.wordCount }} 字</span>
     </div>
   </div>
 </template>
