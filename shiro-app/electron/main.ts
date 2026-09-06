@@ -21,6 +21,8 @@ const isDev = !app.isPackaged
 // 会话数据固定走 shiro-app 子目录：打包版 productName 在 Linux 会把默认 userData
 // 解析为 ~/.config/shiro，与应用自有配置目录相撞（Chromium 数据混入）
 app.setPath('userData', path.join(app.getPath('appData'), 'shiro-app'))
+// 自检（tools/ui-check.mjs）经 SHIRO_USER_DATA 指定独立会话目录：隔离 localStorage，并绕开单实例锁（锁按 userData 互斥）
+if (process.env.SHIRO_USER_DATA) app.setPath('userData', path.resolve(process.env.SHIRO_USER_DATA))
 
 let mainWindow: BrowserWindow | null = null
 let daemon: ChildProcess | null = null

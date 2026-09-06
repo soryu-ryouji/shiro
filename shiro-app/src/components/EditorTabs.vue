@@ -1,13 +1,24 @@
 <script setup lang="ts">
-// 编辑区顶栏（窗口拖拽区）：预览与设置按钮；Windows/Linux 避让窗口控制按钮。
+// 编辑区顶栏（窗口拖拽区）：大纲（三态循环）、预览与设置按钮；Windows/Linux 避让窗口控制按钮。
 // 其下为标签页条（VSCode 式 tabs：点击切换、右侧 x 关闭、HTML5 拖拽排序），恒占高度：标签 ≤1 时留空，显隐不推动内容块。
 // 字数与保存状态在 Editor.vue 底部工具栏右端。
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { hasShell, isMac, shell } from '../platform'
 import { projectStore } from '../stores/project'
+import { applyOutlineMode, outlineMode, type OutlineMode } from '../utils/font'
+import { stripSheetExt } from '../utils/sheet'
 import Icon from './Icon.vue'
 
 const emit = defineEmits<{ 'open-settings': []; 'open-preview': [] }>()
+
+// ---- 大纲显示模式：自动 → 开启 → 关闭 循环（Editor.vue 消费 outlineMode 决定大纲显隐） ----
+const OUTLINE_NEXT: Record<OutlineMode, OutlineMode> = { auto: 'on', on: 'off', off: 'auto' }
+const OUTLINE_LABEL: Record<OutlineMode, string> = { auto: '自动（宽度足够时显示）', on: '开启', off: '关闭' }
+const outlineTitle = computed(() => `大纲：${OUTLINE_LABEL[outlineMode.value]}（点击切换）`)
+
+function cycleOutline() {
+  applyOutlineMode(OUTLINE_NEXT[outlineMode.value])
+}
 
 /** Windows/Linux 桌面端：窗口控制按钮（fixed 右上角）压本行右端 */
 const reserveControls = hasShell && !isMac
@@ -20,7 +31,7 @@ function onDblClick(e: MouseEvent) {
 
 /** 标签显示名：文件名去后缀 */
 function tabTitle(path: string): string {
-  return path.split('/').at(-1)?.replace(/\.(md|markdown)$/i, '') ?? path
+  return stripSheetExt(path.split('/').at(-1) ?? path)
 }
 
 // ---- 拖拽排序 ----
@@ -56,8 +67,17 @@ function onDragEnd() {
 </script>
 
 <template>
-  <!-- 顶栏常驻（窗口拖拽区）：预览（有文稿时可用）与设置 -->
+  <!-- 顶栏常驻（窗口拖拽区）：大纲（有文稿时可用）/预览（有文稿时可用）与设置 -->
   <div class="editor-head" :class="{ 'reserve-controls': reserveControls }" @dblclick="onDblClick">
+    <button
+      class="bar-btn"
+      :class="{ on: outlineMode === 'on', off: outlineMode === 'off' }"
+      :title="outlineTitle"
+      :disabled="!projectStore.currentFile"
+      @click="cycleOutline"
+    >
+      <Icon name="list" :size="15" />
+    </button>
     <button class="bar-btn" title="手机预览" :disabled="!projectStore.currentFile" @click="emit('open-preview')">
       <Icon name="eye" :size="15" />
     </button>
@@ -164,6 +184,15 @@ function onDragEnd() {
 .bar-btn:disabled:hover {
   background: transparent;
   color: var(--text-dim);
+}
+
+/* 大纲三态：开启 = 高亮，关闭 = 半透 */
+.bar-btn.on {
+  color: var(--accent);
+}
+
+.bar-btn.off {
+  opacity: 0.45;
 }
 
 /* 标签区：横向滚动（滚动条隐藏），不挤压右侧状态区 */

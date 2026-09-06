@@ -142,7 +142,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 项目目录树（目录与 .md 文件；目录在前，文件名排序） */
+        /** 项目目录树（目录与文稿文件；目录在前，文件名排序） */
         get: operations["project_tree"];
         put?: never;
         post?: never;
@@ -235,7 +235,7 @@ export interface components {
             path: string;
         };
         SheetExcerpt: {
-            /** @description 正文预览（剥离 markdown 标记，取开头约 160 字） */
+            /** @description 正文预览（markdown 剥离标记后取开头约 160 字；纯文本直接取开头） */
             excerpt: string;
             /** @description 文稿在项目内的相对路径 */
             file: string;
@@ -255,7 +255,7 @@ export interface components {
              * @description 文件修改时间（epoch 秒，仅 file）
              */
             modified?: number | null;
-            /** @description 节点名（文件含 .md 后缀） */
+            /** @description 节点名（文件含 .md/.markdown/.txt 后缀） */
             name: string;
             /** @description 项目内相对路径 */
             path: string;

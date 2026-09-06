@@ -3,11 +3,12 @@
 // 底部工具栏（Ulysses 式）：块级标记（标题/列表/引用/表格）切换居中，字数（有选中时为「选中 / 总数」）与保存失败提示在右端。
 // 切换文稿/卸载前先 flush 保存；磁盘外部变动（其他编辑器/同步盘/AI 写稿）经 daemon 监听推送，由 onExternalFileChange 回调重载。
 // 排版对齐：正文首行与次栏列表首项同高（顶栏 40px + 标签页条 36px + 间距 24px = .cm-content 上内边距 24px）。
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { apiFetch } from '../api'
 import { projectStore, onExternalFileChange } from '../stores/project'
 import { countWords } from '../utils/wordcount'
-import { editorParaMode } from '../utils/font'
+import { editorParaMode, outlineMode } from '../utils/font'
+import { isPlainSheet } from '../utils/sheet'
 import { livePreview, FENCE_RE, HEADING_RE } from '../utils/livePreview'
 import { tableEditing, insertTable, visibleTableBlocks, TABLE_MENU_EVENT, type TableMenuItem } from '../utils/tableView'
 import ContextMenu from './ContextMenu.vue'
@@ -222,17 +223,20 @@ const outline = ref<OutlineItem[]>([])
 const outlineActive = ref(-1)
 
 function collectOutline(state: EditorState) {
+  // 纯文本（.txt）无标题结构，大纲恒为空
   const items: OutlineItem[] = []
   let inFence = false
-  for (let n = 1; n <= state.doc.lines; n++) {
-    const line = state.doc.line(n)
-    if (FENCE_RE.test(line.text)) {
-      inFence = !inFence
-      continue
+  if (!isPlainFile.value) {
+    for (let n = 1; n <= state.doc.lines; n++) {
+      const line = state.doc.line(n)
+      if (FENCE_RE.test(line.text)) {
+        inFence = !inFence
+        continue
+      }
+      if (inFence) continue
+      const m = line.text.match(HEADING_RE)
+      if (m) items.push({ level: m[1].length, text: line.text.slice(m[0].length), pos: line.from })
     }
-    if (inFence) continue
-    const m = line.text.match(HEADING_RE)
-    if (m) items.push({ level: m[1].length, text: line.text.slice(m[0].length), pos: line.from })
   }
   outline.value = items
   updateOutlineActive(state)
@@ -258,9 +262,14 @@ function jumpToHeading(pos: number) {
   view.focus()
 }
 
-// 大纲面板只在右侧留白放得下时显示（浮于留白、可探入正文列内边距，不压文字 → 阈值 1040px）
+// 大纲：三态（自动 = 右侧留白放得下才显示，阈值 1040px；开启 = 恒显示；关闭 = 恒隐藏），顶栏按钮循环切换（EditorTabs）
 const wrapEl = ref<HTMLElement | null>(null)
-const outlineVisible = ref(false)
+const outlineAutoFit = ref(false)
+const outlineVisible = computed(
+  () =>
+    outline.value.length > 0 &&
+    (outlineMode.value === 'on' || (outlineMode.value === 'auto' && outlineAutoFit.value)),
+)
 let resizeObserver: ResizeObserver | null = null
 let detachScrollbar: (() => void) | null = null
 
@@ -270,7 +279,8 @@ const theme = EditorView.theme({
   '.cm-content': {
     fontFamily: 'var(--font-editor)',
     padding: '24px 32px 28px',
-    maxWidth: '760px',
+    // 正文列宽：设置面板「正文宽度」驱动
+    maxWidth: 'var(--editor-content-width)',
     margin: '0 auto',
   },
   '.cm-scroller': { lineHeight: 'var(--editor-line-height)', overflow: 'auto' },
@@ -328,13 +338,17 @@ const paraSpacingPlugin = ViewPlugin.fromClass(
   { decorations: (v) => v.decorations },
 )
 
-function makeState(doc: string): EditorState {
+/** 当前文稿是否纯文本（.txt）：纯文本不装 markdown 相关扩展（语法解析/实时预览/表格挂件） */
+const isPlainFile = computed(() => isPlainSheet(projectStore.currentFile ?? ''))
+
+function makeState(doc: string, plain: boolean): EditorState {
   return EditorState.create({
     doc,
     extensions: [
       history(),
       drawSelection(),
-      markdown({ base: markdownLanguage, codeLanguages: languages }),
+      // 纯文本：无 markdown 语法/实时预览/表格挂件，只留纯编辑 + 段间距
+      ...(plain ? [] : [markdown({ base: markdownLanguage, codeLanguages: languages })]),
       EditorView.lineWrapping,
       keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
       EditorView.updateListener.of((update) => {
@@ -344,8 +358,7 @@ function makeState(doc: string): EditorState {
         else if (update.selectionSet) updateOutlineActive(update.state)
       }),
       paraSpacingPlugin,
-      tableEditing(),
-      livePreview(),
+      ...(plain ? [] : [tableEditing(), livePreview()]),
       theme,
     ],
   })
@@ -360,7 +373,7 @@ async function loadFile() {
     const res = await apiFetch<FileContent>(
       `/api/v1/projects/file?path=${encodeURIComponent(projectStore.current.path)}&file=${encodeURIComponent(file)}`,
     )
-    view.setState(makeState(res.content ?? ''))
+    view.setState(makeState(res.content ?? '', isPlainFile.value))
     collectOutline(view.state)
     selectedCount.value = 0
     projectStore.wordCount = countWords(res.content ?? '')
@@ -373,13 +386,13 @@ async function loadFile() {
 }
 
 onMounted(() => {
-  view = new EditorView({ state: makeState(''), parent: editorEl.value! })
+  view = new EditorView({ state: makeState('', isPlainFile.value), parent: editorEl.value! })
   editorEl.value!.addEventListener(TABLE_MENU_EVENT, onTableMenu)
   // CodeMirror 滚动区由视图内部生成，走命令式挂载自绘滚动条
   detachScrollbar = attachOverlayScrollbar(view.scrollDOM)
   onExternalFileChange(applyExternalChange)
   resizeObserver = new ResizeObserver((entries) => {
-    outlineVisible.value = (entries[0]?.contentRect.width ?? 0) >= 1040
+    outlineAutoFit.value = (entries[0]?.contentRect.width ?? 0) >= 1040
   })
   resizeObserver.observe(wrapEl.value!)
   if (projectStore.currentFile) void loadFile()
@@ -404,9 +417,9 @@ onUnmounted(() => {
          放进 v-if 分支会因挂载时机晚于视图创建而导致 DOM 不渲染 -->
     <div ref="editorEl" v-show="projectStore.currentFile" class="editor" />
     <div v-if="!projectStore.currentFile" class="editor-empty">从中间列表选择文稿，或新建一篇</div>
-    <!-- 大纲（Notion 式）：宽度足够时浮在右侧留白（绝对定位，不占布局；无边框无底色）；
-         按级别缩进，点击跳转，当前章节高亮 -->
-    <nav v-if="outlineVisible && outline.length" v-overlay-scrollbar class="outline">
+    <!-- 大纲（Notion 式）：浮在右侧留白（绝对定位，不占布局；无边框无底色）；
+         显示与否由三态决定（自动 = 宽度足够；顶栏按钮循环切换）；按级别缩进，点击跳转，当前章节高亮 -->
+    <nav v-if="outlineVisible" v-overlay-scrollbar class="outline">
       <button
         v-for="it in outline"
         :key="it.pos"
@@ -421,13 +434,15 @@ onUnmounted(() => {
     <!-- 表格单元格右键/手柄菜单（事件来自编辑器内的表格挂件） -->
     <ContextMenu v-if="tableMenu" :x="tableMenu.x" :y="tableMenu.y" :items="tableMenu.items" @close="tableMenu = null" />
     <!-- 底部工具栏（Ulysses 式）：块级标记切换居中；字数与保存失败提示在右端。
-         按钮用 mousedown.prevent：不夺编辑器焦点，选区与输入状态不中断 -->
+         按钮用 mousedown.prevent：不夺编辑器焦点，选区与输入状态不中断；纯文本（.txt）无标记按钮 -->
     <div v-if="projectStore.currentFile" class="editor-bar">
-      <button class="bar-item" title="标题（连点在一至四级间切换）" @mousedown.prevent @click="cycleHeading"><span class="mark">#</span>标题</button>
-      <button class="bar-item" title="加粗（无选区时作用于整行）" @mousedown.prevent @click="toggleBold"><span class="mark">**</span>加粗</button>
-      <button class="bar-item" title="列表" @mousedown.prevent @click="toggleLineMark(LIST_MARK_RE, '- ')"><span class="mark">-</span>列表</button>
-      <button class="bar-item" title="引用" @mousedown.prevent @click="toggleLineMark(QUOTE_MARK_RE, '> ')"><span class="mark">&gt;</span>引用</button>
-      <button class="bar-item" title="表格（点击单元格编辑，Tab 跳格，右键更多操作）" @mousedown.prevent @click="insertTableCmd"><span class="mark">|-|</span>表格</button>
+      <template v-if="!isPlainFile">
+        <button class="bar-item" title="标题（连点在一至四级间切换）" @mousedown.prevent @click="cycleHeading"><span class="mark">#</span>标题</button>
+        <button class="bar-item" title="加粗（无选区时作用于整行）" @mousedown.prevent @click="toggleBold"><span class="mark">**</span>加粗</button>
+        <button class="bar-item" title="列表" @mousedown.prevent @click="toggleLineMark(LIST_MARK_RE, '- ')"><span class="mark">-</span>列表</button>
+        <button class="bar-item" title="引用" @mousedown.prevent @click="toggleLineMark(QUOTE_MARK_RE, '> ')"><span class="mark">&gt;</span>引用</button>
+        <button class="bar-item" title="表格（点击单元格编辑，Tab 跳格，右键更多操作）" @mousedown.prevent @click="insertTableCmd"><span class="mark">|-|</span>表格</button>
+      </template>
       <div class="editor-status">
         <span v-if="projectStore.saveState === 'error'" class="save-error">保存失败 · </span>
         <span><template v-if="selectedCount">{{ selectedCount }} / </template>{{ projectStore.wordCount }} 字</span>
@@ -650,14 +665,14 @@ onUnmounted(() => {
   user-select: none;
 }
 
-/* 顶部分隔线：与正文列同宽（760px）居中，左右不封闭（Ulysses 式） */
+/* 顶部分隔线：与正文列同宽（设置项驱动）居中，左右不封闭（Ulysses 式） */
 .editor-bar::before {
   content: '';
   position: absolute;
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: min(760px, calc(100% - 48px));
+  width: min(var(--editor-content-width), calc(100% - 48px));
   height: 1px;
   background: var(--border);
 }

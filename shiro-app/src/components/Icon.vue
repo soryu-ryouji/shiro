@@ -64,6 +64,15 @@ const ICONS: Record<string, IconDef> = {
   fileText: { paths: [{ d: 'M4 2h5.5L12 4.5V14H4z' }, { d: 'M6 7h4M6 9.5h4' }] },
   // 漏斗（筛选）
   filter: { paths: [{ d: 'M2.5 3h11L9.3 7.8v4.2l-2.6 1.3V7.8z' }] },
+  // 大纲（行内圆点 + 线）
+  list: {
+    paths: [
+      { d: 'M2.8 4h.01', w: 2.2 },
+      { d: 'M2.8 8h.01', w: 2.2 },
+      { d: 'M2.8 12h.01', w: 2.2 },
+      { d: 'M6 4h7.5M6 8h7.5M6 12h7.5' },
+    ],
+  },
   // 关闭（×）
   close: { paths: [{ d: 'M3.5 3.5l9 9M12.5 3.5l-9 9' }] },
   // 眼睛（预览，lucide eye 24px 网格）

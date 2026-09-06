@@ -700,7 +700,7 @@
         "tags": [
           "projects"
         ],
-        "summary": "项目目录树（目录与 .md 文件；目录在前，文件名排序）",
+        "summary": "项目目录树（目录与文稿文件；目录在前，文件名排序）",
         "operationId": "project_tree",
         "parameters": [
           {
@@ -968,7 +968,7 @@
         "properties": {
           "excerpt": {
             "type": "string",
-            "description": "正文预览（剥离 markdown 标记，取开头约 160 字）"
+            "description": "正文预览（markdown 剥离标记后取开头约 160 字；纯文本直接取开头）"
           },
           "file": {
             "type": "string",
@@ -1028,7 +1028,7 @@
           },
           "name": {
             "type": "string",
-            "description": "节点名（文件含 .md 后缀）"
+            "description": "节点名（文件含 .md/.markdown/.txt 后缀）"
           },
           "path": {
             "type": "string",

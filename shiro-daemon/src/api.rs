@@ -339,7 +339,7 @@ fn resolve_inside(root: &Path, rel: &str) -> Result<PathBuf, ApiError> {
 
 #[derive(Serialize, ToSchema)]
 pub struct TreeNode {
-    /// 节点名（文件含 .md 后缀）
+    /// 节点名（文件含 .md/.markdown/.txt 后缀）
     pub name: String,
     /// 项目内相对路径
     pub path: String,
@@ -354,7 +354,13 @@ pub struct TreeNode {
     pub children: Option<Vec<TreeNode>>,
 }
 
-/// 递归构建目录树：只含目录与 .md 文件；排除 . 开头项（.shiro 等）；目录在前，按名称排序
+/// 文稿文件判定：.md/.markdown（markdown）与 .txt（纯文本）
+fn is_sheet_file(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    lower.ends_with(".md") || lower.ends_with(".markdown") || lower.ends_with(".txt")
+}
+
+/// 递归构建目录树：只含目录与文稿文件（.md/.markdown/.txt）；排除 . 开头项（.shiro 等）；目录在前，按名称排序
 fn build_tree(dir: &Path, root: &Path) -> Vec<TreeNode> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -379,8 +385,7 @@ fn build_tree(dir: &Path, root: &Path) -> Vec<TreeNode> {
                 modified: None,
                 children: Some(build_tree(&path, root)),
             });
-        } else if name.to_lowercase().ends_with(".md") || name.to_lowercase().ends_with(".markdown")
-        {
+        } else if is_sheet_file(&name) {
             let modified = entry
                 .metadata()
                 .and_then(|m| m.modified())
@@ -413,7 +418,7 @@ pub struct TreeResponse {
     pub children: Vec<TreeNode>,
 }
 
-/// 项目目录树（目录与 .md 文件；目录在前，文件名排序）
+/// 项目目录树（目录与文稿文件；目录在前，文件名排序）
 #[utoipa::path(
     get,
     path = "/api/v1/projects/tree",
@@ -448,7 +453,7 @@ pub struct ExcerptsQuery {
 pub struct SheetExcerpt {
     /// 文稿在项目内的相对路径
     pub file: String,
-    /// 正文预览（剥离 markdown 标记，取开头约 160 字）
+    /// 正文预览（markdown 剥离标记后取开头约 160 字；纯文本直接取开头）
     pub excerpt: String,
 }
 
@@ -542,11 +547,15 @@ fn strip_inline_markdown(s: &str) -> String {
         .collect()
 }
 
-/// 从文稿内容提取正文预览：逐行剥离 markdown，取开头约 max_chars 字
-fn excerpt_from_content(content: &str, max_chars: usize) -> String {
+/// 从文稿内容提取正文预览：markdown 逐行剥离标记，纯文本直接取开头约 max_chars 字
+fn excerpt_from_content(content: &str, max_chars: usize, is_markdown: bool) -> String {
     let mut out = String::new();
     for line in content.lines() {
-        let text = strip_inline_markdown(&strip_markdown_line(line));
+        let text = if is_markdown {
+            strip_inline_markdown(&strip_markdown_line(line))
+        } else {
+            line.trim().to_string()
+        };
         if text.is_empty() {
             continue;
         }
@@ -606,16 +615,17 @@ async fn project_excerpts(
             continue;
         }
         let lower = name.to_lowercase();
-        if !(lower.ends_with(".md") || lower.ends_with(".markdown")) {
+        if !is_sheet_file(&name) {
             continue;
         }
+        let is_markdown = !lower.ends_with(".txt");
         let p = entry.path();
         let rel = p
             .strip_prefix(&root)
             .map(|s| s.to_string_lossy().replace('\\', "/"))
             .unwrap_or_default();
         let excerpt = read_file_head(&p, HEAD_BYTES)
-            .map(|head| excerpt_from_content(&head, MAX_CHARS))
+            .map(|head| excerpt_from_content(&head, MAX_CHARS, is_markdown))
             .unwrap_or_default();
         excerpts.push(SheetExcerpt { file: rel, excerpt });
     }

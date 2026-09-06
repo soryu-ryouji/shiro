@@ -13,15 +13,23 @@ import {
   applyEditorFontSize,
   applyEditorLineHeight,
   applyEditorParaGap,
+  applyContentWidth,
+  applyPreviewLineHeight,
+  applyPreviewParaGap,
   applyUiFont,
   applyUiFontSize,
+  currentContentWidth,
   currentEditorFontKey,
   currentEditorFontSize,
   currentEditorLineHeight,
   currentEditorParaGap,
   currentEditorParaMode,
+  currentPreviewLineHeight,
+  currentPreviewParaGap,
   currentUiFontKey,
   currentUiFontSize,
+  CONTENT_WIDTH_MAX,
+  CONTENT_WIDTH_MIN,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
   LINE_HEIGHT_MAX,
@@ -97,6 +105,31 @@ function selectParaMode(m: ParaMode) {
   editorParaMode.value = m
 }
 
+// 正文宽度（内容列 max-width px，实时生效）
+const contentWidth = ref(currentContentWidth())
+function onContentWidthInput(e: Event) {
+  const v = Number((e.target as HTMLInputElement).value)
+  if (Number.isNaN(v)) return
+  applyContentWidth(v)
+  contentWidth.value = currentContentWidth()
+}
+
+// 预览排版：阅读视图的行距/段距（独立于编辑器设置，实时生效）
+const previewLineHeight = ref(currentPreviewLineHeight())
+const previewParaGap = ref(currentPreviewParaGap())
+function onPreviewLineHeightInput(e: Event) {
+  const v = Number((e.target as HTMLInputElement).value)
+  if (Number.isNaN(v)) return
+  applyPreviewLineHeight(v)
+  previewLineHeight.value = currentPreviewLineHeight()
+}
+function onPreviewParaGapInput(e: Event) {
+  const v = Number((e.target as HTMLInputElement).value)
+  if (Number.isNaN(v)) return
+  applyPreviewParaGap(v)
+  previewParaGap.value = currentPreviewParaGap()
+}
+
 // 恢复默认：经 font.ts 统一重置后，回读各控件值
 function onResetAppearance() {
   resetAppearance()
@@ -107,6 +140,9 @@ function onResetAppearance() {
   editorLineHeight.value = currentEditorLineHeight()
   editorParaGap.value = currentEditorParaGap()
   editorParaMode.value = currentEditorParaMode()
+  contentWidth.value = currentContentWidth()
+  previewLineHeight.value = currentPreviewLineHeight()
+  previewParaGap.value = currentPreviewParaGap()
 }
 
 // 系统字体（Local Font Access API；桌面端可用。选项名统一用界面字体渲染——符号字体的字母码位不可读）
@@ -233,12 +269,60 @@ onMounted(async () => {
               </div>
             </div>
             <div class="grow">
+              <span class="glabel">正文宽度</span>
+              <div class="editor-font-row">
+                <input
+                  type="number"
+                  class="size-num wide-num"
+                  :min="CONTENT_WIDTH_MIN"
+                  :max="CONTENT_WIDTH_MAX"
+                  :step="10"
+                  :value="contentWidth"
+                  title="正文内容列的最大宽度"
+                  @change="onContentWidthInput"
+                />
+                <span class="size-unit">px</span>
+              </div>
+            </div>
+            <div class="grow">
+              <span class="glabel">预览段内行距</span>
+              <div class="editor-font-row">
+                <input
+                  type="number"
+                  class="size-num"
+                  :min="LINE_HEIGHT_MIN"
+                  :max="LINE_HEIGHT_MAX"
+                  :step="0.1"
+                  :value="previewLineHeight"
+                  title="手机预览阅读视图里，折行后行与行之间的距离"
+                  @change="onPreviewLineHeightInput"
+                />
+                <span class="size-unit">倍</span>
+              </div>
+            </div>
+            <div class="grow">
+              <span class="glabel">预览段落间距</span>
+              <div class="editor-font-row">
+                <input
+                  type="number"
+                  class="size-num"
+                  :min="PARA_GAP_MIN"
+                  :max="PARA_GAP_MAX"
+                  :step="1"
+                  :value="previewParaGap"
+                  title="手机预览阅读视图里，段落之间的额外距离"
+                  @change="onPreviewParaGapInput"
+                />
+                <span class="size-unit">px</span>
+              </div>
+            </div>
+            <div class="grow">
               <span class="glabel">重置外观</span>
               <button class="gbtn" @click="onResetAppearance">恢复默认</button>
             </div>
           </div>
           <p class="pane-hint">
-            段内行距：一段长文字自动折行后，同一段内行与行的间距，调小更紧凑。段落间距：新段落首行的额外距离，哪些行算新段落由「分段方式」决定。
+            段内行距：一段长文字自动折行后，同一段内行与行的间距，调小更紧凑。段落间距：新段落首行的额外距离，哪些行算新段落由「分段方式」决定。预览两项作用于手机预览阅读视图，独立于编辑器排版。
           </p>
         </section>
 
@@ -421,6 +505,11 @@ onMounted(async () => {
   font-size: calc(13px * var(--font-scale-ui));
   color: var(--text);
   outline: none;
+}
+
+/* 正文宽度等三位数以上的数值框 */
+.wide-num {
+  width: 70px;
 }
 
 .size-num:focus {

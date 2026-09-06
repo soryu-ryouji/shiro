@@ -17,6 +17,11 @@
   /* 编辑区排版（行高倍数与段间距，设置面板外观驱动） */
   --editor-line-height: 1.8;
   --editor-para-gap: 15px;
+  /* 正文内容列宽度（设置面板外观驱动） */
+  --editor-content-width: 760px;
+  /* 预览排版（独立于编辑器，设置面板外观驱动） */
+  --preview-line-height: 1.8;
+  --preview-para-gap: 15px;
 }
 
 * {

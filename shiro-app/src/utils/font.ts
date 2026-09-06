@@ -1,4 +1,5 @@
-// 外观配置：字体（界面/正文分设，内置 + 系统字体）、字号、编辑区排版（行距/段距/分段方式）。
+// 外观配置：字体（界面/正文分设，内置 + 系统字体）、字号、编辑区排版（行距/段距/分段方式）、
+// 正文宽度、预览排版（行距/段距，独立于编辑器——阅读偏好与写作偏好分开）、大纲显示模式。
 // localStorage 持久化；内置字体经 @fontsource 自托管（main.ts 引入），切换经 CSS 变量全局生效。
 import { ref } from 'vue'
 
@@ -172,9 +173,75 @@ export function applyEditorParaMode(mode: ParaMode): void {
   editorParaMode.value = mode
 }
 
+// ---- 正文宽度（内容列 max-width px） ----
+
+export const CONTENT_WIDTH_MIN = 560
+export const CONTENT_WIDTH_MAX = 1400
+export const CONTENT_WIDTH_DEFAULT = 760
+
+const CONTENT_WIDTH_KEY = 'shiro.editor.contentWidth'
+
+/** 正文内容列宽度（px，默认 760） */
+export function currentContentWidth(): number {
+  return readInRange(CONTENT_WIDTH_KEY, CONTENT_WIDTH_DEFAULT, CONTENT_WIDTH_MIN, CONTENT_WIDTH_MAX)
+}
+
+export function applyContentWidth(v: number): void {
+  const n = clampNum(v, CONTENT_WIDTH_MIN, CONTENT_WIDTH_MAX)
+  document.documentElement.style.setProperty('--editor-content-width', `${n}px`)
+  localStorage.setItem(CONTENT_WIDTH_KEY, String(n))
+}
+
+// ---- 预览排版：行间距与段间距（独立于编辑器设置，作用于手机预览阅读视图） ----
+
+export const PREVIEW_LINE_HEIGHT_KEY = 'shiro.preview.lineHeight'
+export const PREVIEW_PARA_GAP_KEY = 'shiro.preview.paraSpacing'
+
+/** 预览行间距（line-height 倍数，默认 1.8） */
+export function currentPreviewLineHeight(): number {
+  return readInRange(PREVIEW_LINE_HEIGHT_KEY, LINE_HEIGHT_DEFAULT, LINE_HEIGHT_MIN, LINE_HEIGHT_MAX)
+}
+
+export function applyPreviewLineHeight(v: number): void {
+  const n = clampNum(v, LINE_HEIGHT_MIN, LINE_HEIGHT_MAX)
+  document.documentElement.style.setProperty('--preview-line-height', String(n))
+  localStorage.setItem(PREVIEW_LINE_HEIGHT_KEY, String(n))
+}
+
+/** 预览段间距（px，默认 15） */
+export function currentPreviewParaGap(): number {
+  return readInRange(PREVIEW_PARA_GAP_KEY, PARA_GAP_DEFAULT, PARA_GAP_MIN, PARA_GAP_MAX)
+}
+
+export function applyPreviewParaGap(v: number): void {
+  const n = clampNum(v, PARA_GAP_MIN, PARA_GAP_MAX)
+  document.documentElement.style.setProperty('--preview-para-gap', `${n}px`)
+  localStorage.setItem(PREVIEW_PARA_GAP_KEY, String(n))
+}
+
+// ---- 大纲显示模式：自动（宽度足够才显示）/ 开启 / 关闭 ----
+
+export type OutlineMode = 'auto' | 'on' | 'off'
+export const OUTLINE_MODE_DEFAULT: OutlineMode = 'auto'
+const OUTLINE_MODE_KEY = 'shiro.editor.outline'
+const OUTLINE_MODES: OutlineMode[] = ['auto', 'on', 'off']
+
+/** 响应式副本：编辑器与顶栏按钮共享，切换即时生效 */
+export const outlineMode = ref<OutlineMode>(currentOutlineMode())
+
+export function currentOutlineMode(): OutlineMode {
+  const v = localStorage.getItem(OUTLINE_MODE_KEY) as OutlineMode | null
+  return v && OUTLINE_MODES.includes(v) ? v : OUTLINE_MODE_DEFAULT
+}
+
+export function applyOutlineMode(mode: OutlineMode): void {
+  localStorage.setItem(OUTLINE_MODE_KEY, mode)
+  outlineMode.value = mode
+}
+
 // ---- 恢复默认 ----
 
-/** 外观全部恢复默认：界面/正文字体与字号、分段方式、段内行距、段落间距 */
+/** 外观全部恢复默认：界面/正文字体与字号、分段方式、段内行距、段落间距、正文宽度、预览排版、大纲模式 */
 export function resetAppearance(): void {
   applyUiFont(UI_FONT_DEFAULT)
   applyEditorFont(EDITOR_FONT_DEFAULT)
@@ -183,4 +250,8 @@ export function resetAppearance(): void {
   applyEditorLineHeight(LINE_HEIGHT_DEFAULT)
   applyEditorParaGap(PARA_GAP_DEFAULT)
   applyEditorParaMode(PARA_MODE_DEFAULT)
+  applyContentWidth(CONTENT_WIDTH_DEFAULT)
+  applyPreviewLineHeight(LINE_HEIGHT_DEFAULT)
+  applyPreviewParaGap(PARA_GAP_DEFAULT)
+  applyOutlineMode(OUTLINE_MODE_DEFAULT)
 }

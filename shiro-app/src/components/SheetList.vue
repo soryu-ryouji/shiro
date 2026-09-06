@@ -1,11 +1,12 @@
 <script setup lang="ts">
-// 中栏文稿列表（Ulysses 第二栏）：选中目录的直接 .md 文稿。
+// 中栏文稿列表（Ulysses 第二栏）：选中目录的直接文稿（.md/.markdown/.txt）。
 // 顶栏（窗口拖拽区）：右侧筛选（按标题子串过滤）、排序（名称/修改时间升降序）与新建（列表首行内联命名）；下方目录名横带（左下对齐 + 底部横线）。
 // 每项展示：时间 + 标题 + 正文预览（daemon excerpts 接口，剥离 markdown 取开头约 160 字，两行截断）。
 import { computed, nextTick, ref, watch } from 'vue'
 import { apiFetch } from '../api'
 import { hasShell, isMac, shell } from '../platform'
 import { findDir, projectStore, type TreeNode } from '../stores/project'
+import { stripSheetExt } from '../utils/sheet'
 import type { components } from '../api-types'
 import ContextMenu, { type MenuItem } from './ContextMenu.vue'
 import Icon from './Icon.vue'
@@ -70,9 +71,9 @@ function fmtTime(epochSecs?: number | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-/** 文稿显示名：去 .md/.markdown 后缀 */
+/** 文稿显示名：去后缀（.md/.markdown/.txt） */
 function sheetTitle(name: string): string {
-  return name.replace(/\.(md|markdown)$/i, '')
+  return stripSheetExt(name)
 }
 
 // ---- 列表筛选：顶栏漏斗开关，按标题子串过滤（不区分大小写）；Esc 或空值失焦关闭 ----
@@ -236,7 +237,7 @@ function startRename(path: string) {
 async function confirmRename(path: string) {
   const base = renameValue.value.trim().replace(/[/\\]/g, '')
   const oldName = path.split('/').at(-1) ?? ''
-  const suffix = oldName.match(/\.(md|markdown)$/i)?.[0] ?? '.md'
+  const suffix = oldName.match(/\.(md|markdown|txt)$/i)?.[0] ?? '.md'
   renamingFile.value = null
   if (!base || base + suffix === oldName) return
   await projectStore.renameEntry(path, base + suffix)

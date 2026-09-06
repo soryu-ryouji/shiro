@@ -1,11 +1,13 @@
 <!-- 手机预览浮层：把当前文稿渲染成手机阅读视图，作者据此检查目标平台排版。
      内容取 projectStore.currentContent（编辑器实时同步，含未保存输入），边写边看。
-     排版沿用外观设置（正文字体/字号/行距/段距/分段方式），所见即作者的阅读偏好。 -->
+     markdown 文稿渲染排版；纯文本（.txt）按原样显示（不分段不解析）。
+     排版用预览专用设置（--preview-line-height/--preview-para-gap，设置面板可调），字体/字号沿用正文。 -->
 <script setup lang="ts">
 import { computed } from 'vue'
 import { projectStore } from '../stores/project'
 import { renderMarkdown } from '../utils/mdRender'
 import { editorParaMode } from '../utils/font'
+import { isPlainSheet, stripSheetExt } from '../utils/sheet'
 import { useDialogMask } from '../composables/useDialog'
 import Icon from './Icon.vue'
 
@@ -15,7 +17,10 @@ const { onMaskDown, onMaskUp } = useDialogMask(() => emit('close'))
 /** 窗口高度不足时收缩手机框（844 = iPhone 逻辑高度，宽 390） */
 const phoneHeight = 'min(844px, calc(100vh - 72px))'
 
-const docTitle = computed(() => projectStore.currentFile?.split('/').at(-1)?.replace(/\.(md|markdown)$/i, '') ?? '')
+const docTitle = computed(() => stripSheetExt(projectStore.currentFile?.split('/').at(-1) ?? ''))
+
+/** 纯文本（.txt）：预览不解析 markdown，按原样纯文本显示 */
+const plain = computed(() => isPlainSheet(projectStore.currentFile ?? ''))
 
 const html = computed(() => renderMarkdown(projectStore.currentContent, editorParaMode.value))
 </script>
@@ -30,9 +35,10 @@ const html = computed(() => renderMarkdown(projectStore.currentContent, editorPa
           <Icon name="close" :size="12" />
         </button>
       </div>
-      <!-- 阅读视图 -->
+      <!-- 阅读视图（markdown 渲染 / 纯文本原样显示） -->
       <!-- eslint-disable-next-line vue/no-v-html -->
-      <div v-overlay-scrollbar class="reading" v-html="html" />
+      <div v-if="!plain" v-overlay-scrollbar class="reading" v-html="html" />
+      <div v-else v-overlay-scrollbar class="reading plain">{{ projectStore.currentContent }}</div>
     </div>
   </div>
 </template>
@@ -103,7 +109,7 @@ const html = computed(() => renderMarkdown(projectStore.currentContent, editorPa
   }
 }
 
-/* 阅读视图：正文排版沿用外观设置（字体/字号/行高为全局 CSS 变量），段距即编辑器段间距 */
+/* 阅读视图：预览专用行距/段距（--preview-*，设置面板可调），字体/字号沿用正文设置 */
 .reading {
   flex: 1;
   min-height: 0;
@@ -111,11 +117,17 @@ const html = computed(() => renderMarkdown(projectStore.currentContent, editorPa
   padding: 24px 24px 32px;
   font-family: var(--font-editor);
   font-size: calc(17px * var(--font-scale-editor));
-  line-height: var(--editor-line-height);
+  line-height: var(--preview-line-height);
+}
+
+/* 纯文本（.txt）：按原样显示 */
+.reading.plain {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .reading :deep(p) {
-  margin: 0 0 var(--editor-para-gap);
+  margin: 0 0 var(--preview-para-gap);
 }
 
 .reading :deep(p:last-child) {
@@ -129,10 +141,10 @@ const html = computed(() => renderMarkdown(projectStore.currentContent, editorPa
 .reading :deep(h4),
 .reading :deep(h5),
 .reading :deep(h6) {
-  margin: calc(var(--editor-para-gap) * 2) 0 var(--editor-para-gap);
+  margin: calc(var(--preview-para-gap) * 2) 0 var(--preview-para-gap);
   font-weight: 700;
   font-size: 1em;
-  line-height: var(--editor-line-height);
+  line-height: var(--preview-line-height);
 }
 
 .reading :deep(h1:first-child),
@@ -145,7 +157,7 @@ const html = computed(() => renderMarkdown(projectStore.currentContent, editorPa
 }
 
 .reading :deep(blockquote) {
-  margin: 0 0 var(--editor-para-gap);
+  margin: 0 0 var(--preview-para-gap);
   padding-left: 12px;
   border-left: 2px solid color-mix(in srgb, var(--text-dim) 30%, transparent);
 }
@@ -156,7 +168,7 @@ const html = computed(() => renderMarkdown(projectStore.currentContent, editorPa
 
 .reading :deep(ul),
 .reading :deep(ol) {
-  margin: 0 0 var(--editor-para-gap);
+  margin: 0 0 var(--preview-para-gap);
   padding-left: 1.5em;
 }
 
@@ -174,7 +186,7 @@ const html = computed(() => renderMarkdown(projectStore.currentContent, editorPa
 }
 
 .reading :deep(pre) {
-  margin: 0 0 var(--editor-para-gap);
+  margin: 0 0 var(--preview-para-gap);
   padding: 10px 12px;
   background: var(--bg-soft);
   border-radius: 8px;
@@ -190,7 +202,7 @@ const html = computed(() => renderMarkdown(projectStore.currentContent, editorPa
 .reading :deep(hr) {
   border: none;
   border-top: 1px solid var(--border);
-  margin: calc(var(--editor-para-gap) * 1.5) 0;
+  margin: calc(var(--preview-para-gap) * 1.5) 0;
 }
 
 .reading :deep(a) {

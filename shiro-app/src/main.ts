@@ -5,16 +5,22 @@ import './style.css'
 import '@fontsource/lxgw-wenkai'
 import '@fontsource/lxgw-wenkai/700.css'
 import {
+  applyContentWidth,
   applyEditorFont,
   applyEditorFontSize,
   applyEditorLineHeight,
   applyEditorParaGap,
+  applyPreviewLineHeight,
+  applyPreviewParaGap,
   applyUiFont,
   applyUiFontSize,
+  currentContentWidth,
   currentEditorFontKey,
   currentEditorFontSize,
   currentEditorLineHeight,
   currentEditorParaGap,
+  currentPreviewLineHeight,
+  currentPreviewParaGap,
   currentUiFontKey,
   currentUiFontSize,
 } from './utils/font'
@@ -26,5 +32,8 @@ applyUiFontSize(currentUiFontSize())
 applyEditorFontSize(currentEditorFontSize())
 applyEditorLineHeight(currentEditorLineHeight())
 applyEditorParaGap(currentEditorParaGap())
+applyContentWidth(currentContentWidth())
+applyPreviewLineHeight(currentPreviewLineHeight())
+applyPreviewParaGap(currentPreviewParaGap())
 
 createApp(App).directive('overlay-scrollbar', vOverlayScrollbar).mount('#app')
