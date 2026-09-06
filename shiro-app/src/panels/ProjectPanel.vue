@@ -38,6 +38,11 @@ function openProject(p: ProjectItem) {
 // ---- 目录树菜单（新建子目录 / 删除目录）；递归的 TreeNode 经 inject 打开 ----
 const treeMenu = ref<{ x: number; y: number; node: TreeNodeData } | null>(null)
 provide('openTreeMenu', (e: MouseEvent, node: TreeNodeData) => {
+  // click（··· 按钮）切换开合；contextmenu（右键）总是打开
+  if (e.type !== 'contextmenu' && treeMenu.value?.node === node) {
+    treeMenu.value = null
+    return
+  }
   treeMenu.value = { x: e.clientX, y: e.clientY, node }
 })
 
@@ -81,6 +86,11 @@ async function confirmRootNaming() {
 function openMenu(e: MouseEvent, item: ProjectItem) {
   e.preventDefault()
   menu.value = { x: e.clientX, y: e.clientY, item }
+}
+
+/** ··· 按钮切换开合（配 mousedown.stop 阻断菜单的「点击外部关闭」，否则先关后开永不收起） */
+function toggleMenu(e: MouseEvent, item: ProjectItem) {
+  menu.value = menu.value?.item === item ? null : { x: e.clientX, y: e.clientY, item }
 }
 
 function menuItems(item: ProjectItem): MenuItem[] {
@@ -256,7 +266,7 @@ function openProjectMenu(e: MouseEvent) {
             <span class="name">{{ p.name }}</span>
             <span class="path">{{ p.path }}</span>
           </div>
-          <button class="more-btn" title="更多操作（只删除记录，不删除文件夹）" @click.stop="openMenu($event, p)">
+          <button class="more-btn" title="更多操作（只删除记录，不删除文件夹）" @mousedown.stop @click.stop="toggleMenu($event, p)">
             <Icon name="more" :size="14" />
           </button>
         </li>

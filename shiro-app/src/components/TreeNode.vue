@@ -90,7 +90,7 @@ async function confirmRename() {
         <button class="row-btn" title="新建子目录" @click.stop="projectStore.namingDir = node.path">
           <Icon name="plus" :size="12" />
         </button>
-        <button class="row-btn" title="更多操作" @click.stop="openTreeMenu($event, node)">
+        <button class="row-btn" title="更多操作" @mousedown.stop @click.stop="openTreeMenu($event, node)">
           <Icon name="more" :size="12" />
         </button>
       </span>

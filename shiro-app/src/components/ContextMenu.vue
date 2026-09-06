@@ -5,6 +5,8 @@ import { computed, onMounted, onUnmounted } from 'vue'
 export interface MenuItem {
   label: string
   danger?: boolean
+  /** 定义即渲染勾选列（单选式菜单项，如排序方式）：true 显示 ✓，false 留空占位 */
+  checked?: boolean
   action: () => void
 }
 
@@ -46,7 +48,7 @@ onUnmounted(() => {
       :class="{ danger: item.danger }"
       @click="item.action(); emit('close')"
     >
-      {{ item.label }}
+      <span v-if="item.checked !== undefined" class="ctx-tick">{{ item.checked ? '✓' : '' }}</span>{{ item.label }}
     </button>
   </div>
 </template>
@@ -91,5 +93,12 @@ onUnmounted(() => {
 
 .ctx-item.danger {
   color: var(--danger);
+}
+
+/* 勾选列（单选式菜单项） */
+.ctx-tick {
+  display: inline-block;
+  width: 14px;
+  color: var(--accent);
 }
 </style>

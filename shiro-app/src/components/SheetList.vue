@@ -1,11 +1,11 @@
 <script setup lang="ts">
 // 中栏文稿列表（Ulysses 第二栏）：选中目录的直接 .md 文稿。
-// 顶栏（窗口拖拽区）：右侧筛选（按标题子串过滤）与新建（列表首行内联命名）；下方目录名横带（左下对齐 + 底部横线）。
+// 顶栏（窗口拖拽区）：右侧筛选（按标题子串过滤）、排序（名称/修改时间升降序）与新建（列表首行内联命名）；下方目录名横带（左下对齐 + 底部横线）。
 // 每项展示：时间 + 标题 + 正文预览（daemon excerpts 接口，剥离 markdown 取开头约 160 字，两行截断）。
 import { computed, nextTick, ref, watch } from 'vue'
 import { apiFetch } from '../api'
 import { hasShell, isMac, shell } from '../platform'
-import { findDir, projectStore } from '../stores/project'
+import { findDir, projectStore, type TreeNode } from '../stores/project'
 import type { components } from '../api-types'
 import ContextMenu, { type MenuItem } from './ContextMenu.vue'
 import Icon from './Icon.vue'
@@ -96,9 +96,59 @@ function onFilterBlur() {
 
 const shownSheets = computed(() => {
   const q = filter.value.trim().toLowerCase()
-  if (!q) return sheets.value
-  return sheets.value.filter((s) => sheetTitle(s.name).toLowerCase().includes(q))
+  const list = q ? sheets.value.filter((s) => sheetTitle(s.name).toLowerCase().includes(q)) : sheets.value
+  return sortSheets(list, sheetSort.value)
 })
+
+// ---- 排序：顶栏右侧排序按钮弹出方式菜单（localStorage 持久化，全局生效） ----
+type SheetSort = 'name-asc' | 'name-desc' | 'mtime-desc' | 'mtime-asc'
+const SORT_KEY = 'shiro.sheetSort'
+const SORT_OPTIONS: { key: SheetSort; label: string }[] = [
+  { key: 'name-asc', label: '按名称 A → Z' },
+  { key: 'name-desc', label: '按名称 Z → A' },
+  { key: 'mtime-desc', label: '按修改时间 新 → 旧' },
+  { key: 'mtime-asc', label: '按修改时间 旧 → 新' },
+]
+const storedSort = localStorage.getItem(SORT_KEY)
+const sheetSort = ref<SheetSort>(SORT_OPTIONS.some((o) => o.key === storedSort) ? (storedSort as SheetSort) : 'name-asc')
+
+/** 名称排序用 localeCompare + numeric：「第 2 章」排在「第 10 章」前 */
+function sortSheets(list: TreeNode[], sort: SheetSort): TreeNode[] {
+  const sorted = [...list]
+  switch (sort) {
+    case 'name-asc':
+      return sorted.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN', { numeric: true }))
+    case 'name-desc':
+      return sorted.sort((a, b) => b.name.localeCompare(a.name, 'zh-CN', { numeric: true }))
+    case 'mtime-desc':
+      return sorted.sort((a, b) => (b.modified ?? 0) - (a.modified ?? 0))
+    case 'mtime-asc':
+      return sorted.sort((a, b) => (a.modified ?? 0) - (b.modified ?? 0))
+  }
+}
+
+const sortMenu = ref<{ x: number; y: number } | null>(null)
+
+// mousedown.stop 阻断菜单的「点击外部关闭」（否则先关后开，看起来永不收起）；click 显式切换
+function toggleSortMenu(e: MouseEvent) {
+  if (sortMenu.value) {
+    sortMenu.value = null
+    return
+  }
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  sortMenu.value = { x: rect.right - 168, y: rect.bottom + 4 }
+}
+
+function sortMenuItems(): MenuItem[] {
+  return SORT_OPTIONS.map((o) => ({
+    label: o.label,
+    checked: sheetSort.value === o.key,
+    action: () => {
+      sheetSort.value = o.key
+      localStorage.setItem(SORT_KEY, o.key)
+    },
+  }))
+}
 
 // ---- 新建文稿：列表顶行内联输入（Enter 创建，Esc 取消） ----
 const naming = ref(false)
@@ -205,6 +255,9 @@ async function confirmRename(path: string) {
         <button class="head-btn" :class="{ on: filtering }" title="筛选文稿" @mousedown.prevent @click="toggleFilter">
           <Icon name="filter" :size="14" />
         </button>
+        <button class="head-btn" :class="{ on: sheetSort !== 'name-asc' }" title="排序方式" @mousedown.stop @click="toggleSortMenu">
+          <Icon name="sort" :size="14" />
+        </button>
         <button class="head-btn" title="新建文稿" @click="startNaming">
           <Icon name="plus" :size="14" />
         </button>
@@ -279,6 +332,7 @@ async function confirmRename(path: string) {
       :items="sheetMenuItems(sheetMenu.path)"
       @close="sheetMenu = null"
     />
+    <ContextMenu v-if="sortMenu" :x="sortMenu.x" :y="sortMenu.y" :items="sortMenuItems()" @close="sortMenu = null" />
   </div>
 </template>
 

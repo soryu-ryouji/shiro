@@ -53,6 +53,13 @@ const ICONS: Record<string, IconDef> = {
   chevronDown: { paths: [{ d: 'M3 6l5 5 5-5' }] },
   chevronRight: { paths: [{ d: 'M6 3l5 5-5 5' }] },
   chevronLeft: { paths: [{ d: 'M10 3l-5 5 5 5' }] },
+  // 排序（上下箭头）
+  sort: {
+    paths: [
+      { d: 'M5 2.5v11M2.5 10.5L5 13.5l2.5-3' },
+      { d: 'M11 13.5v-11M8.5 5.5L11 2.5l2.5 3' },
+    ],
+  },
   // 文稿
   fileText: { paths: [{ d: 'M4 2h5.5L12 4.5V14H4z' }, { d: 'M6 7h4M6 9.5h4' }] },
   // 漏斗（筛选）
