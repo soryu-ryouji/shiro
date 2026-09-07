@@ -1,12 +1,24 @@
 <script setup lang="ts">
-// Database 面板（侧栏）：元数据分组（角色，接内容库资产 API，见 docs/asset-format.md）+ 内容库分类（静态占位）。
+// Database 面板（侧栏）：元数据分组（角色，接内容库资产 API，见 docs/asset-format.md）
+// + 制作分组（角色制作，接拆解任务 API）+ 内容库分类（静态占位）。
+import { onMounted } from 'vue'
 import { dbStore } from '../stores/database'
+import { deconstructStore } from '../stores/deconstruct'
 
 const LIB_CATEGORIES = [
   { key: 'conventions', label: '写作规范' },
   { key: 'tropes', label: '基底套路' },
   { key: 'patterns', label: '推进模式' },
 ]
+
+onMounted(() => {
+  if (dbStore.category === 'craft') void deconstructStore.enter()
+})
+
+function openCraft() {
+  dbStore.selectCategory('craft')
+  void deconstructStore.enter()
+}
 </script>
 
 <template>
@@ -19,6 +31,19 @@ const LIB_CATEGORIES = [
     >
       <span class="label">角色</span>
       <span class="count">{{ dbStore.charactersLoaded ? dbStore.characters.length : '—' }}</span>
+    </button>
+
+    <div class="group-title">制作</div>
+    <button
+      class="entry"
+      :class="{ active: dbStore.category === 'craft' }"
+      @click="openCraft"
+    >
+      <span class="label">角色制作</span>
+      <span v-if="deconstructStore.tasksLoaded" class="count">{{
+        deconstructStore.tasks.length
+      }}</span>
+      <span v-else class="count">—</span>
     </button>
 
     <div class="group-title">内容库</div>

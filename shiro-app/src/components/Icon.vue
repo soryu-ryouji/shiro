@@ -88,6 +88,14 @@ const ICONS: Record<string, IconDef> = {
   },
   // 关闭（×）
   close: { paths: [{ d: 'M3.5 3.5l9 9M12.5 3.5l-9 9' }] },
+  trash: {
+    vb: '0 0 24 24',
+    paths: [
+      { d: 'M3 6h18' },
+      { d: 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6' },
+      { d: 'M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' },
+    ],
+  },
   // 眼睛（预览，lucide eye 24px 网格）
   eye: {
     vb: '0 0 24 24',

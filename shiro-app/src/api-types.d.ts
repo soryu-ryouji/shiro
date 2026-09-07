@@ -49,7 +49,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 角色详情（frontmatter 字段 + 正文 markdown） */
+        /** 角色详情（单文件简卡：frontmatter 字段 + 正文；目录深卡：index.md + 子文件列表） */
         get: operations["get_character"];
         /**
          * 保存角色卡：临时文件 + rename 原子覆盖（同文稿保存）。
@@ -58,6 +58,111 @@ export interface paths {
         put: operations["save_character"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/db/deconstruct/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 任务列表（最新在前；运行中的任务含实时进度快照） */
+        get: operations["list_tasks"];
+        put?: never;
+        /** 创建角色制作任务（导入剧本 + 角色名/别名），创建即后台执行 */
+        post: operations["create_task"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/db/deconstruct/tasks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 任务详情：完整进度 + 已生成产物 */
+        get: operations["get_task"];
+        put?: never;
+        post?: never;
+        /** 删除任务（连同任务目录；运行中不可删） */
+        delete: operations["delete_task"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/db/deconstruct/tasks/{id}/save": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 产物保存到人物库（目录形态深卡，db/人物/<id>/） */
+        post: operations["save_task"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/model/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 档案列表（含默认档案指定） */
+        get: operations["list_profiles"];
+        put?: never;
+        /** 注册/更新档案（同 key 覆盖；首个档案自动成为默认） */
+        post: operations["upsert_profile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/model/profiles/default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 指定默认档案（拆解等任务使用） */
+        post: operations["set_default_profile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/model/profiles/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** 删除档案；删除默认档案时默认项回退到剩余第一个 */
+        delete: operations["delete_profile"];
         options?: never;
         head?: never;
         patch?: never;
@@ -216,13 +321,29 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        CardFile: {
+            /** @description 子文件内容（markdown） */
+            body: string;
+            /** @description 子文件名（不带扩展名）：soul / speech_patterns / … / limit */
+            name: string;
+        };
+        CardFileDto: {
+            /** @description 文件内容（markdown） */
+            body: string;
+            /** @description 文件名（不带扩展名）：soul / speech_patterns / … / index */
+            name: string;
+        };
         CharacterDetail: {
             archetype: string[];
-            /** @description 正文 markdown（frontmatter 之后，含「可迁移 / 本作设定」区块） */
+            /** @description 正文 markdown（单文件卡：frontmatter 之后全文；深卡：index.md 正文） */
             body: string;
+            /** @description 深卡标记（目录形态档案包时为 full） */
+            depth?: string | null;
+            /** @description 深卡子文件（单文件简卡为空数组；index 正文已在 body） */
+            files: components["schemas"]["CardFile"][];
             id: string;
             name: string;
-            /** @description 文件原始内容（含 frontmatter，编辑用） */
+            /** @description 文件原始内容（含 frontmatter，编辑用；深卡为 index.md 原文） */
             raw: string;
             role?: string | null;
             source?: string | null;
@@ -234,9 +355,11 @@ export interface components {
         CharacterSummary: {
             /** @description 原型标签（可多个） */
             archetype: string[];
+            /** @description 深卡标记（目录形态档案包时为 full） */
+            depth?: string | null;
             /** @description 正文预览（剥离 markdown 标记后取开头） */
             excerpt: string;
-            /** @description 角色 id（db/人物/ 下文件名去掉 .md） */
+            /** @description 角色 id（单文件：db/人物/ 下文件名去掉 .md；深卡：目录名） */
             id: string;
             /**
              * Format: int64
@@ -274,6 +397,16 @@ export interface components {
             /** @description 项目文件夹绝对路径（须已存在；任意内容的文件夹均可） */
             path: string;
         };
+        CreateTaskRequest: {
+            /** @description 别名/其他写法（避免归属遗漏） */
+            aliases?: string[];
+            /** @description 待分析角色名（主名） */
+            character: string;
+            /** @description 剧本全文 */
+            content: string;
+            /** @description 素材名（作品名或文件名） */
+            source_name: string;
+        };
         ErrorResponse: {
             message: string;
         };
@@ -288,6 +421,39 @@ export interface components {
              */
             modified: number;
         };
+        ProfileListResponse: {
+            /** @description 默认档案 key（无档案时为 null） */
+            default_key?: string | null;
+            profiles: components["schemas"]["ProfileSummary"][];
+        };
+        ProfileSummary: {
+            api_key_preview?: string | null;
+            api_key_set: boolean;
+            base_url: string;
+            /** @description 档案 key（供应商 preset key） */
+            key: string;
+            /** @description 该档案当前使用的模型 */
+            model: string;
+            /** @description 协议：openai | anthropic */
+            protocol: string;
+        };
+        Progress: {
+            /** @description 生成中的当前文件（不带扩展名） */
+            current_file?: string | null;
+            error?: string | null;
+            files_done?: string[];
+            /** Format: int64 */
+            finished_at?: number | null;
+            /** @description 素材形态（script/prose；探测后回填） */
+            form?: string | null;
+            notes_done?: number;
+            /** @description 解析失败的段序号（降级，不阻断） */
+            notes_failed?: number[];
+            saved_character_id?: string | null;
+            segment_count?: number;
+            stage: string;
+            verified?: null | components["schemas"]["VerifyReport"];
+        };
         ProjectItem: {
             /** @description 目录当前是否存在（已移动/删除的历史项返回 false，前端置灰） */
             exists: boolean;
@@ -298,6 +464,11 @@ export interface components {
         };
         ProjectListResponse: {
             projects: components["schemas"]["ProjectItem"][];
+        };
+        RemovedQuote: {
+            file: string;
+            quote: string;
+            unit: string;
         };
         RenameEntryRequest: {
             /** @description 新名字（文件名含后缀） */
@@ -323,6 +494,13 @@ export interface components {
             /** @description 保存后能否仍解析为角色卡（false = frontmatter 缺失/损坏/未标记类型，该卡不进列表） */
             parsed: boolean;
         };
+        SaveTaskResponse: {
+            /** @description 保存后的人物库角色 id（db/人物/<id>/） */
+            character_id: string;
+        };
+        SetDefaultRequest: {
+            key: string;
+        };
         SheetExcerpt: {
             /** @description 正文预览（markdown 剥离标记后取开头约 160 字；纯文本直接取开头） */
             excerpt: string;
@@ -334,6 +512,35 @@ export interface components {
         };
         /** @enum {string} */
         StartupStatus: "starting" | "ready" | "error";
+        TaskDetail: {
+            aliases: string[];
+            character: string;
+            /** Format: int64 */
+            created_at: number;
+            /** @description 产物文件（已生成的部分） */
+            files: components["schemas"]["CardFileDto"][];
+            id: string;
+            /** @description 完整进度（阶段/切片数/笔记进度/生成进度/回查报告） */
+            progress: components["schemas"]["Progress"];
+            source_name: string;
+        };
+        TaskListResponse: {
+            tasks: components["schemas"]["TaskSummary"][];
+        };
+        TaskSummary: {
+            character: string;
+            /** Format: int64 */
+            created_at: number;
+            error?: string | null;
+            /** Format: int64 */
+            finished_at?: number | null;
+            id: string;
+            notes_done: number;
+            saved_character_id?: string | null;
+            segment_count: number;
+            source_name: string;
+            stage: string;
+        };
         TreeNode: {
             /** @description 子节点（仅 dir） */
             children?: components["schemas"]["TreeNode"][] | null;
@@ -351,6 +558,21 @@ export interface components {
         };
         TreeResponse: {
             children: components["schemas"]["TreeNode"][];
+        };
+        UpsertProfileRequest: {
+            /** @description 新密钥；缺省或空字符串 = 保留原值（新建档案必填） */
+            api_key?: string | null;
+            base_url: string;
+            /** @description 档案 key（供应商 preset key；同 key 覆盖更新） */
+            key: string;
+            model: string;
+            protocol?: string | null;
+        };
+        VerifyReport: {
+            /** @description 回查通过的引文数 */
+            passed: number;
+            /** @description 二次失败后被删除的引文（file, quote, unit） */
+            removed: components["schemas"]["RemovedQuote"][];
         };
         WriteFileRequest: {
             content: string;
@@ -476,7 +698,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 角色 id（db/人物/ 下文件名去掉 .md） */
+                /** @description 角色 id（单文件卡去 .md 的文件名；深卡为目录名） */
                 id: string;
             };
             cookie?: never;
@@ -561,6 +783,388 @@ export interface operations {
                 content?: never;
             };
             /** @description 角色不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 写入失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_tasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 任务列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskListResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    create_task: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description 已创建并开始执行 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskSummary"];
+                };
+            };
+            /** @description 参数错误（内容为空/角色名为空） */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 任务目录写入失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_task: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 任务 id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 任务详情 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDetail"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 任务不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_task: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 任务 id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已删除 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 运行中不可删 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 任务不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    save_task: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 任务 id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已保存 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaveTaskResponse"];
+                };
+            };
+            /** @description 任务未完成或产物为空 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 任务不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_profiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 档案列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileListResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    upsert_profile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description 已保存（含更新后列表） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileListResponse"];
+                };
+            };
+            /** @description 参数错误 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 写入失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    set_default_profile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetDefaultRequest"];
+            };
+        };
+        responses: {
+            /** @description 已指定 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileListResponse"];
+                };
+            };
+            /** @description 档案不存在 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 写入失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_profile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 档案 key */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已删除（含更新后列表） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileListResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 档案不存在 */
             404: {
                 headers: {
                     [name: string]: unknown;

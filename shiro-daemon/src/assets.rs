@@ -17,7 +17,7 @@ const EXCERPT_CHARS: usize = 160;
 
 #[derive(Serialize, ToSchema)]
 pub struct CharacterSummary {
-    /// 角色 id（db/人物/ 下文件名去掉 .md）
+    /// 角色 id（单文件：db/人物/ 下文件名去掉 .md；深卡：目录名）
     pub id: String,
     /// 显示名（frontmatter 的 name；缺失回退文件名）
     pub name: String,
@@ -31,6 +31,9 @@ pub struct CharacterSummary {
     /// 来源标注（应用的全局原型，如 db://characters/xxx）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// 深卡标记（目录形态档案包时为 full）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub depth: Option<String>,
     /// 正文预览（剥离 markdown 标记后取开头）
     pub excerpt: String,
     /// 文件修改时间（epoch 秒）
@@ -43,6 +46,14 @@ pub struct CharacterListResponse {
 }
 
 #[derive(Serialize, ToSchema)]
+pub struct CardFile {
+    /// 子文件名（不带扩展名）：soul / speech_patterns / … / limit
+    pub name: String,
+    /// 子文件内容（markdown）
+    pub body: String,
+}
+
+#[derive(Serialize, ToSchema)]
 pub struct CharacterDetail {
     pub id: String,
     pub name: String,
@@ -52,14 +63,19 @@ pub struct CharacterDetail {
     pub tags: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
-    /// 正文 markdown（frontmatter 之后，含「可迁移 / 本作设定」区块）
+    /// 深卡标记（目录形态档案包时为 full）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub depth: Option<String>,
+    /// 深卡子文件（单文件简卡为空数组；index 正文已在 body）
+    pub files: Vec<CardFile>,
+    /// 正文 markdown（单文件卡：frontmatter 之后全文；深卡：index.md 正文）
     pub body: String,
-    /// 文件原始内容（含 frontmatter，编辑用）
+    /// 文件原始内容（含 frontmatter，编辑用；深卡为 index.md 原文）
     pub raw: String,
 }
 
 /// 全局人物库目录：~/.config/shiro/db/人物/
-fn characters_dir() -> PathBuf {
+pub(crate) fn characters_dir() -> PathBuf {
     config_dir().join("db").join("人物")
 }
 
@@ -131,12 +147,18 @@ fn parse_character(fm: &str, body: &str, id: &str) -> Option<CharacterSummary> {
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(String::from),
+        depth: yaml
+            .get("depth")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from),
         excerpt: excerpt_from_content(body, EXCERPT_CHARS, true),
         modified: 0,
     })
 }
 
-/// 扫描目录下的角色卡：只收 .md，按显示名排序
+/// 扫描目录下的角色卡：单文件 <id>.md 与目录深卡 <id>/index.md 并收，按显示名排序
 fn scan_characters(dir: &Path) -> Vec<CharacterSummary> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -144,13 +166,33 @@ fn scan_characters(dir: &Path) -> Vec<CharacterSummary> {
     let mut out = Vec::new();
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') || !name.ends_with(".md") {
+        if name.starts_with('.') {
+            continue;
+        }
+        let path = entry.path();
+        if path.is_dir() {
+            // 目录深卡：入口 index.md
+            let index = path.join("index.md");
+            let Ok(content) = std::fs::read_to_string(&index) else {
+                continue;
+            };
+            let Some((fm, body)) = split_frontmatter(&content) else {
+                continue;
+            };
+            let Some(mut c) = parse_character(&fm, &body, &name) else {
+                continue;
+            };
+            c.modified = file_mtime(&index);
+            out.push(c);
+            continue;
+        }
+        if !name.ends_with(".md") {
             continue;
         }
         let Some(id) = name.strip_suffix(".md") else {
             continue;
         };
-        let Ok(content) = std::fs::read_to_string(entry.path()) else {
+        let Ok(content) = std::fs::read_to_string(&path) else {
             continue;
         };
         let Some((fm, body)) = split_frontmatter(&content) else {
@@ -159,7 +201,7 @@ fn scan_characters(dir: &Path) -> Vec<CharacterSummary> {
         let Some(mut c) = parse_character(&fm, &body, id) else {
             continue;
         };
-        c.modified = file_mtime(&entry.path());
+        c.modified = file_mtime(&path);
         out.push(c);
     }
     out.sort_by(|a, b| a.name.cmp(&b.name));
@@ -197,13 +239,27 @@ pub(crate) async fn list_characters() -> Json<CharacterListResponse> {
     })
 }
 
-/// 角色详情（frontmatter 字段 + 正文 markdown）
+/// 深卡子文件读取：固定顺序（soul → … → limit），缺文件跳过
+fn read_deep_files(dir: &Path) -> Vec<CardFile> {
+    crate::deconstruct::engine::GENERATION_FILES[..6]
+        .iter()
+        .filter_map(|name| {
+            let body = std::fs::read_to_string(dir.join(format!("{name}.md"))).ok()?;
+            Some(CardFile {
+                name: (*name).to_string(),
+                body,
+            })
+        })
+        .collect()
+}
+
+/// 角色详情（单文件简卡：frontmatter 字段 + 正文；目录深卡：index.md + 子文件列表）
 #[utoipa::path(
     get,
     path = "/api/v1/db/characters/{id}",
     tag = "db",
     params(
-        ("id" = String, Path, description = "角色 id（db/人物/ 下文件名去掉 .md）")
+        ("id" = String, Path, description = "角色 id（单文件卡去 .md 的文件名；深卡为目录名）")
     ),
     responses(
         (status = 200, description = "角色详情", body = CharacterDetail),
@@ -219,25 +275,53 @@ pub(crate) async fn get_character(
     if !valid_asset_id(&id) {
         return Err(bad_request("非法的角色 id"));
     }
-    let path = characters_dir().join(format!("{id}.md"));
-    let content = std::fs::read_to_string(&path).map_err(|_| not_found("角色不存在"))?;
-    let Some((fm, body)) = split_frontmatter(&content) else {
-        return Err(not_found("角色不存在"));
-    };
-    let Some(c) = parse_character(&fm, &body, &id) else {
-        // 文件存在但不是角色资产：对调用方而言等同不存在，避免把普通文档当角色暴露
-        return Err(not_found("角色不存在"));
-    };
-    Ok(Json(CharacterDetail {
-        id: c.id,
-        name: c.name,
-        role: c.role,
-        archetype: c.archetype,
-        tags: c.tags,
-        source: c.source,
-        body,
-        raw: content,
-    }))
+    // 单文件简卡优先，其次目录深卡（index.md）
+    let file_path = characters_dir().join(format!("{id}.md"));
+    let dir_path = characters_dir().join(&id);
+    if file_path.is_file() {
+        let content = std::fs::read_to_string(&file_path).map_err(|_| not_found("角色不存在"))?;
+        let Some((fm, body)) = split_frontmatter(&content) else {
+            return Err(not_found("角色不存在"));
+        };
+        let Some(c) = parse_character(&fm, &body, &id) else {
+            return Err(not_found("角色不存在"));
+        };
+        return Ok(Json(CharacterDetail {
+            id: c.id,
+            name: c.name,
+            role: c.role,
+            archetype: c.archetype,
+            tags: c.tags,
+            source: c.source,
+            depth: c.depth,
+            files: Vec::new(),
+            body,
+            raw: content,
+        }));
+    }
+    let index = dir_path.join("index.md");
+    if index.is_file() {
+        let content = std::fs::read_to_string(&index).map_err(|_| not_found("角色不存在"))?;
+        let Some((fm, body)) = split_frontmatter(&content) else {
+            return Err(not_found("角色不存在"));
+        };
+        let Some(c) = parse_character(&fm, &body, &id) else {
+            return Err(not_found("角色不存在"));
+        };
+        return Ok(Json(CharacterDetail {
+            id: c.id,
+            name: c.name,
+            role: c.role,
+            archetype: c.archetype,
+            tags: c.tags,
+            source: c.source,
+            depth: c.depth,
+            files: read_deep_files(&dir_path),
+            body,
+            raw: content,
+        }));
+    }
+    Err(not_found("角色不存在"))
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -283,11 +367,17 @@ pub(crate) async fn save_character(
     if !valid_asset_id(&id) {
         return Err(bad_request("非法的角色 id"));
     }
-    let path = characters_dir().join(format!("{id}.md"));
-    if !path.is_file() {
+    // 单文件简卡优先；其次目录深卡（编辑对象是 index.md，写回原位）
+    let single = characters_dir().join(format!("{id}.md"));
+    let deep = characters_dir().join(&id).join("index.md");
+    let path = if single.is_file() {
+        single
+    } else if deep.is_file() {
+        deep
+    } else {
         return Err(not_found("角色不存在"));
-    }
-    let tmp = path.with_extension("md.shiro-tmp");
+    };
+    let tmp = path.with_extension("tmp");
     std::fs::write(&tmp, &req.content).map_err(internal_error)?;
     std::fs::rename(&tmp, &path).map_err(internal_error)?;
 
@@ -321,7 +411,7 @@ pub struct CreateCharacterRequest {
 }
 
 /// 由显示名生成 id：仅保留 ASCII 字母数字与连字符；为空（如纯中文名）时用 character-<时间戳>
-fn slug_for(name: &str) -> String {
+pub(crate) fn slug_for(name: &str) -> String {
     let slug: String = name
         .to_lowercase()
         .chars()
@@ -401,6 +491,8 @@ pub(crate) async fn create_character(
             archetype: vec![],
             tags: vec![],
             source: None,
+            depth: None,
+            files: Vec::new(),
             body,
             raw: content,
         }),
@@ -468,6 +560,36 @@ mod tests {
         assert!(!valid_asset_id("../etc"));
         assert!(!valid_asset_id("a/b"));
         assert!(!valid_asset_id(".hidden"));
+    }
+
+    #[test]
+    fn scan_deep_card_dir() {
+        let dir = tmp_dir("deep");
+        let card_dir = dir.join("makima");
+        std::fs::create_dir_all(card_dir.join("sub")).unwrap();
+        std::fs::write(
+            card_dir.join("index.md"),
+            "---\nshiro_asset: character\ndepth: full\nname: 玛奇玛\nsource_work:\n  title: 链锯人\n---\n\n## 一句话\n\n温柔的支配者。\n",
+        )
+        .unwrap();
+        std::fs::write(
+            card_dir.join("soul.md"),
+            "## 核心驱动力\n\n链锯人。\n",
+        )
+        .unwrap();
+        // 无 index.md 的目录不收
+        std::fs::create_dir_all(dir.join("empty-dir")).unwrap();
+
+        let list = scan_characters(&dir);
+        assert_eq!(list.len(), 1);
+        let c = &list[0];
+        assert_eq!(c.id, "makima");
+        assert_eq!(c.name, "玛奇玛");
+        assert_eq!(c.depth.as_deref(), Some("full"));
+        assert!(c.excerpt.contains("温柔的支配者"));
+        assert!(c.modified > 0);
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

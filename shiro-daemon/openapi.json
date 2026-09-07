@@ -134,13 +134,13 @@
         "tags": [
           "db"
         ],
-        "summary": "角色详情（frontmatter 字段 + 正文 markdown）",
+        "summary": "角色详情（单文件简卡：frontmatter 字段 + 正文；目录深卡：index.md + 子文件列表）",
         "operationId": "get_character",
         "parameters": [
           {
             "name": "id",
             "in": "path",
-            "description": "角色 id（db/人物/ 下文件名去掉 .md）",
+            "description": "角色 id（单文件卡去 .md 的文件名；深卡为目录名）",
             "required": true,
             "schema": {
               "type": "string"
@@ -241,6 +241,458 @@
           },
           "404": {
             "description": "角色不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "写入失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/db/deconstruct/tasks": {
+      "get": {
+        "tags": [
+          "deconstruct"
+        ],
+        "summary": "任务列表（最新在前；运行中的任务含实时进度快照）",
+        "operationId": "list_tasks",
+        "responses": {
+          "200": {
+            "description": "任务列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "deconstruct"
+        ],
+        "summary": "创建角色制作任务（导入剧本 + 角色名/别名），创建即后台执行",
+        "operationId": "create_task",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "已创建并开始执行",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误（内容为空/角色名为空）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "500": {
+            "description": "任务目录写入失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/db/deconstruct/tasks/{id}": {
+      "get": {
+        "tags": [
+          "deconstruct"
+        ],
+        "summary": "任务详情：完整进度 + 已生成产物",
+        "operationId": "get_task",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "任务 id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "任务详情",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "任务不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "deconstruct"
+        ],
+        "summary": "删除任务（连同任务目录；运行中不可删）",
+        "operationId": "delete_task",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "任务 id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "已删除"
+          },
+          "400": {
+            "description": "运行中不可删",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "任务不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/db/deconstruct/tasks/{id}/save": {
+      "post": {
+        "tags": [
+          "deconstruct"
+        ],
+        "summary": "产物保存到人物库（目录形态深卡，db/人物/<id>/）",
+        "operationId": "save_task",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "任务 id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "已保存",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveTaskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "任务未完成或产物为空",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "任务不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/model/profiles": {
+      "get": {
+        "tags": [
+          "model"
+        ],
+        "summary": "档案列表（含默认档案指定）",
+        "operationId": "list_profiles",
+        "responses": {
+          "200": {
+            "description": "档案列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "model"
+        ],
+        "summary": "注册/更新档案（同 key 覆盖；首个档案自动成为默认）",
+        "operationId": "upsert_profile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertProfileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "已保存（含更新后列表）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "500": {
+            "description": "写入失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/model/profiles/default": {
+      "post": {
+        "tags": [
+          "model"
+        ],
+        "summary": "指定默认档案（拆解等任务使用）",
+        "operationId": "set_default_profile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetDefaultRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "已指定",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "档案不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "500": {
+            "description": "写入失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/model/profiles/{key}": {
+      "delete": {
+        "tags": [
+          "model"
+        ],
+        "summary": "删除档案；删除默认档案时默认项回退到剩余第一个",
+        "operationId": "delete_profile",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "description": "档案 key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "已删除（含更新后列表）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "档案不存在",
             "content": {
               "application/json": {
                 "schema": {
@@ -1015,6 +1467,40 @@
   },
   "components": {
     "schemas": {
+      "CardFile": {
+        "type": "object",
+        "required": [
+          "name",
+          "body"
+        ],
+        "properties": {
+          "body": {
+            "type": "string",
+            "description": "子文件内容（markdown）"
+          },
+          "name": {
+            "type": "string",
+            "description": "子文件名（不带扩展名）：soul / speech_patterns / … / limit"
+          }
+        }
+      },
+      "CardFileDto": {
+        "type": "object",
+        "required": [
+          "name",
+          "body"
+        ],
+        "properties": {
+          "body": {
+            "type": "string",
+            "description": "文件内容（markdown）"
+          },
+          "name": {
+            "type": "string",
+            "description": "文件名（不带扩展名）：soul / speech_patterns / … / index"
+          }
+        }
+      },
       "CharacterDetail": {
         "type": "object",
         "required": [
@@ -1022,6 +1508,7 @@
           "name",
           "archetype",
           "tags",
+          "files",
           "body",
           "raw"
         ],
@@ -1034,7 +1521,21 @@
           },
           "body": {
             "type": "string",
-            "description": "正文 markdown（frontmatter 之后，含「可迁移 / 本作设定」区块）"
+            "description": "正文 markdown（单文件卡：frontmatter 之后全文；深卡：index.md 正文）"
+          },
+          "depth": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "深卡标记（目录形态档案包时为 full）"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CardFile"
+            },
+            "description": "深卡子文件（单文件简卡为空数组；index 正文已在 body）"
           },
           "id": {
             "type": "string"
@@ -1044,7 +1545,7 @@
           },
           "raw": {
             "type": "string",
-            "description": "文件原始内容（含 frontmatter，编辑用）"
+            "description": "文件原始内容（含 frontmatter，编辑用；深卡为 index.md 原文）"
           },
           "role": {
             "type": [
@@ -1098,13 +1599,20 @@
             },
             "description": "原型标签（可多个）"
           },
+          "depth": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "深卡标记（目录形态档案包时为 full）"
+          },
           "excerpt": {
             "type": "string",
             "description": "正文预览（剥离 markdown 标记后取开头）"
           },
           "id": {
             "type": "string",
-            "description": "角色 id（db/人物/ 下文件名去掉 .md）"
+            "description": "角色 id（单文件：db/人物/ 下文件名去掉 .md；深卡：目录名）"
           },
           "modified": {
             "type": "integer",
@@ -1201,6 +1709,35 @@
           }
         }
       },
+      "CreateTaskRequest": {
+        "type": "object",
+        "required": [
+          "source_name",
+          "content",
+          "character"
+        ],
+        "properties": {
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "别名/其他写法（避免归属遗漏）"
+          },
+          "character": {
+            "type": "string",
+            "description": "待分析角色名（主名）"
+          },
+          "content": {
+            "type": "string",
+            "description": "剧本全文"
+          },
+          "source_name": {
+            "type": "string",
+            "description": "素材名（作品名或文件名）"
+          }
+        }
+      },
       "ErrorResponse": {
         "type": "object",
         "required": [
@@ -1244,6 +1781,140 @@
           }
         }
       },
+      "ProfileListResponse": {
+        "type": "object",
+        "required": [
+          "profiles"
+        ],
+        "properties": {
+          "default_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "默认档案 key（无档案时为 null）"
+          },
+          "profiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProfileSummary"
+            }
+          }
+        }
+      },
+      "ProfileSummary": {
+        "type": "object",
+        "required": [
+          "key",
+          "base_url",
+          "model",
+          "protocol",
+          "api_key_set"
+        ],
+        "properties": {
+          "api_key_preview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "api_key_set": {
+            "type": "boolean"
+          },
+          "base_url": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string",
+            "description": "档案 key（供应商 preset key）"
+          },
+          "model": {
+            "type": "string",
+            "description": "该档案当前使用的模型"
+          },
+          "protocol": {
+            "type": "string",
+            "description": "协议：openai | anthropic"
+          }
+        }
+      },
+      "Progress": {
+        "type": "object",
+        "required": [
+          "stage"
+        ],
+        "properties": {
+          "current_file": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "生成中的当前文件（不带扩展名）"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "files_done": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "finished_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "form": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "素材形态（script/prose；探测后回填）"
+          },
+          "notes_done": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "notes_failed": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "解析失败的段序号（降级，不阻断）"
+          },
+          "saved_character_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "segment_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stage": {
+            "type": "string"
+          },
+          "verified": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/VerifyReport"
+              }
+            ]
+          }
+        }
+      },
       "ProjectItem": {
         "type": "object",
         "required": [
@@ -1277,6 +1948,25 @@
             "items": {
               "$ref": "#/components/schemas/ProjectItem"
             }
+          }
+        }
+      },
+      "RemovedQuote": {
+        "type": "object",
+        "required": [
+          "file",
+          "quote",
+          "unit"
+        ],
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "quote": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
           }
         }
       },
@@ -1360,6 +2050,29 @@
           }
         }
       },
+      "SaveTaskResponse": {
+        "type": "object",
+        "required": [
+          "character_id"
+        ],
+        "properties": {
+          "character_id": {
+            "type": "string",
+            "description": "保存后的人物库角色 id（db/人物/<id>/）"
+          }
+        }
+      },
+      "SetDefaultRequest": {
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          }
+        }
+      },
       "SheetExcerpt": {
         "type": "object",
         "required": [
@@ -1395,6 +2108,124 @@
           "ready",
           "error"
         ]
+      },
+      "TaskDetail": {
+        "type": "object",
+        "required": [
+          "id",
+          "source_name",
+          "character",
+          "aliases",
+          "created_at",
+          "progress",
+          "files"
+        ],
+        "properties": {
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "character": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CardFileDto"
+            },
+            "description": "产物文件（已生成的部分）"
+          },
+          "id": {
+            "type": "string"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/Progress",
+            "description": "完整进度（阶段/切片数/笔记进度/生成进度/回查报告）"
+          },
+          "source_name": {
+            "type": "string"
+          }
+        }
+      },
+      "TaskListResponse": {
+        "type": "object",
+        "required": [
+          "tasks"
+        ],
+        "properties": {
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskSummary"
+            }
+          }
+        }
+      },
+      "TaskSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "source_name",
+          "character",
+          "stage",
+          "created_at",
+          "segment_count",
+          "notes_done"
+        ],
+        "properties": {
+          "character": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finished_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string"
+          },
+          "notes_done": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "saved_character_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "segment_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "source_name": {
+            "type": "string"
+          },
+          "stage": {
+            "type": "string"
+          }
+        }
       },
       "TreeNode": {
         "type": "object",
@@ -1448,6 +2279,60 @@
             "items": {
               "$ref": "#/components/schemas/TreeNode"
             }
+          }
+        }
+      },
+      "UpsertProfileRequest": {
+        "type": "object",
+        "required": [
+          "key",
+          "base_url",
+          "model"
+        ],
+        "properties": {
+          "api_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "新密钥；缺省或空字符串 = 保留原值（新建档案必填）"
+          },
+          "base_url": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string",
+            "description": "档案 key（供应商 preset key；同 key 覆盖更新）"
+          },
+          "model": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "VerifyReport": {
+        "type": "object",
+        "required": [
+          "passed",
+          "removed"
+        ],
+        "properties": {
+          "passed": {
+            "type": "integer",
+            "description": "回查通过的引文数",
+            "minimum": 0
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RemovedQuote"
+            },
+            "description": "二次失败后被删除的引文（file, quote, unit）"
           }
         }
       },

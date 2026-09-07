@@ -1,5 +1,8 @@
 mod api;
 mod assets;
+mod deconstruct;
+mod llm;
+mod model_api;
 mod watch;
 
 use api::AppState;
@@ -37,6 +40,7 @@ async fn main() {
             generated
         }),
         watch_hub: Default::default(),
+        deconstruct: std::sync::Arc::new(deconstruct::engine::Hub::default()),
     };
 
     let (router, doc) = api::build_router(state, cli.serve_dir);

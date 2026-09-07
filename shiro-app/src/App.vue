@@ -19,6 +19,13 @@ const NAV_ITEMS: NavItem[] = [
 ]
 const active = ref<NavKey>('project')
 
+/** 跨视图导航（如制作页提示去配模型）：shiro:navigate 事件携带 NavKey */
+function onNavigate(e: Event) {
+  const key = (e as CustomEvent<NavKey>).detail
+  if (key) active.value = key
+}
+window.addEventListener('shiro:navigate', onNavigate)
+
 /** 侧栏图标行点击：点当前激活图标收起侧栏（VSCode 行为）；切换模块直接生效 */
 function onActivity(key: NavKey) {
   if (key === active.value) {

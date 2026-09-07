@@ -21,6 +21,7 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 pub struct AppState {
     pub token: String,
     pub watch_hub: watch::WatchHub,
+    pub deconstruct: std::sync::Arc<crate::deconstruct::engine::Hub>,
 }
 
 #[derive(Serialize, ToSchema, PartialEq, Debug)]
@@ -1137,6 +1138,15 @@ pub fn build_router(
         .routes(routes!(crate::assets::get_character))
         .routes(routes!(crate::assets::save_character))
         .routes(routes!(crate::assets::create_character))
+        .routes(routes!(crate::deconstruct::api::create_task))
+        .routes(routes!(crate::deconstruct::api::list_tasks))
+        .routes(routes!(crate::deconstruct::api::get_task))
+        .routes(routes!(crate::deconstruct::api::save_task))
+        .routes(routes!(crate::deconstruct::api::delete_task))
+        .routes(routes!(crate::model_api::list_profiles))
+        .routes(routes!(crate::model_api::upsert_profile))
+        .routes(routes!(crate::model_api::set_default_profile))
+        .routes(routes!(crate::model_api::delete_profile))
         .split_for_parts();
     SecurityAddon.modify(&mut doc);
     apply_info(&mut doc);
@@ -1172,6 +1182,7 @@ mod tests {
             AppState {
                 token: String::new(),
                 watch_hub: watch::WatchHub::default(),
+                deconstruct: std::sync::Arc::new(crate::deconstruct::engine::Hub::default()),
             },
             None,
         );

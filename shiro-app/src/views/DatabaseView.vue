@@ -7,6 +7,7 @@ import { renderMarkdown } from '../utils/mdRender'
 import { editorParaMode } from '../utils/font'
 import Icon from '../components/Icon.vue'
 import PromptDialog from '../components/PromptDialog.vue'
+import CraftView from '../components/CraftView.vue'
 
 onMounted(() => {
   // 首次进入视图拉列表；之后切回面板沿用缓存，手动刷新走列表头按钮
@@ -17,6 +18,28 @@ onMounted(() => {
 
 const detailHtml = computed(() =>
   dbStore.detail?.body ? renderMarkdown(dbStore.detail.body, editorParaMode.value) : '',
+)
+
+// ---- 深卡（目录形态档案包）：子文件切换 ----
+const subView = ref<string | null>(null)
+const subFiles = computed(() => dbStore.detail?.files ?? [])
+const subHtml = computed(() => {
+  const target = subFiles.value.find((f) => f.name === subView.value) ?? subFiles.value[0]
+  return target ? renderMarkdown(target.body, editorParaMode.value) : ''
+})
+const DEEP_FILE_LABELS: Record<string, string> = {
+  soul: '灵魂',
+  speech_patterns: '语言指纹',
+  behavior_guide: '行为指南',
+  relationship_dynamics: '关系动力',
+  key_life_events: '编年事件',
+  limit: '红线',
+}
+watch(
+  () => dbStore.selectedId,
+  () => {
+    subView.value = null
+  },
 )
 
 // ---- 新建 ----
@@ -53,7 +76,10 @@ async function save() {
 </script>
 
 <template>
-  <section v-if="dbStore.category === 'characters'" class="db-view">
+  <!-- 角色制作（拆解任务）：制作记录次边栏 + 流程图主区，独立子组件 -->
+  <CraftView v-if="dbStore.category === 'craft'" />
+
+  <section v-else-if="dbStore.category === 'characters'" class="db-view">
     <!-- 列表列 -->
     <div class="list-col">
       <div class="list-head">
@@ -151,6 +177,7 @@ async function save() {
         <header class="detail-head">
           <div class="title-row">
             <h1>{{ dbStore.detail.name }}</h1>
+            <span v-if="dbStore.detail.depth === 'full'" class="deep-badge">深卡</span>
             <button class="icon-btn" title="编辑原文" @click="startEdit">
               <Icon name="edit" :size="14" />
             </button>
@@ -162,6 +189,19 @@ async function save() {
           </div>
           <p v-if="dbStore.detail.source" class="source">来源：{{ dbStore.detail.source }}</p>
         </header>
+        <!-- 深卡：子文件切换（index 正文在上，子文件标签页切换） -->
+        <div v-if="subFiles.length" class="sub-tabs">
+          <button
+            v-for="f in subFiles"
+            :key="f.name"
+            class="tab"
+            :class="{ active: (subView ?? subFiles[0].name) === f.name }"
+            @click="subView = f.name"
+          >
+            {{ DEEP_FILE_LABELS[f.name] ?? f.name }}
+          </button>
+        </div>
+        <div v-if="subFiles.length" class="md sub" v-html="subHtml"></div>
         <!-- 角色卡为本机手稿，不做 sanitize（与预览一致） -->
         <div class="md" v-html="detailHtml"></div>
       </article>
@@ -389,6 +429,45 @@ h1 {
 
 .tag.dim {
   color: var(--text-dim);
+}
+
+.deep-badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: calc(11px * var(--font-scale-ui));
+}
+
+.sub-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0 10px;
+}
+
+.sub-tabs .tab {
+  padding: 3px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-dim);
+  font-size: calc(12px * var(--font-scale-ui));
+  cursor: pointer;
+}
+
+.sub-tabs .tab.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.md.sub {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  margin-bottom: 16px;
 }
 
 /* 编辑态 */
