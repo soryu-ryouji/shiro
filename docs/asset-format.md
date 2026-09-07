@@ -55,6 +55,7 @@ tags: [女二, 主线]
 - **当前状态不进卡**：角色状态、履历由状态回灌写入 `.shiro/state/`，卡保持静态——卡是「她是谁」，状态是「她现在怎样」
 - **全局库模板 = 同一格式去掉「本作设定」区块**
 - **泛化 / 实例化即两区块间的转换**：泛化 = 提炼可迁移区块并去专名；实例化 = 保留可迁移区块 + 按新世界观生成本作设定区块
+- **深卡（目录形态）**：主要角色可用档案包形态 `设定/人物/<名字>/`——`index.md` 承载 frontmatter（`depth: full`、aliases、source_work、citation），soul / speech_patterns / behavior_guide / relationship_dynamics / key_life_events / limit 按固定文件名组织、无 frontmatter；机器只读 index，缺子文件降级不报错。深卡是还原型档案，不设两区块；泛化发布时转换为全局库单文件简卡。结构见 [角色卡提炼工作流](./工具实现/角色卡提炼如何实现.md)
 
 ## 其他资产（实现期细化，先定归属）
 
