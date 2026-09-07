@@ -2,7 +2,7 @@
 // 纯确定性预处理：禁止 LLM、禁止语义判断、同输入同输出。规范见 docs/工具实现/自动拆书如何实现.md。
 
 use regex::Regex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 
 /// 切块算法身份标识（规范 §8：下游缓存键必须包含它；V1 任务不跨次缓存，缓存能力落地时启用）
@@ -15,7 +15,6 @@ const MAX_HEADING_LINE_CHARS: usize = 80;
 const MIN_HEADING_COUNT: usize = 3;
 const MIN_CHAPTER_BODY_CHARS: usize = 120;
 const TARGET_SEGMENT_COUNT: usize = 12;
-const MAX_SEGMENT_COUNT: usize = 24;
 const TARGET_SEGMENT_CHARS: usize = 10_000;
 const MIN_SEGMENT_CHARS: usize = 6_000;
 const MAX_SEGMENT_CHARS: usize = 16_000;
@@ -39,7 +38,7 @@ static HEADING_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
 
 // ---- 输入输出契约（规范 §2） ----
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SourceSegment {
     /// 段落标识：章节/场次标题原文，或「片段 N」
     pub label: String,
@@ -47,7 +46,7 @@ pub struct SourceSegment {
     pub content: String,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChunkStats {
     pub strategy: String, // "chapter" | "plain"
     pub segment_count: usize,
@@ -57,31 +56,15 @@ pub struct ChunkStats {
     pub discarded_chapter_chars: usize,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ChunkResult {
     pub segments: Vec<SourceSegment>,
     pub stats: ChunkStats,
 }
 
-#[derive(Debug)]
-pub struct ChunkOverflowError {
-    pub segment_count: usize,
-    pub total_chars: usize,
-}
-
-impl std::fmt::Display for ChunkOverflowError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "切块段数 {} 超过上限 {}（全文 {} 字符）。建议缩小分析范围或按集/卷拆分后导入",
-            self.segment_count, MAX_SEGMENT_COUNT, self.total_chars
-        )
-    }
-}
-
 // ---- 总流程（规范 §4） ----
 
-pub fn build_chunks(content: &str) -> Result<ChunkResult, ChunkOverflowError> {
+pub fn build_chunks(content: &str) -> ChunkResult {
     // 1. 统一换行符
     let content = if content.contains('\r') {
         content.replace("\r\n", "\n").replace('\r', "\n")
@@ -110,18 +93,12 @@ pub fn build_chunks(content: &str) -> Result<ChunkResult, ChunkOverflowError> {
         (plain, Stats::plain(total, (0, 0)))
     };
 
-    // 4. 段数硬上限：显式失败，禁止截断
-    if segments.len() > MAX_SEGMENT_COUNT {
-        return Err(ChunkOverflowError {
-            segment_count: segments.len(),
-            total_chars: total,
-        });
-    }
+    // 段数不设上限：过多段由用户在选择闸门中挑选（见角色卡提炼规范）
     stats.segment_count = segments.len();
-    Ok(ChunkResult {
+    ChunkResult {
         segments,
         stats,
-    })
+    }
 }
 
 struct Stats;
@@ -344,7 +321,7 @@ mod tests {
         for i in 1..=24 {
             text.push_str(&heading(&format!("第{i}章 测试"), 200));
         }
-        let r = build_chunks(&text).unwrap();
+        let r = build_chunks(&text);
         assert_eq!(r.stats.strategy, "chapter");
         assert_eq!(r.segments.len(), 12);
         assert!(r.segments[0].label.contains('~'));
@@ -356,7 +333,7 @@ mod tests {
         for i in 1..=5 {
             text.push_str(&heading(&format!("第{i}章"), 200));
         }
-        let r = build_chunks(&text).unwrap();
+        let r = build_chunks(&text);
         assert_eq!(r.segments.len(), 5);
         assert_eq!(r.segments[0].label, "第1章");
     }
@@ -368,7 +345,7 @@ mod tests {
         text.push_str(&heading("第2章", 50)); // 过短，过滤但计入统计
         text.push_str(&heading("第3章", 200));
         text.push_str(&heading("第4章", 200));
-        let r = build_chunks(&text).unwrap();
+        let r = build_chunks(&text);
         assert_eq!(r.stats.discarded_chapter_count, 1);
         assert!(r.segments.iter().all(|s| s.label != "第2章"));
     }
@@ -379,7 +356,7 @@ mod tests {
         for i in 1..=6 {
             text.push_str(&heading(&format!("第{i}场"), 300));
         }
-        let r = build_chunks(&text).unwrap();
+        let r = build_chunks(&text);
         assert_eq!(r.stats.strategy, "chapter");
         assert_eq!(r.segments.len(), 6);
 
@@ -387,7 +364,7 @@ mod tests {
         for i in 1..=6 {
             text2.push_str(&heading(&format!("INT. 房间 {i}"), 300));
         }
-        let r2 = build_chunks(&text2).unwrap();
+        let r2 = build_chunks(&text2);
         assert_eq!(r2.stats.strategy, "chapter");
         assert_eq!(r2.segments.len(), 6);
     }
@@ -399,7 +376,7 @@ mod tests {
         for i in 1..=30 {
             text.push_str(&format!("段落{i}开始\n{para}\n\n"));
         }
-        let r = build_chunks(&text).unwrap();
+        let r = build_chunks(&text);
         assert_eq!(r.stats.strategy, "plain");
         assert!(r.segments.len() >= 2, "约 3 万字应切成多段");
         assert_eq!(r.segments[0].label, "片段 1");
@@ -412,7 +389,7 @@ mod tests {
         let b = "乙".repeat(200);
         let c = "丙".repeat(6000);
         let text = format!("{a}\n{b}\n{c}");
-        let r = build_chunks(&text).unwrap();
+        let r = build_chunks(&text);
         assert_eq!(r.stats.strategy, "plain");
         assert!(r.segments.len() >= 2);
         for seg in &r.segments {
@@ -428,12 +405,11 @@ mod tests {
     }
 
     #[test]
-    fn overflow_fails_explicitly() {
-        // 无章节结构的超长文本：约 30 万字 → 30 段 > 24 上限 → 显式失败
+    fn no_segment_cap() {
+        // 无章节结构的超长文本：不再设段数上限，全量切出（用户在选择闸门挑选）
         let text = "正".repeat(300_000);
-        let err = build_chunks(&text).unwrap_err();
-        assert!(err.to_string().contains("超过上限"));
-        assert!(err.segment_count > 24, "实际段数 {}", err.segment_count);
+        let r = build_chunks(&text);
+        assert!(r.segments.len() > 24, "实际段数 {}", r.segments.len());
     }
 
     #[test]
@@ -441,8 +417,8 @@ mod tests {
         let text: String = (1..=15)
             .map(|i| heading(&format!("第{i}章"), 300))
             .collect();
-        let a = build_chunks(&text).unwrap();
-        let b = build_chunks(&text).unwrap();
+        let a = build_chunks(&text);
+        let b = build_chunks(&text);
         assert_eq!(a, b);
     }
 
@@ -451,7 +427,7 @@ mod tests {
         // 正文长句含「第X章」字样但行超长 → 不判为标题
         let long_line = format!("他说到第三章的内容并且这句话非常长{}", "很长".repeat(60));
         let text = format!("{long_line}\n{}", "正文".repeat(400));
-        let r = build_chunks(&text).unwrap();
+        let r = build_chunks(&text);
         assert_eq!(r.stats.strategy, "plain");
     }
 
@@ -461,7 +437,7 @@ mod tests {
         let mut text = heading("第1章", 60_000);
         text.push_str(&heading("第2章", 200));
         text.push_str(&heading("第3章", 200));
-        let r = build_chunks(&text).unwrap();
+        let r = build_chunks(&text);
         assert_eq!(r.stats.strategy, "chapter");
         assert!(r.segments.len() >= 4);
         assert_eq!(r.segments[0].label, "第1章");
@@ -478,7 +454,7 @@ mod tests {
             let body = "正".repeat(200);
             text.push_str(&format!("第{i}章\r\n{body}\r\n"));
         }
-        let r = build_chunks(&text.replace('\n', "\r\n")).unwrap();
+        let r = build_chunks(&text.replace('\n', "\r\n"));
         assert_eq!(r.stats.strategy, "chapter");
         assert_eq!(r.segments.len(), 4);
     }

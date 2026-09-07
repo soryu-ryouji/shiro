@@ -21,12 +21,6 @@ pub struct Profile {
     pub protocol: String,
 }
 
-impl Profile {
-    pub fn is_anthropic(&self) -> bool {
-        self.protocol.trim() == "anthropic"
-    }
-}
-
 /// 运行时配置（引擎使用；由默认档案派生）
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LlmConfig {
@@ -524,7 +518,7 @@ mod tests {
         assert_eq!(read_back.len(), 2);
         assert_eq!(default.as_deref(), Some("kimi-code"));
         let kimi = read_back.iter().find(|p| p.key == "kimi-code").unwrap();
-        assert!(kimi.is_anthropic());
+        assert_eq!(kimi.protocol, "anthropic");
         let text = std::fs::read_to_string(dir.join("config.toml")).unwrap();
         assert!(text.contains("[[llm.profiles]]"));
         assert!(text.contains("default = \"kimi-code\""));

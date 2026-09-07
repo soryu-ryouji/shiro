@@ -2,14 +2,14 @@
 // 规范见 docs/工具实现/角色卡提炼如何实现.md §3。确定性，无 LLM。
 
 use crate::deconstruct::chunk::{self, SourceSegment};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// 归属模式抽样行数上限
 const ATTRIBUTION_SAMPLE_LINES: usize = 1000;
 /// 判定 explicit 归属的命中率阈值（对非空抽样行）
 const ATTRIBUTION_HIT_RATIO: f64 = 0.6;
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProbeResult {
     /// script：台词有显式归属结构；prose：无（对白识别退化为笔记阶段 LLM 处理）
     pub form: String,
@@ -19,7 +19,7 @@ pub struct ProbeResult {
     pub citation_units: Vec<SegmentUnits>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SegmentUnits {
     /// 切块段 label
     pub segment: String,
@@ -181,7 +181,7 @@ mod tests {
     #[test]
     fn probe_detects_script_form() {
         let text = script_sample();
-        let chunks = chunk::build_chunks(&text).unwrap();
+        let chunks = chunk::build_chunks(&text);
         let p = probe(&text, &chunks.segments);
         assert_eq!(p.form, "script");
         assert!(p.attribution_hit_ratio > 0.3);
@@ -190,7 +190,7 @@ mod tests {
     #[test]
     fn probe_detects_prose_form() {
         let text = "他走进房间，环顾四周。墙上挂着一幅画，画中是海。他想起很多年前的事，那时他还小。\n她低着头，没有说话。窗外的雨一直下，像是要把整个城市淹没。他们就这样站了很久。";
-        let chunks = chunk::build_chunks(text).unwrap();
+        let chunks = chunk::build_chunks(text);
         let p = probe(text, &chunks.segments);
         assert_eq!(p.form, "prose");
     }
@@ -198,7 +198,7 @@ mod tests {
     #[test]
     fn citation_units_extract_scenes() {
         let text = script_sample();
-        let chunks = chunk::build_chunks(&text).unwrap();
+        let chunks = chunk::build_chunks(&text);
         let p = probe(&text, &chunks.segments);
         let units = &p.citation_units[0];
         assert_eq!(units.scenes.len(), 2);

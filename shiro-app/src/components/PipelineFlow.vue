@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// 拆解管线流程图（SVG DAG）：节点按阶段状态着色，切块节点显示切片格子，生成节点展开 7 文件。
+// 拆解管线流程图（SVG 纵向数据流导图）：节点按阶段状态着色，
+// 切块/笔记节点下挂切片格子，生成节点下挂 7 文件格，选择闸门为琥珀色等待态。
 // 纯展示组件，数据来自任务进度（daemon Progress）。
 import { computed } from 'vue'
 import type { components } from '../api-types'
@@ -9,28 +10,37 @@ type Progress = components['schemas']['Progress']
 
 const props = defineProps<{ progress: Progress }>()
 
-/** 管线阶段顺序（节点链） */
-const STAGES = ['probing', 'chunking', 'notes', 'evidence', 'generating', 'verifying'] as const
+/** 管线阶段顺序（纵向链） */
+const STAGES = [
+  'probing',
+  'chunking',
+  'selecting',
+  'notes',
+  'evidence',
+  'generating',
+  'verifying',
+] as const
 
-type NodeState = 'pending' | 'running' | 'done' | 'failed'
-
-const notesDone = computed(() => props.progress.notes_done ?? 0)
-const notesFailed = computed(() => props.progress.notes_failed ?? [])
-const filesDone = computed(() => props.progress.files_done ?? [])
+type NodeState = 'pending' | 'running' | 'done' | 'failed' | 'waiting'
 
 function stateOf(stage: string): NodeState {
   const p = props.progress
+  const order = STAGES.indexOf(stage as (typeof STAGES)[number])
+  if (p.stage === 'done') return 'done'
   if (p.stage === 'failed') {
-    // 失败：当前停留阶段标红，之前完成的保持 done
-    const idx = STAGES.indexOf(stage as (typeof STAGES)[number])
     const cur = STAGES.indexOf(p.stage as (typeof STAGES)[number])
-    if (idx < cur) return 'done'
-    if (idx === cur) return 'failed'
+    // 失败阶段可能不在链上（如 pending 时配置缺失）——链上已有节点按序推定
+    if (cur === -1) return order === 0 ? 'failed' : 'pending'
+    if (order < cur) return 'done'
+    if (order === cur) return 'failed'
     return 'pending'
   }
-  const order = STAGES.indexOf(stage as (typeof STAGES)[number])
+  if (p.stage === 'selecting') {
+    if (order < 2) return 'done'
+    if (order === 2) return 'waiting'
+    return 'pending'
+  }
   const cur = STAGES.indexOf(p.stage as (typeof STAGES)[number])
-  if (p.stage === 'done') return 'done'
   if (cur === -1) return 'pending'
   if (order < cur) return 'done'
   if (order === cur) return 'running'
@@ -45,16 +55,23 @@ const nodes = computed(() =>
   })),
 )
 
-/** 切片格子：notes 阶段逐片点亮（probing/chunking 完成后按段数生成） */
+/** 切片格子：选择闸门后按选中数；笔记阶段逐片点亮，失败片段恒红 */
 const segmentCells = computed(() => {
   const p = props.progress
-  if (!p.segment_count || p.segment_count === 0) return []
-  return Array.from({ length: p.segment_count }, (_, i) => {
-    const notesStage = stateOf('notes')
-    if (notesStage === 'done') return 'done' as NodeState
+  const selectedCount = p.selected?.length ?? p.segment_count ?? 0
+  if (!selectedCount) return []
+  const notesStage = stateOf('notes')
+  const failedSet = new Set(p.notes_failed ?? [])
+  return Array.from({ length: selectedCount }, (_, i) => {
+    if (notesStage === 'done') {
+      // 失败片段保持红色（进度事实不因阶段推进而消失）
+      const orig = p.selected?.[i] ?? i
+      return failedSet.has(orig) ? ('failed' as NodeState) : ('done' as NodeState)
+    }
     if (notesStage === 'running') {
-      if (notesFailed.value.includes(i)) return 'failed' as NodeState
-      return i < notesDone.value ? ('done' as NodeState) : ('pending' as NodeState)
+      const orig = p.selected?.[i] ?? i
+      if (failedSet.has(orig)) return 'failed' as NodeState
+      return i < (p.notes_done ?? 0) ? ('done' as NodeState) : ('pending' as NodeState)
     }
     return 'pending' as NodeState
   })
@@ -79,7 +96,7 @@ const genCells = computed(() =>
       const st = stateOf('generating')
       if (st === 'done') return 'done' as NodeState
       if (st === 'running') {
-        if (filesDone.value.includes(f)) return 'done' as NodeState
+        if (props.progress.files_done?.includes(f)) return 'done' as NodeState
         if (props.progress.current_file === f) return 'running' as NodeState
         return 'pending' as NodeState
       }
@@ -88,57 +105,121 @@ const genCells = computed(() =>
   })),
 )
 
-// ---- 布局（固定坐标，自上而下的数据流导图） ----
-const W = 720
-const nodeW = 168
-const nodeH = 40
-// 每行两个节点的两列布局：probing→chunking / notes→evidence / generating(带文件格) / verifying
-const layout = computed(() => {
-  const rows: { y: number; items: { key: string; x: number; label: string; state: NodeState }[] }[] = [
-    { y: 10, items: [nodes.value[0], nodes.value[1]].map((n, i) => ({ ...n, x: i === 0 ? 140 : 420 })) },
-    { y: 100, items: [nodes.value[2], nodes.value[3]].map((n, i) => ({ ...n, x: i === 0 ? 140 : 420 })) },
-    { y: 190, items: [{ ...nodes.value[4], x: 280 }] },
-    { y: 280, items: [{ ...nodes.value[5], x: 280 }] },
-  ]
-  return rows
-})
+// ---- 纵向布局：节点链 + 下方切片格/文件格，行高按内容动态 ----
+const nodeW = 200
+const nodeH = 38
+const CX = 360 // 画布中心 x
 
-const svgHeight = computed(() => 280 + nodeH + 20)
-
-/** 连线：完成的数据流高亮 */
-function linkState(fromState: NodeState, toState: NodeState): NodeState {
-  if (fromState === 'done' && (toState === 'done' || toState === 'running')) return 'done'
-  if (fromState === 'done' && toState === 'failed') return 'done'
-  return 'pending'
+interface NodeBox {
+  key: string
+  label: string
+  state: NodeState
+  y: number
 }
 
-const links = computed(() => {
-  const [probe, chunk, notes, evidence, gen, verify] = nodes.value.map((n) => n.state)
-  return [
-    // probing → chunking（同行水平）
-    { d: 'M 308 30 L 420 30', state: linkState(probe, chunk) },
-    // chunking → notes（下行拐弯）
-    { d: 'M 504 50 L 504 75 L 224 75 L 224 100', state: linkState(chunk, notes) },
-    // notes → evidence（同行水平）
-    { d: 'M 308 120 L 420 120', state: linkState(notes, evidence) },
-    // evidence → generating（下行拐弯）
-    { d: 'M 504 140 L 504 165 L 364 165 L 364 190', state: linkState(evidence, gen) },
-    // generating → verifying（垂直下行）
-    { d: 'M 364 230 L 364 280', state: linkState(gen, verify) },
-  ]
+const layout = computed(() => {
+  const out: NodeBox[] = []
+  let y = 10
+  const cellAreaH = segmentCells.value.length
+    ? Math.ceil(segmentCells.value.length / 12) * 16 + 20
+    : 0
+  for (const n of nodes.value) {
+    out.push({ key: n.key, label: n.label, state: n.state, y })
+    y += nodeH + 24
+    if (n.key === 'notes') y += cellAreaH
+    if (n.key === 'generating') y += Math.ceil(GEN_FILES.length / 3) * 30 + 6
+  }
+  return { nodes: out, height: y + 10, cellAreaH }
 })
+
+const svgHeight = computed(() => layout.value.height)
+
+/** 节点框左上角 x */
+const nodeX = CX - nodeW / 2
+
+/** 纵向连线（节点中心底 → 下节点中心顶） */
+const links = computed(() => {
+  const list = layout.value.nodes
+  return list.slice(0, -1).map((n, i) => {
+    const next = list[i + 1]
+    return {
+      d: `M ${CX} ${n.y + nodeH} L ${CX} ${next.y}`,
+      state: linkState(n.state, next.state),
+    }
+  })
+})
+
+/** 切片格坐标（节点正下方，居中网格，12 列） */
+const segCellRects = computed(() => {
+  const notesNode = layout.value.nodes.find((n) => n.key === 'notes')
+  if (!notesNode || !segmentCells.value.length) return []
+  const cols = 12
+  const w = 13
+  const gap = 3
+  const totalW = Math.min(segmentCells.value.length, cols) * (w + gap) - gap
+  const startX = CX - totalW / 2
+  const startY = notesNode.y + nodeH + 6
+  return segmentCells.value.map((state, i) => ({
+    x: startX + (i % cols) * (w + gap),
+    y: startY + Math.floor(i / cols) * (w + gap),
+    w,
+    state,
+  }))
+})
+
+const segLabelY = computed(() => {
+  const notesNode = layout.value.nodes.find((n) => n.key === 'notes')
+  if (!notesNode || !segmentCells.value.length) return 0
+  const rows = Math.ceil(segmentCells.value.length / 12)
+  return notesNode.y + nodeH + 6 + rows * 16 + 4
+})
+
+const segLabel = computed(() => {
+  const p = props.progress
+  if (p.stage === 'notes') {
+    return `切片 ${p.notes_done ?? 0}/${segmentCells.value.length}`
+  }
+  const failed = p.notes_failed?.length ?? 0
+  const base = `共 ${segmentCells.value.length} 片`
+  return failed ? `${base} · ${failed} 片失败` : base
+})
+
+/** 生成文件格坐标（3 列网格） */
+const genCellRects = computed(() => {
+  const genNode = layout.value.nodes.find((n) => n.key === 'generating')
+  if (!genNode) return []
+  const w = 96
+  const h = 24
+  const gap = 8
+  const totalW = 3 * w + 2 * gap
+  const startX = CX - totalW / 2
+  const startY = genNode.y + nodeH + 8
+  return genCells.value.map((c, i) => ({
+    ...c,
+    x: startX + (i % 3) * (w + gap),
+    y: startY + Math.floor(i / 3) * (h + 6),
+    w,
+    h,
+  }))
+})
+
+function linkState(fromState: NodeState, toState: NodeState): NodeState {
+  if (fromState === 'done' && toState !== 'pending') return 'done'
+  return 'pending'
+}
 
 const stateColor: Record<NodeState, string> = {
   pending: 'var(--border)',
   running: 'var(--accent)',
   done: '#3a9a50',
   failed: '#c05050',
+  waiting: '#b08030',
 }
 </script>
 
 <template>
   <div class="flow">
-    <svg :viewBox="`0 0 ${W} ${svgHeight}`" class="dag" role="img" aria-label="拆解管线进度图">
+    <svg :viewBox="`0 0 720 ${svgHeight}`" class="dag" role="img" aria-label="拆解管线进度图">
       <!-- 连线 -->
       <path
         v-for="(l, i) in links"
@@ -151,62 +232,53 @@ const stateColor: Record<NodeState, string> = {
       />
 
       <!-- 节点 -->
-      <g v-for="row in layout" :key="row.y">
-        <g v-for="n in row.items" :key="n.key">
-          <rect
-            :x="n.x"
-            :y="row.y"
-            :width="nodeW"
-            :height="nodeH"
-            rx="8"
-            class="node"
-            :class="n.state"
-          />
-          <text :x="n.x + nodeW / 2" :y="row.y + 25" class="node-label" :class="n.state">
-            {{ n.label }}
-          </text>
-          <!-- 运行中脉冲圈 -->
-          <circle v-if="n.state === 'running'" :cx="n.x - 6" :cy="row.y + nodeH / 2" r="3.5" class="pulse" />
-        </g>
+      <g v-for="n in layout.nodes" :key="n.key">
+        <rect
+          :x="nodeX"
+          :y="n.y"
+          :width="nodeW"
+          :height="nodeH"
+          rx="8"
+          class="node"
+          :class="n.state"
+        />
+        <text :x="CX" :y="n.y + 24" class="node-label" :class="n.state">{{ n.label }}</text>
+        <circle
+          v-if="n.state === 'running'"
+          :cx="nodeX - 8"
+          :cy="n.y + nodeH / 2"
+          r="3.5"
+          class="pulse"
+        />
+        <circle
+          v-else-if="n.state === 'waiting'"
+          :cx="nodeX - 8"
+          :cy="n.y + nodeH / 2"
+          r="3.5"
+          class="waiting-dot"
+        />
       </g>
 
       <!-- notes 节点下：切片格子 -->
-      <g v-if="segmentCells.length" class="cells">
-        <rect
-          v-for="(s, i) in segmentCells"
-          :key="i"
-          :x="148 + (i % 12) * 15"
-          :y="146 + Math.floor(i / 12) * 15"
-          width="11"
-          height="11"
-          rx="2"
-          class="cell"
-          :class="s"
-        />
-        <text v-if="progress.stage === 'notes'" :x="148" :y="146 + Math.ceil(segmentCells.length / 12) * 15 + 14" class="cell-label">
-          切片 {{ progress.notes_done }}/{{ progress.segment_count }}
-        </text>
-        <text v-else :x="148" :y="146 + Math.ceil(segmentCells.length / 12) * 15 + 14" class="cell-label">
-          共 {{ progress.segment_count }} 片
-        </text>
-      </g>
+      <rect
+        v-for="(c, i) in segCellRects"
+        :key="i"
+        :x="c.x"
+        :y="c.y"
+        :width="c.w"
+        :height="c.w"
+        rx="2"
+        class="cell"
+        :class="c.state"
+      />
+      <text v-if="segmentCells.length" :x="CX" :y="segLabelY + 10" class="cell-label" text-anchor="middle">
+        {{ segLabel }}
+      </text>
 
       <!-- generating 节点下：7 文件格 -->
-      <g class="cells">
-        <template v-for="(f, i) in genCells" :key="f.key">
-          <rect
-            :x="90 + i * 82"
-            :y="236"
-            width="72"
-            height="24"
-            rx="5"
-            class="file-cell"
-            :class="f.state"
-          />
-          <text :x="90 + i * 82 + 36" :y="251" class="file-label" :class="f.state">
-            {{ f.label }}
-          </text>
-        </template>
+      <g v-for="c in genCellRects" :key="c.key">
+        <rect :x="c.x" :y="c.y" :width="c.w" :height="c.h" rx="5" class="file-cell" :class="c.state" />
+        <text :x="c.x + c.w / 2" :y="c.y + 16" class="file-label" :class="c.state">{{ c.label }}</text>
       </g>
     </svg>
   </div>
@@ -249,6 +321,12 @@ const stateColor: Record<NodeState, string> = {
   fill: rgba(192, 80, 80, 0.08);
 }
 
+.node.waiting {
+  stroke: #b08030;
+  fill: rgba(176, 128, 48, 0.1);
+  stroke-dasharray: 5 3;
+}
+
 .node-label {
   text-anchor: middle;
   font-size: 13px;
@@ -262,6 +340,10 @@ const stateColor: Record<NodeState, string> = {
 
 .node-label.failed {
   fill: #c05050;
+}
+
+.node-label.waiting {
+  fill: #b08030;
 }
 
 .pulse {
@@ -279,8 +361,8 @@ const stateColor: Record<NodeState, string> = {
   }
 }
 
-.cell {
-  stroke: none;
+.waiting-dot {
+  fill: #b08030;
 }
 
 .cell.pending {
@@ -289,10 +371,6 @@ const stateColor: Record<NodeState, string> = {
 
 .cell.done {
   fill: #3a9a50;
-}
-
-.cell.running {
-  fill: var(--accent);
 }
 
 .cell.failed {

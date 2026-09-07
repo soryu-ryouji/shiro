@@ -38,6 +38,7 @@ export const FILE_LABELS: Record<string, string> = {
 export const STAGE_LABELS: Record<string, string> = {
   probing: '素材探测',
   chunking: '切块',
+  selecting: '待选择',
   notes: '逐段笔记',
   evidence: '证据汇编',
   generating: '档案生成',
@@ -113,12 +114,6 @@ export const deconstructStore = reactive({
     }
   },
 
-  openCreateForm() {
-    this.creating = true
-    this.selectedId = null
-    this.detail = null
-  },
-
   async selectTask(id: string) {
     if (this.selectedId === id && !this.creating) return
     this.creating = false
@@ -182,11 +177,115 @@ export const deconstructStore = reactive({
         `/api/v1/db/deconstruct/tasks/${encodeURIComponent(id)}/save`,
         { method: 'POST' },
       )
+      await this.refreshTasks()
       await this.loadDetail(id)
       return res.character_id
     } catch (e) {
       this.error = e instanceof Error ? e.message : String(e)
       return null
+    }
+  },
+
+  /** 提交段选择（选择闸门），开始分析 */
+  async selectSegments(id: string, selected: number[]) {
+    this.error = ''
+    try {
+      await apiFetch(
+        `/api/v1/db/deconstruct/tasks/${encodeURIComponent(id)}/select`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ selected }),
+        },
+      )
+      await this.refreshTasks()
+      await this.loadDetail(id)
+      this.ensurePolling()
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : String(e)
+    }
+  },
+
+  /** 失败任务从断点重试（后端跳过已有产物的阶段） */
+  async retryTask(id: string) {
+    this.error = ''
+    try {
+      await apiFetch(
+        `/api/v1/db/deconstruct/tasks/${encodeURIComponent(id)}/retry`,
+        { method: 'POST' },
+      )
+      await this.refreshTasks()
+      if (this.selectedId === id) await this.loadDetail(id)
+      this.ensurePolling()
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : String(e)
+    }
+  },
+
+  /** 应用内任务剪贴板（Ctrl+C 标记 / Ctrl+V 粘贴为新制作） */
+  copiedTaskId: null as string | null,
+  copiedTip: '',
+  copyTipTimer: null as ReturnType<typeof setTimeout> | null,
+
+  copyTask(id: string) {
+    this.copiedTaskId = id
+    const t = this.tasks.find((x) => x.id === id)
+    this.copiedTip = `已复制「${t?.character ?? ''} · ${t?.source_name ?? ''}」`
+    if (this.copyTipTimer) clearTimeout(this.copyTipTimer)
+    this.copyTipTimer = setTimeout(() => (this.copiedTip = ''), 3000)
+  },
+
+  /** 新建/复制表单的草稿（store 持有：复制任务时同步写入，无 watch 时序面） */
+  formDraft: {
+    sourceName: '',
+    character: '',
+    aliases: [] as string[],
+    content: '',
+    fileName: '',
+  },
+
+  resetForm() {
+    this.formDraft = { sourceName: '', character: '', aliases: [], content: '', fileName: '' }
+  },
+
+  /** 打开新建表单；带 prefill 时回填（复制任务场景） */
+  openCreateForm(prefill?: {
+    sourceName: string
+    character: string
+    aliases: string[]
+    content: string
+  }) {
+    this.creating = true
+    this.selectedId = null
+    this.detail = null
+    if (prefill) {
+      this.formDraft = {
+        sourceName: prefill.sourceName,
+        character: prefill.character,
+        aliases: [...prefill.aliases],
+        content: prefill.content,
+        fileName: `${prefill.sourceName}.txt`,
+      }
+    } else {
+      this.resetForm()
+    }
+  },
+
+  /** 复制任务填写信息到新表单（原文在 daemon 侧，拉回前端回填） */
+  async duplicateForCreate(id: string) {
+    this.error = ''
+    try {
+      const res = await apiFetch<components['schemas']['TaskSourceResponse']>(
+        `/api/v1/db/deconstruct/tasks/${encodeURIComponent(id)}/source`,
+      )
+      this.openCreateForm({
+        sourceName: res.source_name,
+        character: res.character,
+        aliases: res.aliases ?? [],
+        content: res.content,
+      })
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : String(e)
     }
   },
 

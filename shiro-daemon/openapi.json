@@ -454,6 +454,66 @@
         ]
       }
     },
+    "/api/v1/db/deconstruct/tasks/{id}/retry": {
+      "post": {
+        "tags": [
+          "deconstruct"
+        ],
+        "summary": "失败/中断任务从断点重试（跳过已有产物的阶段）",
+        "operationId": "retry_task",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "任务 id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "已从断点重启",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "状态不允许重试（运行中/已完成）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "任务不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
     "/api/v1/db/deconstruct/tasks/{id}/save": {
       "post": {
         "tags": [
@@ -489,6 +549,126 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "任务不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/db/deconstruct/tasks/{id}/select": {
+      "post": {
+        "tags": [
+          "deconstruct"
+        ],
+        "summary": "选择闸门：提交段选择后开始分析（全选则全收）",
+        "operationId": "select_segments",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "任务 id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectSegmentsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "已提交选择并开始分析",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "非待选择状态/选择为空",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "任务不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/db/deconstruct/tasks/{id}/source": {
+      "get": {
+        "tags": [
+          "deconstruct"
+        ],
+        "summary": "任务原文与元信息（复制为新制作的表单回填）",
+        "operationId": "get_task_source",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "任务 id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "原文与元信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskSourceResponse"
                 }
               }
             }
@@ -1900,6 +2080,17 @@
             "type": "integer",
             "minimum": 0
           },
+          "selected": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "用户选中的段序号（选择闸门回填；空 = 尚未选择）"
+          },
           "stage": {
             "type": "string"
           },
@@ -2062,6 +2253,56 @@
           }
         }
       },
+      "SegmentInfoDto": {
+        "type": "object",
+        "required": [
+          "index",
+          "label",
+          "chars",
+          "excerpt",
+          "has_name"
+        ],
+        "properties": {
+          "chars": {
+            "type": "integer",
+            "description": "段字符数",
+            "minimum": 0
+          },
+          "excerpt": {
+            "type": "string",
+            "description": "开头预览"
+          },
+          "has_name": {
+            "type": "boolean",
+            "description": "段内是否出现目标角色名/别名（高亮标记）"
+          },
+          "index": {
+            "type": "integer",
+            "description": "段序号（切块结果中）",
+            "minimum": 0
+          },
+          "label": {
+            "type": "string",
+            "description": "段标识（章节/场次标题或片段 N）"
+          }
+        }
+      },
+      "SelectSegmentsRequest": {
+        "type": "object",
+        "required": [
+          "selected"
+        ],
+        "properties": {
+          "selected": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "选中的段序号（切块结果 index；去重后须非空）"
+          }
+        }
+      },
       "SetDefaultRequest": {
         "type": "object",
         "required": [
@@ -2147,7 +2388,14 @@
           },
           "progress": {
             "$ref": "#/components/schemas/Progress",
-            "description": "完整进度（阶段/切片数/笔记进度/生成进度/回查报告）"
+            "description": "完整进度（阶段/切片数/笔记进度/生成进度/回查报告/用户选择）"
+          },
+          "segments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SegmentInfoDto"
+            },
+            "description": "段清单（切块完成后、待选择阶段提供）"
           },
           "source_name": {
             "type": "string"
@@ -2165,6 +2413,33 @@
             "items": {
               "$ref": "#/components/schemas/TaskSummary"
             }
+          }
+        }
+      },
+      "TaskSourceResponse": {
+        "type": "object",
+        "required": [
+          "source_name",
+          "character",
+          "aliases",
+          "content"
+        ],
+        "properties": {
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "character": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string",
+            "description": "剧本原文（复制任务时回填）"
+          },
+          "source_name": {
+            "type": "string"
           }
         }
       },

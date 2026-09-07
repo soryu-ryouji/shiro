@@ -99,6 +99,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/db/deconstruct/tasks/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 失败/中断任务从断点重试（跳过已有产物的阶段） */
+        post: operations["retry_task"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/db/deconstruct/tasks/{id}/save": {
         parameters: {
             query?: never;
@@ -110,6 +127,40 @@ export interface paths {
         put?: never;
         /** 产物保存到人物库（目录形态深卡，db/人物/<id>/） */
         post: operations["save_task"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/db/deconstruct/tasks/{id}/select": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 选择闸门：提交段选择后开始分析（全选则全收） */
+        post: operations["select_segments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/db/deconstruct/tasks/{id}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 任务原文与元信息（复制为新制作的表单回填） */
+        get: operations["get_task_source"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -451,6 +502,8 @@ export interface components {
             notes_failed?: number[];
             saved_character_id?: string | null;
             segment_count?: number;
+            /** @description 用户选中的段序号（选择闸门回填；空 = 尚未选择） */
+            selected?: number[] | null;
             stage: string;
             verified?: null | components["schemas"]["VerifyReport"];
         };
@@ -498,6 +551,22 @@ export interface components {
             /** @description 保存后的人物库角色 id（db/人物/<id>/） */
             character_id: string;
         };
+        SegmentInfoDto: {
+            /** @description 段字符数 */
+            chars: number;
+            /** @description 开头预览 */
+            excerpt: string;
+            /** @description 段内是否出现目标角色名/别名（高亮标记） */
+            has_name: boolean;
+            /** @description 段序号（切块结果中） */
+            index: number;
+            /** @description 段标识（章节/场次标题或片段 N） */
+            label: string;
+        };
+        SelectSegmentsRequest: {
+            /** @description 选中的段序号（切块结果 index；去重后须非空） */
+            selected: number[];
+        };
         SetDefaultRequest: {
             key: string;
         };
@@ -520,12 +589,21 @@ export interface components {
             /** @description 产物文件（已生成的部分） */
             files: components["schemas"]["CardFileDto"][];
             id: string;
-            /** @description 完整进度（阶段/切片数/笔记进度/生成进度/回查报告） */
+            /** @description 完整进度（阶段/切片数/笔记进度/生成进度/回查报告/用户选择） */
             progress: components["schemas"]["Progress"];
+            /** @description 段清单（切块完成后、待选择阶段提供） */
+            segments?: components["schemas"]["SegmentInfoDto"][];
             source_name: string;
         };
         TaskListResponse: {
             tasks: components["schemas"]["TaskSummary"][];
+        };
+        TaskSourceResponse: {
+            aliases: string[];
+            character: string;
+            /** @description 剧本原文（复制任务时回填） */
+            content: string;
+            source_name: string;
         };
         TaskSummary: {
             character: string;
@@ -963,6 +1041,54 @@ export interface operations {
             };
         };
     };
+    retry_task: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 任务 id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已从断点重启 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskSummary"];
+                };
+            };
+            /** @description 状态不允许重试（运行中/已完成） */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 任务不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     save_task: {
         parameters: {
             query?: never;
@@ -991,6 +1117,97 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 任务不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    select_segments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 任务 id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelectSegmentsRequest"];
+            };
+        };
+        responses: {
+            /** @description 已提交选择并开始分析 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskSummary"];
+                };
+            };
+            /** @description 非待选择状态/选择为空 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 任务不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_task_source: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 任务 id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 原文与元信息 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskSourceResponse"];
                 };
             };
             /** @description 未鉴权 */

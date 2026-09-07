@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 角色制作视图（数据库 → 制作 → 角色制作）：左列制作记录 + 新建按钮，右列新建表单或任务详情（流程图）。
 // 任务状态与轮询见 stores/deconstruct.ts；管线阶段定义见 daemon/src/deconstruct/engine.rs
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   FILE_LABELS,
   STAGE_LABELS,
@@ -13,26 +13,24 @@ import { renderMarkdown } from '../utils/mdRender'
 import { editorParaMode } from '../utils/font'
 import Icon from '../components/Icon.vue'
 import PipelineFlow from './PipelineFlow.vue'
+import SegmentPicker from './SegmentPicker.vue'
+import ContextMenu, { type MenuItem } from './ContextMenu.vue'
 
-// ---- 新建表单 ----
-const sourceName = ref('')
-const fileName = ref('')
-const fileContent = ref('')
-const character = ref('')
+// ---- 新建表单（草稿由 store 持有：复制任务时同步写入，无 watch 时序面） ----
+const form = computed(() => deconstructStore.formDraft)
 const aliasInput = ref('')
-const aliases = ref<string[]>([])
 const fileError = ref('')
 
 function addAlias() {
   const v = aliasInput.value.trim()
-  if (v && !aliases.value.includes(v) && v !== character.value.trim()) {
-    aliases.value.push(v)
+  if (v && !form.value.aliases.includes(v) && v !== form.value.character.trim()) {
+    form.value.aliases.push(v)
   }
   aliasInput.value = ''
 }
 
 function removeAlias(a: string) {
-  aliases.value = aliases.value.filter((x) => x !== a)
+  form.value.aliases = form.value.aliases.filter((x) => x !== a)
 }
 
 async function readFile(file: File) {
@@ -41,10 +39,10 @@ async function readFile(file: File) {
     fileError.value = '文件超过 5MB，请按集/卷拆分后导入'
     return
   }
-  fileName.value = file.name
-  fileContent.value = await file.text()
-  if (!sourceName.value) {
-    sourceName.value = file.name.replace(/\.(txt|md|markdown|json)$/i, '')
+  form.value.fileName = file.name
+  form.value.content = await file.text()
+  if (!form.value.sourceName) {
+    form.value.sourceName = file.name.replace(/\.(txt|md|markdown|json)$/i, '')
   }
 }
 
@@ -60,26 +58,21 @@ function onDrop(e: DragEvent) {
 
 const canSubmit = computed(
   () =>
-    !!fileContent.value.trim() &&
-    !!character.value.trim() &&
+    !!form.value.content.trim() &&
+    !!form.value.character.trim() &&
     !deconstructStore.submitting,
 )
 
 async function submit() {
   if (!canSubmit.value) return
   const ok = await deconstructStore.createTask({
-    sourceName: sourceName.value.trim() || fileName.value,
-    content: fileContent.value,
-    character: character.value.trim(),
-    aliases: aliases.value,
+    sourceName: form.value.sourceName.trim() || form.value.fileName,
+    content: form.value.content,
+    character: form.value.character.trim(),
+    aliases: form.value.aliases,
   })
   if (ok) {
-    // 清空表单（下次新建从零开始）
-    sourceName.value = ''
-    fileName.value = ''
-    fileContent.value = ''
-    character.value = ''
-    aliases.value = []
+    deconstructStore.resetForm()
   }
 }
 
@@ -134,9 +127,102 @@ function stageText(stage: string | undefined): string {
   return STAGE_LABELS[stage] ?? stage
 }
 
+// ---- 选择闸门弹窗：进入待选择状态时自动弹一次（按任务去重），可手动再打开 ----
+const pickerOpen = ref(false)
+const autoOpenedFor = ref<string | null>(null)
+
+watch(
+  () => [deconstructStore.detail?.id, deconstructStore.detail?.progress.stage] as const,
+  ([id, stage]) => {
+    if (stage === 'selecting' && id && autoOpenedFor.value !== id) {
+      autoOpenedFor.value = id
+      pickerOpen.value = true
+    }
+    if (stage && stage !== 'selecting') pickerOpen.value = false
+  },
+  { immediate: true },
+)
+
+/** 命中角色名的段数（待选择横幅文案） */
+const namedCount = computed(
+  () => (deconstructStore.detail?.segments ?? []).filter((s) => s.has_name).length,
+)
+
+// ---- 复制为新制作 ----
+function duplicateTask() {
+  if (task.value) void deconstructStore.duplicateForCreate(task.value.id)
+}
+
+// ---- 次边栏记录右键菜单（复制 / 删除） ----
+const ctxMenu = ref<{ x: number; y: number; taskId: string } | null>(null)
+
+function onRecordContext(e: MouseEvent, taskId: string) {
+  // 右键先选中（菜单与详情上下文一致）
+  void deconstructStore.selectTask(taskId)
+  ctxMenu.value = { x: e.clientX, y: e.clientY, taskId }
+}
+
+const ctxItems = computed<MenuItem[]>(() => {
+  if (!ctxMenu.value) return []
+  const id = ctxMenu.value.taskId
+  const t = deconstructStore.tasks.find((x) => x.id === id)
+  const running = isRunning(t?.stage)
+  return [
+    {
+      label: running ? '复制（运行中不可用）' : '复制（Ctrl+C）',
+      action: () => {
+        if (!running) deconstructStore.copyTask(id)
+      },
+    },
+    {
+      label: '粘贴为新制作（Ctrl+V）',
+      action: () => {
+        if (deconstructStore.copiedTaskId) {
+          void deconstructStore.duplicateForCreate(deconstructStore.copiedTaskId)
+        }
+      },
+    },
+    { divider: true },
+    {
+      label: running ? '删除（运行中不可用）' : '删除',
+      danger: true,
+      action: () => {
+        if (!running) void deconstructStore.deleteTask(id)
+      },
+    },
+  ]
+})
+
+// ---- 快捷键：Ctrl/Cmd+C 复制选中任务，Ctrl/Cmd+V 粘贴为新制作 ----
+function onKeydown(e: KeyboardEvent) {
+  if (!(e.ctrlKey || e.metaKey)) return
+  const target = e.target as HTMLElement | null
+  if (target?.closest('input, textarea, [contenteditable="true"]')) return
+  const key = e.key.toLowerCase()
+  if (key === 'c') {
+    // 用户选中了文字时不抢原生复制
+    if (window.getSelection()?.toString()) return
+    const t = task.value
+    if (!t || deconstructStore.creating || isRunning(t.progress.stage)) return
+    e.preventDefault()
+    deconstructStore.copyTask(t.id)
+  } else if (key === 'v') {
+    const id = deconstructStore.copiedTaskId
+    if (!id) return
+    // 表单已打开且有内容时不覆盖用户输入
+    if (deconstructStore.creating && form.value.content.trim()) return
+    e.preventDefault()
+    void deconstructStore.duplicateForCreate(id)
+  }
+}
+
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
+
 function taskBadgeClass(stage: string | undefined): string {
   if (stage === 'done') return 'ok'
   if (stage === 'failed') return 'err'
+  if (stage === 'selecting') return 'warn'
   if (isRunning(stage)) return 'run'
   return ''
 }
@@ -176,12 +262,14 @@ function fmtTime(sec: number | undefined | null): string {
           class="record"
           :class="{ active: t.id === deconstructStore.selectedId && !deconstructStore.creating }"
           @click="deconstructStore.selectTask(t.id)"
+          @contextmenu.prevent="onRecordContext($event, t.id)"
         >
           <span class="row1">
             <span class="name">{{ t.character }}</span>
             <span class="badge" :class="taskBadgeClass(t.stage)">{{
               isRunning(t.stage) ? '运行中' : stageText(t.stage)
             }}</span>
+            <span v-if="deconstructStore.copiedTaskId === t.id" class="copied-dot" title="已复制（Ctrl+V 粘贴）">已复制</span>
           </span>
           <span class="meta">
             {{ t.source_name }}<template v-if="t.segment_count"> · {{ t.segment_count }} 片</template>
@@ -190,6 +278,18 @@ function fmtTime(sec: number | undefined | null): string {
           </span>
         </button>
       </div>
+      <p v-if="deconstructStore.copiedTip" class="copy-tip">
+        {{ deconstructStore.copiedTip }}，Ctrl+V 粘贴为新制作
+      </p>
+
+      <!-- 记录右键菜单 -->
+      <ContextMenu
+        v-if="ctxMenu"
+        :x="ctxMenu.x"
+        :y="ctxMenu.y"
+        :items="ctxItems"
+        @close="ctxMenu = null"
+      />
     </div>
 
     <!-- 主区：新建表单 或 任务详情 -->
@@ -204,14 +304,14 @@ function fmtTime(sec: number | undefined | null): string {
 
         <label class="field">
           <span class="field-label">作品名</span>
-          <input v-model="sourceName" type="text" placeholder="如：链锯人（用于档案标注）" />
+          <input v-model="form.sourceName" type="text" placeholder="如：链锯人（用于档案标注）" />
         </label>
 
         <div class="field">
           <span class="field-label">剧本文件</span>
-          <label class="file-drop" :class="{ filled: !!fileName }">
+          <label class="file-drop" :class="{ filled: !!form.fileName }">
             <input type="file" accept=".txt,.md,.markdown" @change="onFile" />
-            <template v-if="fileName">{{ fileName }}（{{ Math.ceil(fileContent.length / 1000) }}k 字）</template>
+            <template v-if="form.fileName">{{ form.fileName }}（{{ Math.ceil(form.content.length / 1000) }}k 字）</template>
             <template v-else>点击选择或拖入 .txt / .md 文件</template>
           </label>
           <p v-if="fileError" class="hint error">{{ fileError }}</p>
@@ -219,13 +319,13 @@ function fmtTime(sec: number | undefined | null): string {
 
         <label class="field">
           <span class="field-label">角色名</span>
-          <input v-model="character" type="text" placeholder="剧本中该角色的主要称呼（如：玛奇玛）" />
+          <input v-model="form.character" type="text" placeholder="剧本中该角色的主要称呼（如：玛奇玛）" />
         </label>
 
         <div class="field">
           <span class="field-label">别名（可选）</span>
           <div class="aliases">
-            <span v-for="a in aliases" :key="a" class="alias">
+            <span v-for="a in form.aliases" :key="a" class="alias">
               {{ a }}
               <button class="alias-x" title="移除" @click="removeAlias(a)">×</button>
             </span>
@@ -259,6 +359,28 @@ function fmtTime(sec: number | undefined | null): string {
               </span>
               <span class="spacer" />
               <button
+                v-if="task.progress.stage === 'selecting'"
+                class="btn primary"
+                @click="pickerOpen = true"
+              >
+                选择切片
+              </button>
+              <button
+                v-if="task.progress.stage === 'failed'"
+                class="btn"
+                @click="deconstructStore.retryTask(task.id)"
+              >
+                从断点重试
+              </button>
+              <button
+                v-if="!isRunning(task.progress.stage)"
+                class="btn"
+                title="用本任务的填写信息新建一次制作"
+                @click="duplicateTask"
+              >
+                复制为新制作
+              </button>
+              <button
                 v-if="task.progress.stage === 'done' && !task.progress.saved_character_id && !savedId"
                 class="btn primary"
                 :disabled="saving"
@@ -287,6 +409,27 @@ function fmtTime(sec: number | undefined | null): string {
 
           <!-- 流程图 -->
           <PipelineFlow :progress="task.progress" />
+
+          <!-- 待选择横幅：切块完成，引导打开选择弹窗 -->
+          <div
+            v-if="task.progress.stage === 'selecting'"
+            class="select-banner"
+          >
+            <span>
+              拆分完成：共 {{ task.segments?.length ?? task.progress.segment_count }} 段，
+              其中 {{ namedCount }} 段命中「{{ task.character }}」。
+            </span>
+            <button class="btn primary" @click="pickerOpen = true">选择切片</button>
+          </div>
+
+          <!-- 选择闸门弹窗 -->
+          <SegmentPicker
+            v-if="pickerOpen && task.progress.stage === 'selecting' && task.segments?.length"
+            :segments="task.segments"
+            :character="task.character"
+            @submit="deconstructStore.selectSegments(task.id, $event)"
+            @close="pickerOpen = false"
+          />
 
           <!-- 回查报告 -->
           <div v-if="task.progress.verified" class="verify-report">
@@ -384,6 +527,23 @@ h2 {
   padding-right: 2px;
 }
 
+.copy-tip {
+  flex: none;
+  margin: 8px 2px 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: calc(11px * var(--font-scale-ui));
+  line-height: 1.5;
+}
+
+.copied-dot {
+  margin-left: auto;
+  color: var(--accent);
+  font-size: calc(10px * var(--font-scale-ui));
+}
+
 .record {
   display: flex;
   flex-direction: column;
@@ -447,6 +607,12 @@ h2 {
   border-color: #c05050;
   color: #c05050;
   background: rgba(192, 80, 80, 0.08);
+}
+
+.badge.warn {
+  border-color: #b08030;
+  color: #b08030;
+  background: rgba(176, 128, 48, 0.1);
 }
 
 /* ---- 表单 ---- */
@@ -628,6 +794,20 @@ h1 {
 .saved-note {
   color: #3a9a50;
   font-size: calc(12px * var(--font-scale-ui));
+}
+
+.select-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid #b08030;
+  border-radius: 10px;
+  background: rgba(176, 128, 48, 0.08);
+  color: var(--text);
+  font-size: calc(13px * var(--font-scale-ui));
 }
 
 .saved-note a {

@@ -70,14 +70,31 @@ pub struct CardFileDto {
 }
 
 #[derive(Serialize, ToSchema)]
+pub struct SegmentInfoDto {
+    /// 段序号（切块结果中）
+    pub index: usize,
+    /// 段标识（章节/场次标题或片段 N）
+    pub label: String,
+    /// 段字符数
+    pub chars: usize,
+    /// 开头预览
+    pub excerpt: String,
+    /// 段内是否出现目标角色名/别名（高亮标记）
+    pub has_name: bool,
+}
+
+#[derive(Serialize, ToSchema)]
 pub struct TaskDetail {
     pub id: String,
     pub source_name: String,
     pub character: String,
     pub aliases: Vec<String>,
     pub created_at: u64,
-    /// 完整进度（阶段/切片数/笔记进度/生成进度/回查报告）
+    /// 完整进度（阶段/切片数/笔记进度/生成进度/回查报告/用户选择）
     pub progress: engine::Progress,
+    /// 段清单（切块完成后、待选择阶段提供）
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub segments: Vec<SegmentInfoDto>,
     /// 产物文件（已生成的部分）
     pub files: Vec<CardFileDto>,
 }
@@ -171,6 +188,16 @@ pub(crate) async fn get_task(
         .into_iter()
         .map(|(name, body)| CardFileDto { name, body })
         .collect();
+    let segments = engine::read_segments(&id)
+        .into_iter()
+        .map(|s| SegmentInfoDto {
+            index: s.index,
+            label: s.label,
+            chars: s.chars,
+            excerpt: s.excerpt,
+            has_name: s.has_name,
+        })
+        .collect();
     Ok(Json(TaskDetail {
         id: rec.meta.id.clone(),
         source_name: rec.meta.source_name.clone(),
@@ -178,6 +205,7 @@ pub(crate) async fn get_task(
         aliases: rec.meta.aliases.clone(),
         created_at: rec.meta.created_at,
         progress: rec.progress,
+        segments,
         files,
     }))
 }
@@ -204,6 +232,95 @@ pub(crate) async fn save_task(
     let slug = crate::assets::slug_for(&rec.meta.character);
     let character_id = engine::save_task_to_library(&id, slug).map_err(|e| bad_request(&e))?;
     Ok(Json(SaveTaskResponse { character_id }))
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct SelectSegmentsRequest {
+    /// 选中的段序号（切块结果 index；去重后须非空）
+    pub selected: Vec<usize>,
+}
+
+/// 选择闸门：提交段选择后开始分析（全选则全收）
+#[utoipa::path(
+    post,
+    path = "/api/v1/db/deconstruct/tasks/{id}/select",
+    tag = "deconstruct",
+    params(("id" = String, Path, description = "任务 id")),
+    request_body = SelectSegmentsRequest,
+    responses(
+        (status = 200, description = "已提交选择并开始分析", body = TaskSummary),
+        (status = 400, description = "非待选择状态/选择为空", body = ErrorResponse),
+        (status = 404, description = "任务不存在", body = ErrorResponse),
+        (status = 401, description = "未鉴权")
+    ),
+    security(("bearer_token" = []))
+)]
+pub(crate) async fn select_segments(
+    State(state): State<crate::api::AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<SelectSegmentsRequest>,
+) -> Result<Json<TaskSummary>, ApiError> {
+    let record = engine::select_segments(&state.deconstruct, &id, req.selected)
+        .map_err(|e| bad_request(&e))?;
+    Ok(Json(TaskSummary::from_record(&record)))
+}
+
+/// 任务原文与元信息（复制为新制作的表单回填）
+#[utoipa::path(
+    get,
+    path = "/api/v1/db/deconstruct/tasks/{id}/source",
+    tag = "deconstruct",
+    params(("id" = String, Path, description = "任务 id")),
+    responses(
+        (status = 200, description = "原文与元信息", body = TaskSourceResponse),
+        (status = 404, description = "任务不存在", body = ErrorResponse),
+        (status = 401, description = "未鉴权")
+    ),
+    security(("bearer_token" = []))
+)]
+pub(crate) async fn get_task_source(
+    State(state): State<crate::api::AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<TaskSourceResponse>, ApiError> {
+    let (meta, content) = engine::read_source(&id).ok_or_else(not_found)?;
+    let _ = state;
+    Ok(Json(TaskSourceResponse {
+        source_name: meta.source_name,
+        character: meta.character,
+        aliases: meta.aliases,
+        content,
+    }))
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct TaskSourceResponse {
+    pub source_name: String,
+    pub character: String,
+    pub aliases: Vec<String>,
+    /// 剧本原文（复制任务时回填）
+    pub content: String,
+}
+
+/// 失败/中断任务从断点重试（跳过已有产物的阶段）
+#[utoipa::path(
+    post,
+    path = "/api/v1/db/deconstruct/tasks/{id}/retry",
+    tag = "deconstruct",
+    params(("id" = String, Path, description = "任务 id")),
+    responses(
+        (status = 200, description = "已从断点重启", body = TaskSummary),
+        (status = 400, description = "状态不允许重试（运行中/已完成）", body = ErrorResponse),
+        (status = 404, description = "任务不存在", body = ErrorResponse),
+        (status = 401, description = "未鉴权")
+    ),
+    security(("bearer_token" = []))
+)]
+pub(crate) async fn retry_task(
+    State(state): State<crate::api::AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<TaskSummary>, ApiError> {
+    let record = engine::retry_task(&state.deconstruct, &id).map_err(|e| bad_request(&e))?;
+    Ok(Json(TaskSummary::from_record(&record)))
 }
 
 /// 删除任务（连同任务目录；运行中不可删）

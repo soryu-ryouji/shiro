@@ -43,12 +43,15 @@ async fn main() {
         deconstruct: std::sync::Arc::new(deconstruct::engine::Hub::default()),
     };
 
-    let (router, doc) = api::build_router(state, cli.serve_dir);
+    let (router, doc) = api::build_router(state.clone(), cli.serve_dir);
 
     if cli.dump_openapi {
         println!("{}", serde_json::to_string_pretty(&doc).unwrap());
         return;
     }
+
+    // 启动恢复：非终态拆解任务从断点续跑（产物逐阶段落盘，跳过已完成阶段）
+    deconstruct::engine::resume_pending(&state.deconstruct);
 
     let addr = format!("{}:{}", cli.host, cli.port);
     let listener = tokio::net::TcpListener::bind(&addr)

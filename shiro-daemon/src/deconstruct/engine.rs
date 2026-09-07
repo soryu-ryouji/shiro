@@ -29,6 +29,8 @@ pub const STAGE_GENERATING: &str = "generating";
 pub const STAGE_VERIFYING: &str = "verifying";
 pub const STAGE_DONE: &str = "done";
 pub const STAGE_FAILED: &str = "failed";
+/// 切块完成后的用户选择闸门：等待用户挑选段落（非运行态，续跑不自动恢复）
+pub const STAGE_SELECTING: &str = "selecting";
 
 pub const GENERATION_FILES: [&str; 7] = [
     "soul",
@@ -69,6 +71,9 @@ pub struct Progress {
     pub current_file: Option<String>,
     #[serde(default)]
     pub files_done: Vec<String>,
+    /// 用户选中的段序号（选择闸门回填；空 = 尚未选择）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected: Option<Vec<usize>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verified: Option<VerifyReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -83,8 +88,9 @@ impl Progress {
     pub fn is_terminal(&self) -> bool {
         self.stage == STAGE_DONE || self.stage == STAGE_FAILED
     }
+    /// 运行态：非终态且不在选择闸门（selecting 是人工暂停点，重启不自动续跑）
     pub fn is_running(&self) -> bool {
-        !self.stage.is_empty() && !self.is_terminal()
+        !self.stage.is_empty() && !self.is_terminal() && self.stage != STAGE_SELECTING
     }
 }
 
@@ -200,6 +206,82 @@ impl Hub {
     }
 }
 
+// ---- 选择闸门：段清单（供用户挑选） ----
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SegmentInfo {
+    /// 段在切块结果中的序号
+    pub index: usize,
+    pub label: String,
+    /// 段字符数
+    pub chars: usize,
+    /// 开头预览（空白归一，前 80 字）
+    pub excerpt: String,
+    /// 段内是否出现目标角色（名字或别名，含包含匹配）——选择闸门高亮用
+    #[serde(default)]
+    pub has_name: bool,
+}
+
+fn seg_excerpt(content: &str) -> String {
+    let text: String = content.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut out: String = text.chars().take(80).collect();
+    if text.chars().count() > 80 {
+        out.push('…');
+    }
+    out
+}
+
+/// 读取段清单（选择闸门已写盘时返回）
+pub fn read_segments(id: &str) -> Vec<SegmentInfo> {
+    task_dir(id)
+        .and_then(|d| std::fs::read_to_string(d.join("segments.json")).ok())
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+/// 读取任务原文与元数据（复制为新制作的表单回填用）
+pub fn read_source(id: &str) -> Option<(TaskMeta, String)> {
+    let rec = read_record(id)?;
+    let dir = task_dir(id)?;
+    let content = std::fs::read_to_string(dir.join("source.txt")).ok()?;
+    Some((rec.meta, content))
+}
+
+/// 用户提交段选择：校验后落盘并从选择闸门续跑
+pub fn select_segments(
+    hub: &Arc<Hub>,
+    id: &str,
+    selected: Vec<usize>,
+) -> Result<TaskRecord, String> {
+    if hub.is_running(id) {
+        return Err("任务运行中，请稍候".into());
+    }
+    let mut rec = read_record(id).ok_or("任务不存在")?;
+    if rec.progress.stage != STAGE_SELECTING {
+        return Err("任务不在待选择状态".into());
+    }
+    let selected: Vec<usize> = selected
+        .into_iter()
+        .filter(|i| *i < rec.progress.segment_count)
+        .collect();
+    let mut selected = selected;
+    selected.sort_unstable();
+    selected.dedup();
+    if selected.is_empty() {
+        return Err("至少选择一段".into());
+    }
+    rec.progress.selected = Some(selected);
+    rec.progress.stage = STAGE_PENDING.into();
+    write_record(&rec).map_err(|e| e.to_string())?;
+    let handle = hub.register(id, rec.progress.clone());
+    let meta = rec.meta.clone();
+    let h = hub.clone();
+    tokio::spawn(async move {
+        run_task(&h, meta, handle).await;
+    });
+    Ok(rec)
+}
+
 // ---- 创建与删除 ----
 
 pub struct CreateParams {
@@ -259,6 +341,58 @@ pub fn create_task(hub: &Arc<Hub>, params: CreateParams) -> Result<TaskRecord, S
         run_task(&hub, meta, handle).await;
     });
     Ok(record)
+}
+
+/// 启动恢复：非终态任务从断点续跑（产物已落盘，跳过已完成阶段）
+pub fn resume_pending(hub: &Arc<Hub>) {
+    let Ok(entries) = std::fs::read_dir(tasks_root()) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let Some(id) = entry.file_name().to_str().map(String::from) else {
+            continue;
+        };
+        let Some(rec) = read_record(&id) else {
+            continue;
+        };
+        if !rec.progress.is_running() {
+            continue;
+        }
+        // 与 create_task 同构：同步注册再 spawn，关闭竞态窗口
+        let handle = hub.register(&id, rec.progress.clone());
+        let h = hub.clone();
+        tokio::spawn(async move {
+            run_task(&h, rec.meta, handle).await;
+        });
+    }
+}
+
+/// 失败任务从断点重试（跳过已有产物的阶段）
+pub fn retry_task(hub: &Arc<Hub>, id: &str) -> Result<TaskRecord, String> {
+    if hub.is_running(id) {
+        return Err("任务运行中".into());
+    }
+    let mut rec = read_record(id).ok_or("任务不存在")?;
+    if rec.progress.stage == STAGE_DONE {
+        return Err("任务已完成，无需重试".into());
+    }
+    if rec.progress.stage == STAGE_SELECTING {
+        return Err("任务等待用户选择段落，无需重试".into());
+    }
+    if rec.progress.is_running() {
+        return Err("任务状态不一致（磁盘运行态但不在运行表），请删除后重新制作".into());
+    }
+    rec.progress.error = None;
+    rec.progress.finished_at = None;
+    rec.progress.stage = STAGE_PENDING.into();
+    write_record(&rec).map_err(|e| e.to_string())?;
+    let handle = hub.register(id, rec.progress.clone());
+    let meta = rec.meta.clone();
+    let h = hub.clone();
+    tokio::spawn(async move {
+        run_task(&h, meta, handle).await;
+    });
+    Ok(rec)
 }
 
 pub fn delete_task(hub: &Hub, id: &str) -> Result<(), String> {
@@ -339,16 +473,20 @@ pub fn read_card_files(id: &str) -> Vec<(String, String)> {
 
 async fn run_task(hub: &Arc<Hub>, meta: TaskMeta, handle: Arc<Mutex<Progress>>) {
     let id = meta.id.clone();
-    let mut record = TaskRecord {
+    // 从磁盘恢复进度（断点续跑 / 重试场景）；正常新建任务刚写入 pending
+    let mut record = read_record(&id).unwrap_or(TaskRecord {
         progress: Progress {
             stage: STAGE_PENDING.into(),
             ..Default::default()
         },
         meta: meta.clone(),
-    };
+    });
 
     let result = run_pipeline(&meta, &mut record, &handle).await;
     match result {
+        Ok(()) if record.progress.stage == STAGE_SELECTING => {
+            // 选择闸门：暂停不是完成——不写终态、不计 finished_at
+        }
         Ok(()) => {
             record.progress.stage = STAGE_DONE.into();
             record.progress.finished_at = Some(now_secs());
@@ -394,35 +532,80 @@ async fn run_pipeline(
     let content =
         std::fs::read_to_string(dir.join("source.txt")).map_err(|e| format!("读取原文失败：{e}"))?;
 
-    // 1. 探测
-    set_stage(STAGE_PROBING, record);
-    let (form, ratio) = probe::probe_form(&content);
-
-    // 2. 切块（溢出 = 丢正文类错误，阻断）
-    set_stage(STAGE_CHUNKING, record);
-    let chunks: ChunkResult = chunk::build_chunks(&content).map_err(|e| e.to_string())?;
-    let segments = chunks.segments.clone();
-    let probe_full = ProbeResult {
-        form: form.clone(),
-        attribution_hit_ratio: ratio,
-        citation_units: probe::citation_units(&segments),
+    // 1+2. 探测与切块（断点：chunks.json + probe.json 都在 → 读回跳过）
+    let cached_chunks: Option<ChunkResult> = std::fs::read_to_string(dir.join("chunks.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok());
+    let cached_probe: Option<ProbeResult> = std::fs::read_to_string(dir.join("probe.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok());
+    let (chunks, probe_full) = match (cached_chunks, cached_probe) {
+        (Some(c), Some(p)) => (c, p),
+        _ => {
+            set_stage(STAGE_PROBING, record);
+            let (form, ratio) = probe::probe_form(&content);
+            set_stage(STAGE_CHUNKING, record);
+            let chunks = chunk::build_chunks(&content);
+            let probe_full = ProbeResult {
+                form: form.clone(),
+                attribution_hit_ratio: ratio,
+                citation_units: probe::citation_units(&chunks.segments),
+            };
+            let _ = atomic_write(
+                &dir.join("chunks.json"),
+                &serde_json::to_string_pretty(&chunks).map_err(|e| e.to_string())?,
+            );
+            let _ = atomic_write(
+                &dir.join("probe.json"),
+                &serde_json::to_string_pretty(&probe_full).map_err(|e| e.to_string())?,
+            );
+            (chunks, probe_full)
+        }
     };
-    let _ = atomic_write(
-        &dir.join("chunks.json"),
-        &serde_json::to_string_pretty(&chunks).map_err(|e| e.to_string())?,
-    );
-    let _ = atomic_write(
-        &dir.join("probe.json"),
-        &serde_json::to_string_pretty(&probe_full).map_err(|e| e.to_string())?,
-    );
+    let segments = chunks.segments.clone();
+    let form = probe_full.form.clone();
     record.progress.form = Some(form.clone());
     record.progress.segment_count = segments.len();
     sync(record, handle);
 
-    // 3. 逐段笔记（段失败降级，不阻断）
+    // 2.5 选择闸门：段清单写盘，等用户挑选（全选全收，不设上限）
+    if record.progress.selected.is_none() {
+        let list: Vec<SegmentInfo> = segments
+            .iter()
+            .enumerate()
+            .map(|(i, seg)| SegmentInfo {
+                index: i,
+                label: seg.label.clone(),
+                chars: seg.content.chars().count(),
+                excerpt: seg_excerpt(&seg.content),
+                has_name: evidence::name_matches(&meta.character, &meta.aliases, &seg.content),
+            })
+            .collect();
+        let _ = atomic_write(
+            &dir.join("segments.json"),
+            &serde_json::to_string_pretty(&list).map_err(|e| e.to_string())?,
+        );
+        set_stage(STAGE_SELECTING, record);
+        return Ok(());
+    }
+
+    // 3. 逐段笔记（只跑用户选中的段；段失败降级，不阻断；断点：notes/<i>.json 已存在 → 读回跳过）
     set_stage(STAGE_NOTES, record);
+    record.progress.notes_failed.clear();
+    let selected: Vec<usize> = record.progress.selected.clone().unwrap_or_default();
     let mut notes: Vec<SegmentNote> = Vec::new();
-    for (i, seg) in segments.iter().enumerate() {
+    for i in selected.iter().copied() {
+        let Some(seg) = segments.get(i) else { continue };
+        let seg = seg.clone();
+        if let Some(n) = std::fs::read_to_string(dir.join("notes").join(format!("{i}.json")))
+            .ok()
+            .and_then(|t| serde_json::from_str::<SegmentNote>(&t).ok())
+        {
+            notes.push(n);
+            record.progress.notes_done = i + 1;
+            sync(record, handle);
+            continue;
+        }
         let (sys, user) = prompts::notes_prompt(&seg.label, &seg.content);
         let mut note: Option<SegmentNote> = None;
         for _ in 0..=NOTES_MAX_RETRY {
@@ -476,86 +659,84 @@ async fn run_pipeline(
         ));
     }
 
-    // 5. 生成节点组（顺序固定：soul 锚定后续，index 最后压缩）
+    // 5. 生成节点组（顺序固定：soul 锚定后续，index 最后压缩；断点：card/<name>.md 已存在 → 跳过）
     set_stage(STAGE_GENERATING, record);
     let card = dir.join("card");
     std::fs::create_dir_all(&card).map_err(|e| e.to_string())?;
-    let begin = |name: &str, record: &mut TaskRecord| {
-        record.progress.current_file = Some(name.to_string());
-        sync(record, handle);
-    };
-    let finish = |name: &str, record: &mut TaskRecord| {
-        record.progress.files_done.push(name.to_string());
-        sync(record, handle);
-    };
-
-    let work = &meta.source_name;
-    let character = &meta.character;
-
-    begin("soul", record);
-    let (sys, user) = prompts::soul_prompt(work, character, &pack, &notes);
-    chat_write(&cfg, &card, "soul", &sys, &user).await?;
-    finish("soul", record);
-    let soul = std::fs::read_to_string(card.join("soul.md")).map_err(|e| e.to_string())?;
-
-    begin("speech_patterns", record);
-    let (sys, user) = prompts::speech_prompt(work, character, &pack, &soul);
-    chat_write(&cfg, &card, "speech_patterns", &sys, &user).await?;
-    finish("speech_patterns", record);
-
-    begin("behavior_guide", record);
-    let (sys, user) = prompts::behavior_prompt(work, character, &pack, &soul);
-    chat_write(&cfg, &card, "behavior_guide", &sys, &user).await?;
-    finish("behavior_guide", record);
-
-    begin("relationship_dynamics", record);
-    let (sys, user) = prompts::relationship_prompt(work, character, &pack, &soul);
-    chat_write(&cfg, &card, "relationship_dynamics", &sys, &user).await?;
-    finish("relationship_dynamics", record);
-
-    begin("key_life_events", record);
-    let (sys, user) = prompts::events_prompt(work, character, &pack, &notes, &soul);
-    chat_write(&cfg, &card, "key_life_events", &sys, &user).await?;
-    finish("key_life_events", record);
-
-    // limit 依赖前五份文件的结论
-    begin("limit", record);
-    let deps: Vec<(String, String)> = GENERATION_FILES[..5]
-        .iter()
-        .filter_map(|n| {
-            std::fs::read_to_string(card.join(format!("{n}.md")))
-                .ok()
-                .map(|b| ((*n).to_string(), b))
-        })
-        .collect();
-    let dep_refs: Vec<(&str, &str)> = deps.iter().map(|(n, b)| (n.as_str(), b.as_str())).collect();
-    let (sys, user) = prompts::limit_prompt(work, character, &dep_refs);
-    chat_write(&cfg, &card, "limit", &sys, &user).await?;
-    finish("limit", record);
-
-    // index 最后：对全部子文件的压缩（frontmatter 由程序拼）
-    begin("index", record);
-    let six: Vec<(String, String)> = GENERATION_FILES[..6]
-        .iter()
-        .filter_map(|n| {
-            std::fs::read_to_string(card.join(format!("{n}.md")))
-                .ok()
-                .map(|b| ((*n).to_string(), b))
-        })
-        .collect();
-    let six_refs: Vec<(&str, &str)> = six.iter().map(|(n, b)| (n.as_str(), b.as_str())).collect();
-    let (sys, user) = prompts::index_prompt(work, character, &six_refs);
-    let index_body = llm::chat(&cfg, vec![msg("system", &sys), msg("user", &user)])
-        .await
-        .map_err(|e| format!("生成 index 失败：{e}"))?;
-    let frontmatter = index_frontmatter(meta, &form);
-    atomic_write(&card.join("index.md"), &format!("{frontmatter}\n{index_body}\n"))
-        .map_err(|e| e.to_string())?;
-    finish("index", record);
+    record.progress.files_done.clear();
     record.progress.current_file = None;
     sync(record, handle);
 
-    // 6. 引文回查（确定性 + 打回一次 + 删除降级）
+    let work = &meta.source_name;
+    let character = &meta.character;
+    let mut soul = String::new();
+
+    for name in GENERATION_FILES {
+        if let Ok(existing) = std::fs::read_to_string(card.join(format!("{name}.md"))) {
+            if !record.progress.files_done.iter().any(|f| f == name) {
+                record.progress.files_done.push(name.to_string());
+                sync(record, handle);
+            }
+            if name == "soul" {
+                soul = existing;
+            }
+            continue;
+        }
+        record.progress.current_file = Some(name.to_string());
+        sync(record, handle);
+
+        // 提示词重建（limit/index 的依赖从磁盘实时读取，断点下天然正确）
+        let deps: Vec<(String, String)> = GENERATION_FILES[..5]
+            .iter()
+            .filter_map(|n| {
+                std::fs::read_to_string(card.join(format!("{n}.md")))
+                    .ok()
+                    .map(|b| ((*n).to_string(), b))
+            })
+            .collect();
+        let six: Vec<(String, String)> = GENERATION_FILES[..6]
+            .iter()
+            .filter_map(|n| {
+                std::fs::read_to_string(card.join(format!("{n}.md")))
+                    .ok()
+                    .map(|b| ((*n).to_string(), b))
+            })
+            .collect();
+        let dep_refs: Vec<(&str, &str)> =
+            deps.iter().map(|(n, b)| (n.as_str(), b.as_str())).collect();
+        let six_refs: Vec<(&str, &str)> =
+            six.iter().map(|(n, b)| (n.as_str(), b.as_str())).collect();
+        let (sys, user) = rebuild_prompt(
+            name, work, character, &pack, &notes, &soul, &dep_refs, &six_refs,
+        );
+        if name == "index" {
+            let body = llm::chat(&cfg, vec![msg("system", &sys), msg("user", &user)])
+                .await
+                .map_err(|e| format!("生成 index 失败：{e}"))?;
+            let frontmatter = index_frontmatter(meta, &form);
+            atomic_write(&card.join("index.md"), &format!("{frontmatter}\n{body}\n"))
+                .map_err(|e| e.to_string())?;
+        } else {
+            chat_write(&cfg, &card, name, &sys, &user).await?;
+        }
+        record.progress.files_done.push(name.to_string());
+        sync(record, handle);
+        if name == "soul" {
+            soul = std::fs::read_to_string(card.join("soul.md")).map_err(|e| e.to_string())?;
+        }
+    }
+    record.progress.current_file = None;
+    sync(record, handle);
+
+    // 6. 引文回查（确定性 + 打回一次 + 删除降级；断点：report.json 已存在 → 读回跳过）
+    if let Some(report) = std::fs::read_to_string(dir.join("report.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str::<VerifyReport>(&t).ok())
+    {
+        record.progress.verified = Some(report);
+        sync(record, handle);
+        return Ok(());
+    }
     set_stage(STAGE_VERIFYING, record);
     let mut removed: Vec<RemovedQuote> = Vec::new();
     let mut passed = 0usize;
@@ -569,6 +750,27 @@ async fn run_pipeline(
         while !failed.is_empty() && regen < QUOTE_REGEN_MAX {
             regen += 1;
             let failed_quotes: Vec<String> = failed.iter().map(|q| q.quote.clone()).collect();
+            // 打回重建提示词：依赖从磁盘现读
+            let deps: Vec<(String, String)> = GENERATION_FILES[..5]
+                .iter()
+                .filter_map(|n| {
+                    std::fs::read_to_string(card.join(format!("{n}.md")))
+                        .ok()
+                        .map(|b| ((*n).to_string(), b))
+                })
+                .collect();
+            let six: Vec<(String, String)> = GENERATION_FILES[..6]
+                .iter()
+                .filter_map(|n| {
+                    std::fs::read_to_string(card.join(format!("{n}.md")))
+                        .ok()
+                        .map(|b| ((*n).to_string(), b))
+                })
+                .collect();
+            let dep_refs: Vec<(&str, &str)> =
+                deps.iter().map(|(n, b)| (n.as_str(), b.as_str())).collect();
+            let six_refs: Vec<(&str, &str)> =
+                six.iter().map(|(n, b)| (n.as_str(), b.as_str())).collect();
             let (sys, user) =
                 rebuild_prompt(name, work, character, &pack, &notes, &soul, &dep_refs, &six_refs);
             let fixed_user = prompts::regen_with_failed_quotes(&user, &failed_quotes);

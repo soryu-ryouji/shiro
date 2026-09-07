@@ -156,16 +156,47 @@ try {
   })
   check(!!created.id, `任务创建 id=${created.id}`)
 
-  // 2. 轮询至终态
+  // 2. 轮询至选择闸门（切块完成，等用户挑选）
   let detail = null
+  for (let i = 0; i < 120; i++) {
+    detail = await api(`/api/v1/db/deconstruct/tasks/${created.id}`)
+    if (['selecting', 'done', 'failed'].includes(detail.progress.stage)) break
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  check(detail.progress.stage === 'selecting', `进入选择闸门（stage=${detail.progress.stage}${detail.progress.error ? ' err=' + detail.progress.error : ''}）`)
+  check(detail.progress.segment_count >= 1, `切块 ${detail.progress.segment_count} 段`)
+  check(detail.segments.length === detail.progress.segment_count, `段清单 ${detail.segments.length} 段（含预览）`)
+  check(
+    detail.segments.every((s) => s.label && s.chars > 0),
+    '段清单含 label 与字数',
+  )
+  check(
+    detail.segments[0]?.has_name === true,
+    '名称命中标记（has_name）',
+  )
+  const src = await api(`/api/v1/db/deconstruct/tasks/${created.id}/source`)
+  check(
+    src.content === SCRIPT && src.character === '玛奇玛' && src.aliases.includes('マキマ'),
+    '源文件读取（复制为新制作用）',
+  )
+
+  // 2.5 提交选择（全选 = 全收）
+  const all = detail.segments.map((s) => s.index)
+  await api(`/api/v1/db/deconstruct/tasks/${created.id}/select`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ selected: all }),
+  })
   for (let i = 0; i < 120; i++) {
     detail = await api(`/api/v1/db/deconstruct/tasks/${created.id}`)
     if (['done', 'failed'].includes(detail.progress.stage)) break
     await new Promise((r) => setTimeout(r, 250))
   }
   check(detail.progress.stage === 'done', `任务完成（stage=${detail.progress.stage}${detail.progress.error ? ' err=' + detail.progress.error : ''}）`)
-  check(detail.progress.segment_count >= 1, `切块 ${detail.progress.segment_count} 段`)
-  check(detail.progress.notes_done === detail.progress.segment_count, `笔记 ${detail.progress.notes_done}/${detail.progress.segment_count}`)
+  check(
+    detail.progress.notes_done === all.length,
+    `笔记 ${detail.progress.notes_done}/${all.length}`,
+  )
   check(detail.files.length === 7, `产物 7 个文件（实际 ${detail.files.length}）`)
 
   // 3. 回查：好引文通过 + 坏引文被移除（修复打回后 mock 会产出干净版本，removed 可能为 0）
@@ -185,7 +216,34 @@ try {
   check(char.files.length === 6, `深卡详情含 6 个子文件（实际 ${char.files.length}）`)
   check(char.body.length > 0, 'index 正文非空')
 
-  // 6. 清理任务
+  // 6. 断点续跑：模拟崩溃（删 soul 与回查报告产物，任务标失败）→ 重试应跳过已有阶段补齐缺失
+  const taskDir = join(home, '.config', 'shiro', 'db', 'deconstruct', created.id)
+  rmSync(join(taskDir, 'card', 'soul.md'))
+  rmSync(join(taskDir, 'report.json'))
+  const rec = JSON.parse(readFileSync(join(taskDir, 'task.json'), 'utf8'))
+  rec.progress.stage = 'failed'
+  writeFileSync(join(taskDir, 'task.json'), JSON.stringify(rec))
+  await api(`/api/v1/db/deconstruct/tasks/${created.id}/retry`, { method: 'POST' })
+  let dRes = null
+  for (let i = 0; i < 120; i++) {
+    dRes = await api(`/api/v1/db/deconstruct/tasks/${created.id}`)
+    if (['done', 'failed'].includes(dRes.progress.stage)) break
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  check(dRes.progress.stage === 'done', `断点续跑完成（${dRes.progress.stage}）`)
+  check(dRes.files.length === 7, `续跑后产物补齐（${dRes.files.length} 个）`)
+  check(!!dRes.progress.verified, '回查重新执行')
+
+  // 7. 已完成任务拒绝重试
+  let rejected = false
+  try {
+    await api(`/api/v1/db/deconstruct/tasks/${created.id}/retry`, { method: 'POST' })
+  } catch (e) {
+    rejected = String(e.message).includes('400')
+  }
+  check(rejected, '已完成任务拒绝重试')
+
+  // 8. 清理任务
   await api(`/api/v1/db/deconstruct/tasks/${created.id}`, { method: 'DELETE' })
   const tasks = await api('/api/v1/db/deconstruct/tasks')
   check(!tasks.tasks.some((t) => t.id === created.id), '任务删除')
@@ -221,7 +279,18 @@ try {
       aliases: [],
     }),
   })
+  // 同走选择闸门：全选提交
   let d2 = null
+  for (let i = 0; i < 120; i++) {
+    d2 = await api(`/api/v1/db/deconstruct/tasks/${t2.id}`)
+    if (d2.progress.stage === 'selecting') break
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  await api(`/api/v1/db/deconstruct/tasks/${t2.id}/select`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ selected: d2.segments.map((s) => s.index) }),
+  })
   for (let i = 0; i < 120; i++) {
     d2 = await api(`/api/v1/db/deconstruct/tasks/${t2.id}`)
     if (['done', 'failed'].includes(d2.progress.stage)) break
