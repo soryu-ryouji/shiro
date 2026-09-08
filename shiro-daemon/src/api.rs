@@ -21,7 +21,6 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 pub struct AppState {
     pub token: String,
     pub watch_hub: watch::WatchHub,
-    pub deconstruct: std::sync::Arc<crate::deconstruct::engine::Hub>,
 }
 
 #[derive(Serialize, ToSchema, PartialEq, Debug)]
@@ -1138,20 +1137,6 @@ pub fn build_router(
         .routes(routes!(crate::assets::get_character))
         .routes(routes!(crate::assets::save_character))
         .routes(routes!(crate::assets::create_character))
-        .routes(routes!(crate::deconstruct::api::create_task))
-        .routes(routes!(crate::deconstruct::api::list_tasks))
-        .routes(routes!(crate::deconstruct::api::get_task))
-        .routes(routes!(crate::deconstruct::api::save_task))
-        .routes(routes!(crate::deconstruct::api::get_task_source))
-        .routes(routes!(crate::deconstruct::api::select_segments))
-        .routes(routes!(crate::deconstruct::api::retry_task))
-        .routes(routes!(crate::deconstruct::api::abort_task))
-        .routes(routes!(crate::deconstruct::api::rename_task))
-        .routes(routes!(crate::deconstruct::api::list_task_logs))
-        .routes(routes!(crate::deconstruct::api::get_task_log))
-        .routes(routes!(crate::deconstruct::api::delete_task))
-        .routes(routes!(crate::deconstruct::api::get_craft_settings))
-        .routes(routes!(crate::deconstruct::api::save_craft_settings))
         .routes(routes!(crate::model_api::list_profiles))
         .routes(routes!(crate::model_api::upsert_profile))
         .routes(routes!(crate::model_api::delete_profile))
@@ -1190,7 +1175,6 @@ mod tests {
             AppState {
                 token: String::new(),
                 watch_hub: watch::WatchHub::default(),
-                deconstruct: std::sync::Arc::new(crate::deconstruct::engine::Hub::default()),
             },
             None,
         );

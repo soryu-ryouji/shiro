@@ -7,7 +7,6 @@ import { renderMarkdown } from '../utils/mdRender'
 import { editorParaMode } from '../utils/font'
 import Icon from '../components/Icon.vue'
 import PromptDialog from '../components/PromptDialog.vue'
-import CraftView from '../components/CraftView.vue'
 
 onMounted(() => {
   // 首次进入视图拉列表；之后切回面板沿用缓存，手动刷新走列表头按钮
@@ -76,10 +75,8 @@ async function save() {
 </script>
 
 <template>
-  <!-- 角色制作（拆解任务）：制作记录次边栏 + 流程图主区，独立子组件 -->
-  <CraftView v-if="dbStore.category === 'craft'" />
-
-  <section v-else-if="dbStore.category === 'characters'" class="db-view">
+  <!-- 角色库 -->
+  <section v-if="dbStore.category === 'characters'" class="db-view">
     <!-- 列表列 -->
     <div class="list-col">
       <div class="list-head">

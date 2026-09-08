@@ -6,8 +6,8 @@ import type { components } from '../api-types'
 export type CharacterSummary = components['schemas']['CharacterSummary']
 export type CharacterDetail = components['schemas']['CharacterDetail']
 
-/** 侧栏分类：characters 角色库 / craft 角色制作（拆解任务） */
-export type DbCategory = 'characters' | 'craft'
+/** 侧栏分类：characters 角色库（后续数据库改为外部导入方式实现） */
+export type DbCategory = 'characters'
 
 export const dbStore = reactive({
   /** 当前选中的分类（默认角色） */

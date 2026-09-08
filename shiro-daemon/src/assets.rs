@@ -239,9 +239,19 @@ pub(crate) async fn list_characters() -> Json<CharacterListResponse> {
     })
 }
 
+/// 深卡子文件固定顺序（soul → … → limit），缺文件跳过；格式见 docs/asset-format.md 深卡章节
+const DEEP_CARD_FILES: [&str; 6] = [
+    "soul",
+    "speech_patterns",
+    "behavior_guide",
+    "relationship_dynamics",
+    "key_life_events",
+    "limit",
+];
+
 /// 深卡子文件读取：固定顺序（soul → … → limit），缺文件跳过
 fn read_deep_files(dir: &Path) -> Vec<CardFile> {
-    crate::deconstruct::engine::GENERATION_FILES[..6]
+    DEEP_CARD_FILES
         .iter()
         .filter_map(|name| {
             let body = std::fs::read_to_string(dir.join(format!("{name}.md"))).ok()?;

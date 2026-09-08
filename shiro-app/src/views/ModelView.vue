@@ -167,7 +167,7 @@ const sortedProfiles = computed(() => {
       <header class="head">
         <h2>模型管理</h2>
         <p class="hint">
-          已注册的供应商与其当前模型。「默认供应商」是拆解等任务实际使用的档案。
+          已注册的供应商与其当前模型。「默认供应商」是 Chat 等任务实际使用的档案。
         </p>
       </header>
 

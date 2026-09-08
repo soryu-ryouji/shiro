@@ -1,6 +1,5 @@
-// 模型档案状态（Model 视图）：多档案 CRUD。
+// 模型档案状态（Model 视图）：多档案 CRUD，可设默认（默认档案是 Chat 等任务实际使用的档案）。
 // 界面分区：注册分区「模型导入」（注册表单）、管理分区「模型管理」（档案列表）。
-// 制作任务用哪个档案（默认指定）在角色制作设置面板选择（stores/deconstruct.ts）。
 // 供应商预设学 pi 内置目录：模型清单完整内置，端点与协议不暴露给用户。
 import { reactive } from 'vue'
 import { apiFetch } from '../api'
