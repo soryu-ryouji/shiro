@@ -1,6 +1,8 @@
 mod api;
 mod assets;
 mod chat;
+mod error;
+mod infra;
 mod llm;
 mod model_api;
 mod watch;

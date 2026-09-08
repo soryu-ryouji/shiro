@@ -3,7 +3,7 @@
 // 协议形状参考 pi-ai 的 openai-completions 实现（compat 经验：字段级差异用 Option，不硬编码官方形状）。
 // 错误分类参考 pi-ai：可重试（429/408/5xx/网络/超时）走指数退避，其余 4xx 直接失败。
 
-use crate::api::config_folder;
+use crate::infra::paths::config_folder;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::time::Duration;

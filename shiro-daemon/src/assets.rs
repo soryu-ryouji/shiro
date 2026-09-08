@@ -2,10 +2,11 @@
 // 角色卡存 ~/.config/shiro/db/人物/<id>.md，明文 markdown + YAML frontmatter。
 // 宽容解析：frontmatter 缺失/损坏/未标记 shiro_asset 类型的文件不进列表，按普通文档对待，不报错。
 
-use crate::api::{
-    ApiError, ErrorResponse, bad_request, config_folder, excerpt_from_content, file_mtime,
-    internal_error, now_secs,
-};
+use crate::error::{ApiError, ErrorResponse, bad_request, internal_error, not_found};
+use crate::infra::fs::{atomic_write, file_mtime};
+use crate::infra::paths::config_folder;
+use crate::infra::text::excerpt_from_content;
+use crate::infra::now_secs;
 use axum::Json;
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
@@ -213,15 +214,6 @@ fn valid_asset_id(id: &str) -> bool {
     !id.is_empty() && !id.starts_with('.') && !id.contains(['/', '\\'])
 }
 
-fn not_found(message: &str) -> ApiError {
-    (
-        axum::http::StatusCode::NOT_FOUND,
-        Json(ErrorResponse {
-            message: message.into(),
-        }),
-    )
-}
-
 /// 全局人物库角色列表
 #[utoipa::path(
     post,
@@ -391,9 +383,7 @@ pub(crate) async fn save_character(
     } else {
         return Err(not_found("角色不存在"));
     };
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, &req.content).map_err(internal_error)?;
-    std::fs::rename(&tmp, &path).map_err(internal_error)?;
+    atomic_write(&path, &req.content).map_err(internal_error)?;
 
     let parsed = split_frontmatter(&req.content).and_then(|(fm, body)| {
         parse_character(&fm, &body, &id).map(|mut c| {

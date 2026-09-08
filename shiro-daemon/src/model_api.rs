@@ -2,7 +2,8 @@
 // [[llm.profiles]] 数组 + default key）。设计见 docs/backend/model-access.md；
 // Key 不回传明文，只回掩码预览。
 
-use crate::api::{ApiError, ErrorResponse, bad_request, config_folder, internal_error};
+use crate::error::{ApiError, ErrorResponse, bad_request, internal_error};
+use crate::infra::paths::config_folder;
 use crate::llm::{self, Profile};
 use axum::Json;
 use axum::http::StatusCode;

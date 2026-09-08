@@ -4,7 +4,9 @@
 //! 提案约定（草稿→确认）：模型在回复中用 ```shiro-edit 代码块给出整文件覆盖提案，
 //! 解析成结构化 proposals，用户确认后经 apply 端点写盘，不经确认不落盘。
 
-use crate::api::{now_secs, resolve_inside};
+use crate::infra::fs::atomic_write;
+use crate::infra::now_secs;
+use crate::infra::paths::{folder_name, resolve_inside};
 pub mod api;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -115,15 +117,6 @@ fn session_path(root: &Path, id: &str) -> Option<PathBuf> {
 }
 
 /// 原子写（临时文件 + rename），与项目文稿保存同一套路
-fn atomic_write(path: &Path, content: &str) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, content)?;
-    std::fs::rename(&tmp, path)
-}
-
 // ---- 会话 CRUD ----
 
 pub fn list_sessions(root: &Path) -> Vec<SessionSummary> {
@@ -275,7 +268,7 @@ fn build_tree_text(root: &Path) -> String {
             if path.is_dir() {
                 out.push(format!("{prefix}{name}/"));
                 walk(&path, &format!("{prefix}  "), out);
-            } else if crate::api::is_sheet_file(&name) {
+            } else if crate::infra::fs::is_sheet_file(&name) {
                 out.push(format!("{prefix}{name}"));
             }
         }
@@ -316,7 +309,7 @@ fn system_prompt(root: &Path) -> String {
          - 提案不会直接生效，用户确认后才写入文件\n\
          - 不涉及文件修改时正常回答，不要输出 shiro-edit 块\n\
          - 回复使用中文",
-        crate::api::folder_name(&root.to_string_lossy()),
+        folder_name(&root.to_string_lossy()),
         build_tree_text(root),
     )
 }
@@ -360,7 +353,7 @@ pub fn build_llm_messages(
 
 // ---- 提案解析 ----
 
-/// 相对路径合法性：非空、非绝对路径、无 . .. 逃逸段（与 api.rs resolve_inside 同规则）
+/// 相对路径合法性：非空、非绝对路径、无 . .. 逃逸段（与 infra::paths::resolve_inside 同规则）
 fn legal_rel(rel: &str) -> bool {
     !rel.trim().is_empty()
         && !Path::new(rel).is_absolute()
@@ -421,9 +414,7 @@ pub fn apply_proposal(
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let tmp = target.with_extension("md.shiro-tmp");
-    std::fs::write(&tmp, &p.content).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &target).map_err(|e| e.to_string())?;
+    atomic_write(&target, &p.content).map_err(|e| e.to_string())?;
     p.applied = true;
     p.applied_at = Some(now_secs());
     let out = p.clone();

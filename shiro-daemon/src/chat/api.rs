@@ -1,8 +1,9 @@
 //! Chat HTTP 端点：会话 CRUD + 消息流式生成（SSE）+ 提案应用。
 //! 存储与生成辅助见 mod.rs；模型调用走 llm::chat_stream（重试/双协议见 llm.rs）。
 
-use crate::api::{ErrorResponse, bad_request, now_secs};
 use crate::chat::{self, ChatMessage, Proposal, RunningGuard, SessionDetail, SessionSummary};
+use crate::error::{ApiError, ErrorResponse, bad_request, not_found};
+use crate::infra::now_secs;
 use axum::{
     Json,
     extract::State,
@@ -45,7 +46,7 @@ pub struct SessionListResponse {
 )]
 pub(crate) async fn list_chat_sessions(
     Json(req): Json<ChatProjectRequest>,
-) -> Result<Json<SessionListResponse>, crate::api::ApiError> {
+) -> Result<Json<SessionListResponse>, ApiError> {
     let root = crate::api::ensure_registered(&req.path)?;
     Ok(Json(SessionListResponse {
         sessions: chat::list_sessions(&root),
@@ -77,7 +78,7 @@ pub struct CreateSessionRequest {
 )]
 pub(crate) async fn create_chat_session(
     Json(req): Json<CreateSessionRequest>,
-) -> Result<(StatusCode, Json<SessionDetail>), crate::api::ApiError> {
+) -> Result<(StatusCode, Json<SessionDetail>), ApiError> {
     let root = crate::api::ensure_registered(&req.path)?;
     let detail = chat::create_session(&root, req.title.as_deref().unwrap_or(""))
         .map_err(|e| bad_request(&e))?;
@@ -109,7 +110,7 @@ pub struct SessionRefRequest {
 )]
 pub(crate) async fn get_chat_session(
     Json(req): Json<SessionRefRequest>,
-) -> Result<Json<SessionDetail>, crate::api::ApiError> {
+) -> Result<Json<SessionDetail>, ApiError> {
     let root = crate::api::ensure_registered(&req.path)?;
     let session = chat::read_session(&root, &req.id)
         .ok_or_else(|| not_found("会话不存在"))?;
@@ -131,19 +132,10 @@ pub(crate) async fn get_chat_session(
 )]
 pub(crate) async fn delete_chat_session(
     Json(req): Json<SessionRefRequest>,
-) -> Result<StatusCode, crate::api::ApiError> {
+) -> Result<StatusCode, ApiError> {
     let root = crate::api::ensure_registered(&req.path)?;
     chat::delete_session(&root, &req.id).map_err(|_| not_found("会话不存在"))?;
     Ok(StatusCode::NO_CONTENT)
-}
-
-fn not_found(message: &str) -> crate::api::ApiError {
-    (
-        StatusCode::NOT_FOUND,
-        Json(ErrorResponse {
-            message: message.into(),
-        }),
-    )
 }
 
 // ---- 发消息（SSE 流式生成） ----
@@ -182,7 +174,7 @@ pub struct SendMessageRequest {
 pub(crate) async fn send_chat_message(
     State(state): State<crate::api::AppState>,
     Json(req): Json<SendMessageRequest>,
-) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, crate::api::ApiError>
+) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError>
 {
     let id = req.id.clone();
     let root = crate::api::ensure_registered(&req.path)?;
@@ -311,7 +303,7 @@ pub struct ApplyProposalResponse {
 )]
 pub(crate) async fn apply_chat_proposal(
     Json(req): Json<ApplyProposalRequest>,
-) -> Result<Json<ApplyProposalResponse>, crate::api::ApiError> {
+) -> Result<Json<ApplyProposalResponse>, ApiError> {
     let root = crate::api::ensure_registered(&req.path)?;
     let mut session =
         chat::read_session(&root, &req.id).ok_or_else(|| not_found("会话不存在"))?;

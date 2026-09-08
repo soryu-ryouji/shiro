@@ -1,3 +1,8 @@
+use crate::error::{ApiError, ErrorResponse, bad_request, conflict, forbidden, internal_error, not_found};
+use crate::infra::fs::{file_mtime, is_sheet_file, move_to_trash};
+use crate::infra::now_secs;
+use crate::infra::paths::{config_folder, folder_name, resolve_inside, same_path};
+use crate::infra::text::{excerpt_from_content, read_file_head};
 use crate::watch;
 use axum::{
     Json, Router,
@@ -76,15 +81,6 @@ struct HistoryEntry {
     opened_at: u64,
 }
 
-pub(crate) fn config_folder() -> PathBuf {
-    std::env::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".config")
-        .join("shiro")
-}
-
-
-
 fn load_history() -> History {
     let Ok(text) = std::fs::read_to_string(config_folder().join("history.toml")) else {
         return History::default();
@@ -96,13 +92,6 @@ fn save_history(history: &History) -> std::io::Result<()> {
     std::fs::create_dir_all(config_folder())?;
     let text = toml::to_string_pretty(history).map_err(std::io::Error::other)?;
     std::fs::write(config_folder().join("history.toml"), text)
-}
-
-pub(crate) fn now_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }
 
 /// 名称合法性校验（目录/文件名共用）：非空、非 . ..、不含路径与 Windows 保留字符
@@ -118,26 +107,6 @@ fn validate_name(name: &str) -> Result<&str, ApiError> {
     Ok(name)
 }
 
-/// 回收站目标路径：<项目>/.shiro/trash/<时间戳>-<原名>
-fn move_to_trash(root: &Path, target: &Path) -> Result<(), ApiError> {
-    let trash = root.join(".shiro").join("trash");
-    std::fs::create_dir_all(&trash).map_err(internal_error)?;
-    let name = target
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "item".into());
-    std::fs::rename(target, trash.join(format!("{}-{}", now_secs(), name))).map_err(internal_error)
-}
-
-/// 路径显示名：目录 basename（容忍尾部斜杠）
-pub(crate) fn folder_name(path: &str) -> String {
-    let trimmed = path.trim_end_matches(['/', '\\']);
-    Path::new(trimmed)
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| trimmed.to_string())
-}
-
 #[derive(Serialize, ToSchema)]
 pub struct ProjectItem {
     /// 项目文件夹绝对路径
@@ -151,31 +120,6 @@ pub struct ProjectItem {
 #[derive(Serialize, ToSchema)]
 pub struct ProjectListResponse {
     pub projects: Vec<ProjectItem>,
-}
-
-#[derive(Serialize, ToSchema)]
-pub struct ErrorResponse {
-    pub message: String,
-}
-
-pub(crate) type ApiError = (StatusCode, Json<ErrorResponse>);
-
-pub(crate) fn bad_request(message: &str) -> ApiError {
-    (
-        StatusCode::BAD_REQUEST,
-        Json(ErrorResponse {
-            message: message.into(),
-        }),
-    )
-}
-
-pub(crate) fn internal_error(e: std::io::Error) -> ApiError {
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(ErrorResponse {
-            message: e.to_string(),
-        }),
-    )
 }
 
 /// 项目列表（history.toml 记录，最近打开在前）
@@ -336,27 +280,6 @@ async fn remove_project(Json(req): Json<RemoveProjectRequest>) -> StatusCode {
 
 // ---- 项目文件（真实文件夹直读直写，见 docs/backend/storage.md） ----
 
-/// 项目内相对路径安全校验：拒绝绝对路径与 .. 逃逸，返回拼接后的完整路径
-pub(crate) fn resolve_inside(root: &Path, rel: &str) -> Result<PathBuf, ApiError> {
-    let rel_path = Path::new(rel);
-    if rel_path.is_absolute()
-        || rel.split(['/', '\\']).any(|seg| seg == ".." || seg == ".")
-        || rel.trim().is_empty()
-    {
-        return Err(bad_request("非法的文件路径"));
-    }
-    Ok(root.join(rel_path))
-}
-
-/// 路径等价：字符串相等，或 canonicalize 后相等（容忍尾斜杠、符号链接差异）
-fn same_path(a: &str, b: &Path) -> bool {
-    let pa = Path::new(a);
-    if pa == b {
-        return true;
-    }
-    std::fs::canonicalize(pa).map(|ca| ca == b).unwrap_or(false)
-}
-
 /// 项目登记校验：路径必须已登记在 history.toml（防止通过 API 读写任意路径）。
 /// 返回规范化后的项目根（canonicalize：解析符号链接、去尾斜杠），后续路径拼接均以它为根。
 pub(crate) fn ensure_registered(path: &str) -> Result<PathBuf, ApiError> {
@@ -371,12 +294,7 @@ pub(crate) fn ensure_registered(path: &str) -> Result<PathBuf, ApiError> {
     if registered {
         Ok(root)
     } else {
-        Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                message: "项目未登记：请先在 Project 页打开该项目".into(),
-            }),
-        ))
+        Err(forbidden("项目未登记：请先在 Project 页打开该项目"))
     }
 }
 
@@ -395,12 +313,6 @@ pub struct TreeNode {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(no_recursion)]
     pub children: Option<Vec<TreeNode>>,
-}
-
-/// 文稿文件判定：.md/.markdown（markdown）与 .txt（纯文本）
-pub(crate) fn is_sheet_file(name: &str) -> bool {
-    let lower = name.to_lowercase();
-    lower.ends_with(".md") || lower.ends_with(".markdown") || lower.ends_with(".txt")
 }
 
 /// 递归构建目录树：只含目录与文稿文件（.md/.markdown/.txt）；排除 . 开头项（.shiro 等）；目录在前，按名称排序
@@ -502,118 +414,6 @@ pub struct ExcerptsResponse {
     pub excerpts: Vec<SheetExcerpt>,
 }
 
-/// 读文件头部（最多 max_bytes 字节；截断处的多字节字符经 lossy 变替换符，由剥离逻辑过滤）
-fn read_file_head(path: &Path, max_bytes: usize) -> Option<String> {
-    use std::io::Read;
-    let f = std::fs::File::open(path).ok()?;
-    let mut buf = Vec::new();
-    f.take(max_bytes as u64).read_to_end(&mut buf).ok()?;
-    Some(String::from_utf8_lossy(&buf).into_owned())
-}
-
-/// 剥离单行 markdown 块级标记（# 标题、> 引用、-/*/+ 与 "1." 列表），返回行内文本
-fn strip_markdown_line(line: &str) -> String {
-    let mut s = line.trim();
-    loop {
-        let t = s.trim_start();
-        let Some(c) = t.chars().next() else { break };
-        match c {
-            '#' | '>' | '-' | '*' | '+' => s = &t[c.len_utf8()..],
-            '0'..='9' => {
-                let digits = t
-                    .char_indices()
-                    .take_while(|(_, ch)| ch.is_ascii_digit())
-                    .count();
-                let rest = &t[digits..];
-                match rest.strip_prefix(". ") {
-                    Some(after) => s = after,
-                    None => break,
-                }
-            }
-            _ => break,
-        }
-    }
-    s.trim().to_string()
-}
-
-/// 剥离行内 markdown：图片 ![alt](url) 整体移除，链接 [text](url) 保留 text，粗体/行内码/删除线标记移除
-fn strip_inline_markdown(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut rest = s;
-    loop {
-        let img = rest.find("![");
-        let link = rest.find('[');
-        // 图片与链接标记取更靠前的一个
-        let take_img = match (img, link) {
-            (Some(i), Some(l)) => i < l,
-            (Some(_), None) => true,
-            (None, _) => false,
-        };
-        if take_img {
-            let i = img.expect("take_img 为 true 时 img 必为 Some");
-            out.push_str(&rest[..i]);
-            match rest[i..]
-                .find("](")
-                .and_then(|j| rest[i + j..].find(')').map(|k| (j, k)))
-            {
-                Some((j, k)) => rest = &rest[i + j + k + 1..],
-                None => {
-                    rest = &rest[i + 2..];
-                }
-            }
-        } else if let Some(i) = link {
-            out.push_str(&rest[..i]);
-            let Some(j) = rest[i..].find(']') else {
-                rest = &rest[i + 1..];
-                continue;
-            };
-            let text = &rest[i + 1..i + j];
-            out.push_str(text);
-            if let Some(after) = rest[i + j..].strip_prefix("](") {
-                match after.find(')') {
-                    Some(k) => rest = &after[k + 1..],
-                    None => rest = after,
-                }
-            } else {
-                rest = &rest[i + j + 1..];
-            }
-        } else {
-            out.push_str(rest);
-            break;
-        }
-    }
-    out.chars()
-        .filter(|c| !matches!(c, '*' | '`' | '~'))
-        .collect()
-}
-
-/// 从文稿内容提取正文预览：markdown 逐行剥离标记，纯文本直接取开头约 max_chars 字
-pub(crate) fn excerpt_from_content(content: &str, max_chars: usize, is_markdown: bool) -> String {
-    let mut out = String::new();
-    for line in content.lines() {
-        let text = if is_markdown {
-            strip_inline_markdown(&strip_markdown_line(line))
-        } else {
-            line.trim().to_string()
-        };
-        if text.is_empty() {
-            continue;
-        }
-        if !out.is_empty() {
-            out.push(' ');
-        }
-        out.push_str(&text);
-        if out.chars().count() >= max_chars {
-            break;
-        }
-    }
-    if out.chars().count() > max_chars {
-        out.chars().take(max_chars).collect()
-    } else {
-        out
-    }
-}
-
 /// 目录内全部文稿的正文预览（每篇取开头几行，Ulysses 式列表）
 #[utoipa::path(
     post,
@@ -684,15 +484,6 @@ pub struct FileContent {
     pub modified: u64,
 }
 
-pub(crate) fn file_mtime(path: &Path) -> u64 {
-    path.metadata()
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
-}
-
 /// 读取文稿内容
 #[utoipa::path(
     post,
@@ -710,12 +501,7 @@ pub(crate) fn file_mtime(path: &Path) -> u64 {
 async fn read_project_file(Json(req): Json<ReadFileRequest>) -> Result<Json<FileContent>, ApiError> {
     let target = resolve_inside(&ensure_registered(&req.path)?, &req.file)?;
     if !target.is_file() {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                message: "文件不存在".into(),
-            }),
-        ));
+        return Err(not_found("文件不存在"));
     }
     let content = std::fs::read_to_string(&target).map_err(internal_error)?;
     Ok(Json(FileContent {
@@ -751,9 +537,7 @@ async fn write_project_file(
     Json(req): Json<WriteFileRequest>,
 ) -> Result<Json<FileContent>, ApiError> {
     let target = resolve_inside(&ensure_registered(&req.path)?, &req.file)?;
-    let tmp = target.with_extension("md.shiro-tmp");
-    std::fs::write(&tmp, &req.content).map_err(internal_error)?;
-    std::fs::rename(&tmp, &target).map_err(internal_error)?;
+    crate::infra::fs::atomic_write(&target, &req.content).map_err(internal_error)?;
     Ok(Json(FileContent {
         content: req.content,
         modified: file_mtime(&target),
@@ -787,12 +571,7 @@ async fn create_project_file(
 ) -> Result<(StatusCode, Json<FileContent>), ApiError> {
     let target = resolve_inside(&ensure_registered(&req.path)?, &req.file)?;
     if target.exists() {
-        return Err((
-            StatusCode::CONFLICT,
-            Json(ErrorResponse {
-                message: "文件已存在".into(),
-            }),
-        ));
+        return Err(conflict("文件已存在"));
     }
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent).map_err(internal_error)?;
@@ -871,12 +650,7 @@ async fn remove_project_folder(
         return Err(bad_request(".shiro 是 shiro 的工作目录，不能删除"));
     }
     if !target.is_dir() {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                message: "目录不存在".into(),
-            }),
-        ));
+        return Err(not_found("目录不存在"));
     }
     let is_empty = target
         .read_dir()
@@ -930,12 +704,7 @@ async fn rename_project(
         }));
     }
     if dst.exists() {
-        return Err((
-            StatusCode::CONFLICT,
-            Json(ErrorResponse {
-                message: "目标目录已存在".into(),
-            }),
-        ));
+        return Err(conflict("目标目录已存在"));
     }
     std::fs::rename(&src, &dst).map_err(internal_error)?;
 
@@ -992,12 +761,7 @@ async fn rename_entry(Json(req): Json<RenameEntryRequest>) -> Result<StatusCode,
     let root = ensure_registered(&req.path)?;
     let src = resolve_inside(&root, &req.rel)?;
     if !src.exists() {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                message: "条目不存在".into(),
-            }),
-        ));
+        return Err(not_found("条目不存在"));
     }
     let name = validate_name(&req.new_name)?;
     let dst = src.parent().unwrap_or(&root).join(name);
@@ -1005,12 +769,7 @@ async fn rename_entry(Json(req): Json<RenameEntryRequest>) -> Result<StatusCode,
         return Ok(StatusCode::NO_CONTENT);
     }
     if dst.exists() {
-        return Err((
-            StatusCode::CONFLICT,
-            Json(ErrorResponse {
-                message: "目标已存在".into(),
-            }),
-        ));
+        return Err(conflict("目标已存在"));
     }
     std::fs::rename(&src, &dst).map_err(internal_error)?;
     Ok(StatusCode::NO_CONTENT)
@@ -1042,12 +801,7 @@ async fn remove_project_file(Json(req): Json<RemoveFileRequest>) -> Result<Statu
     let root = ensure_registered(&req.path)?;
     let target = resolve_inside(&root, &req.file)?;
     if !target.is_file() {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                message: "文件不存在".into(),
-            }),
-        ));
+        return Err(not_found("文件不存在"));
     }
     move_to_trash(&root, &target)?;
     Ok(StatusCode::NO_CONTENT)
