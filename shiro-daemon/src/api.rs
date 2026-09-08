@@ -21,6 +21,8 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 pub struct AppState {
     pub token: String,
     pub watch_hub: watch::WatchHub,
+    /// Chat 生成守卫（同一会话并发限制）
+    pub chat: std::sync::Arc<crate::chat::Hub>,
 }
 
 #[derive(Serialize, ToSchema, PartialEq, Debug)]
@@ -128,7 +130,7 @@ fn move_to_trash(root: &Path, target: &Path) -> Result<(), ApiError> {
 }
 
 /// 路径显示名：目录 basename（容忍尾部斜杠）
-fn dir_name(path: &str) -> String {
+pub(crate) fn dir_name(path: &str) -> String {
     let trimmed = path.trim_end_matches(['/', '\\']);
     Path::new(trimmed)
         .file_name()
@@ -328,7 +330,7 @@ async fn remove_project(Query(query): Query<RemoveProjectQuery>) -> StatusCode {
 // ---- 项目文件（真实文件夹直读直写，见 docs/backend/storage.md） ----
 
 /// 项目内相对路径安全校验：拒绝绝对路径与 .. 逃逸，返回拼接后的完整路径
-fn resolve_inside(root: &Path, rel: &str) -> Result<PathBuf, ApiError> {
+pub(crate) fn resolve_inside(root: &Path, rel: &str) -> Result<PathBuf, ApiError> {
     let rel_path = Path::new(rel);
     if rel_path.is_absolute()
         || rel.split(['/', '\\']).any(|seg| seg == ".." || seg == ".")
@@ -357,7 +359,7 @@ pub struct TreeNode {
 }
 
 /// 文稿文件判定：.md/.markdown（markdown）与 .txt（纯文本）
-fn is_sheet_file(name: &str) -> bool {
+pub(crate) fn is_sheet_file(name: &str) -> bool {
     let lower = name.to_lowercase();
     lower.ends_with(".md") || lower.ends_with(".markdown") || lower.ends_with(".txt")
 }
@@ -1137,6 +1139,7 @@ pub fn build_router(
         .routes(routes!(crate::assets::get_character))
         .routes(routes!(crate::assets::save_character))
         .routes(routes!(crate::assets::create_character))
+        .merge(crate::chat::api::router())
         .routes(routes!(crate::model_api::list_profiles))
         .routes(routes!(crate::model_api::upsert_profile))
         .routes(routes!(crate::model_api::delete_profile))
@@ -1175,6 +1178,7 @@ mod tests {
             AppState {
                 token: String::new(),
                 watch_hub: watch::WatchHub::default(),
+                chat: Default::default(),
             },
             None,
         );

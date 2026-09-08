@@ -62,7 +62,9 @@ impl LlmConfig {
     }
 }
 
-/// 全局并行调用上限（config.toml [llm] max_concurrency；缺省 4，夹取 1..=8）
+/// 全局并行调用上限（config.toml [llm] max_concurrency；缺省 4，夹取 1..=8）。
+/// 多路并行管线（拆书/剧本类）的并发闸门，暂无调用方，为后续管线保留。
+#[allow(dead_code)]
 pub fn max_concurrency() -> u32 {
     std::fs::read_to_string(config_dir().join("config.toml"))
         .ok()
@@ -74,7 +76,8 @@ pub fn max_concurrency() -> u32 {
         .clamp(1, 8)
 }
 
-/// 写入全局并行上限（保留其他段落与字段）
+/// 写入全局并行上限（保留其他段落与字段）；暂无调用方，为后续管线保留
+#[allow(dead_code)]
 pub(crate) fn write_max_concurrency(dir: &Path, value: u32) -> Result<(), std::io::Error> {
     std::fs::create_dir_all(dir)?;
     let path = dir.join("config.toml");
@@ -245,7 +248,8 @@ pub(crate) fn mask_key(key: &str) -> Option<String> {
 
 #[derive(Debug)]
 pub struct LlmError {
-    /// true = 网络类/限流类（上游暂时不可用）；false = 配置或协议错误
+    /// true = 网络类/限流类（上游暂时不可用）；false = 配置或协议错误（重试策略用，暂无读取方）
+    #[allow(dead_code)]
     pub retryable: bool,
     pub message: String,
 }
@@ -266,7 +270,8 @@ pub struct Usage {
 }
 
 impl Usage {
-    /// 缓存命中率（input 中含 cache_read 时）
+    /// 缓存命中率（input 中含 cache_read 时；暂无读取方，用量分析用）
+    #[allow(dead_code)]
     pub fn cache_hit_rate(&self) -> Option<u32> {
         if self.cache_read == 0 || self.input == 0 {
             return None;
@@ -278,10 +283,14 @@ impl Usage {
 /// 一次流式调用的完整产出
 pub struct ChatOutput {
     pub text: String,
-    /// 思考过程（reasoning/thinking 内容；不进正文，展示用）
+    /// 思考过程（reasoning/thinking 内容；不进正文，展示用；暂无读取方）
+    #[allow(dead_code)]
     pub thinking: String,
+    /// 用量统计（暂无读取方）
+    #[allow(dead_code)]
     pub usage: Option<Usage>,
-    /// 是否来自非流式兜底（流式中断后的降级路径）
+    /// 是否来自非流式兜底（流式中断后的降级路径；暂无读取方）
+    #[allow(dead_code)]
     pub fallback: bool,
 }
 

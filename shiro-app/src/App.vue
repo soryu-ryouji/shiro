@@ -8,12 +8,14 @@ import TitleBar from './components/TitleBar.vue'
 import WindowControls from './components/WindowControls.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import ProjectView from './views/ProjectView.vue'
+import ChatView from './views/ChatView.vue'
 import DatabaseView from './views/DatabaseView.vue'
 import ModelView from './views/ModelView.vue'
 import { projectStore } from './stores/project'
 
 const NAV_ITEMS: NavItem[] = [
   { key: 'project', label: 'Project', icon: 'folder' },
+  { key: 'chat', label: 'Chat', icon: 'chat' },
   { key: 'database', label: 'Database', icon: 'database' },
   { key: 'model', label: 'Model', icon: 'model' },
 ]
@@ -128,6 +130,8 @@ const gridStyle = computed(() => ({
 
 /** 写作模式（项目已打开）：各栏自带顶栏、分隔竖线贯穿窗口，全局顶栏让位 */
 const writing = computed(() => active.value === 'project' && !!projectStore.current)
+/** 通高无内边距模式：写作模式与 Chat（内部自滚动） */
+const fullBleed = computed(() => writing.value || active.value === 'chat')
 </script>
 
 <template>
@@ -151,13 +155,14 @@ const writing = computed(() => active.value === 'project' && !!projectStore.curr
         @toggle-sidebar="toggleSidebar"
         @open-settings="showSettings = true"
       />
-      <div v-overlay-scrollbar class="content-body" :class="{ flush: writing }">
+      <div v-overlay-scrollbar class="content-body" :class="{ flush: fullBleed }">
         <ProjectView
           v-if="active === 'project'"
           :sidebar-visible="sidebarVisible"
           @toggle-sidebar="toggleSidebar"
           @open-settings="showSettings = true"
         />
+        <ChatView v-else-if="active === 'chat'" />
         <DatabaseView v-else-if="active === 'database'" />
         <ModelView v-else />
       </div>

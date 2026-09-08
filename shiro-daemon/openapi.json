@@ -43,6 +43,355 @@
         ]
       }
     },
+    "/api/v1/chat/sessions": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "会话列表（最近更新在前）",
+        "operationId": "list_chat_sessions",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "description": "项目根目录绝对路径",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "会话列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "项目目录不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "新建会话",
+        "operationId": "create_chat_session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "已创建",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "项目目录不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "500": {
+            "description": "写入失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/chat/sessions/{id}": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "会话详情（全部消息）",
+        "operationId": "get_chat_session",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "description": "项目根目录绝对路径",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "会话 id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "会话详情",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "会话不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "删除会话",
+        "operationId": "delete_chat_session",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "description": "项目根目录绝对路径",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "会话 id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "已删除"
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "会话不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/chat/sessions/{id}/apply": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "应用提案：整文件覆盖写盘（父目录自动创建），标记 applied。写盘后文件监听自动推送前端刷新。",
+        "operationId": "apply_chat_proposal",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "会话 id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "已写入文件",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyProposalResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "非法路径或提案已应用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "会话或提案不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/chat/sessions/{id}/messages": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "发送消息并流式生成回复。响应为 SSE（text/event-stream），data 帧为 JSON：\n`{\"type\":\"delta\",\"text\":\"…\"}` 正文增量 / `{\"type\":\"thinking\",\"text\":\"…\"}` 思考增量 /\n`{\"type\":\"done\",\"message\":{…}}` 完成（完整助手消息，含解析出的提案）/\n`{\"type\":\"error\",\"message\":\"…\"}` 失败。\n客户端断开连接即中止生成（不保存部分回复）。同一会话同时只允许一个生成。",
+        "operationId": "send_chat_message",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "会话 id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "SSE 事件流（text/event-stream）：data 为 {type: delta|thinking|done|error, …}"
+          },
+          "400": {
+            "description": "参数错误（目录不存在 / 内容为空 / 模型未配置）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "409": {
+            "description": "上一条回复还在生成中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
     "/api/v1/db/characters": {
       "get": {
         "tags": [
@@ -1211,6 +1560,34 @@
   },
   "components": {
     "schemas": {
+      "ApplyProposalRequest": {
+        "type": "object",
+        "required": [
+          "path",
+          "proposal_id"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "项目根目录绝对路径"
+          },
+          "proposal_id": {
+            "type": "string",
+            "description": "提案 id（会话内唯一，见消息的 proposals[].id）"
+          }
+        }
+      },
+      "ApplyProposalResponse": {
+        "type": "object",
+        "required": [
+          "proposal"
+        ],
+        "properties": {
+          "proposal": {
+            "$ref": "#/components/schemas/Proposal"
+          }
+        }
+      },
       "CardFile": {
         "type": "object",
         "required": [
@@ -1374,6 +1751,43 @@
           }
         }
       },
+      "ChatMessage": {
+        "type": "object",
+        "required": [
+          "role",
+          "content",
+          "at"
+        ],
+        "properties": {
+          "at": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "user 消息引用的项目文件（相对路径）"
+          },
+          "content": {
+            "type": "string",
+            "description": "原始内容（assistant 含 shiro-edit 块，前端渲染时剥离；保留原文供后续轮次引用）"
+          },
+          "proposals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Proposal"
+            },
+            "description": "assistant 消息解析出的提案"
+          },
+          "role": {
+            "type": "string",
+            "description": "user / assistant"
+          }
+        }
+      },
       "CreateCharacterRequest": {
         "type": "object",
         "required": [
@@ -1433,6 +1847,25 @@
           "path": {
             "type": "string",
             "description": "项目文件夹绝对路径（须已存在；任意内容的文件夹均可）"
+          }
+        }
+      },
+      "CreateSessionRequest": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "项目根目录绝对路径"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "会话标题（缺省「新会话」，首条用户消息自动回填）"
           }
         }
       },
@@ -1603,6 +2036,39 @@
           }
         }
       },
+      "Proposal": {
+        "type": "object",
+        "description": "整文件覆盖提案（模型输出解析而来；applied = 已写盘）",
+        "required": [
+          "id",
+          "file",
+          "content"
+        ],
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "applied_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "content": {
+            "type": "string",
+            "description": "修改后的完整文件内容"
+          },
+          "file": {
+            "type": "string",
+            "description": "项目内相对路径"
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      },
       "RenameEntryRequest": {
         "type": "object",
         "required": [
@@ -1680,6 +2146,110 @@
           "parsed": {
             "type": "boolean",
             "description": "保存后能否仍解析为角色卡（false = frontmatter 缺失/损坏/未标记类型，该卡不进列表）"
+          }
+        }
+      },
+      "SendMessageRequest": {
+        "type": "object",
+        "required": [
+          "path",
+          "content"
+        ],
+        "properties": {
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "引用的项目文件（相对路径；内容在前端不可见，由 daemon 注入上下文）"
+          },
+          "content": {
+            "type": "string",
+            "description": "用户输入原文"
+          },
+          "path": {
+            "type": "string",
+            "description": "项目根目录绝对路径"
+          }
+        }
+      },
+      "SessionDetail": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "created_at",
+          "updated_at",
+          "messages"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChatMessage"
+            }
+          },
+          "title": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "SessionListResponse": {
+        "type": "object",
+        "required": [
+          "sessions"
+        ],
+        "properties": {
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionSummary"
+            }
+          }
+        }
+      },
+      "SessionSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "created_at",
+          "updated_at",
+          "message_count"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string"
+          },
+          "message_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "title": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
           }
         }
       },

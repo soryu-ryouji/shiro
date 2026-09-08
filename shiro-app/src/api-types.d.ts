@@ -24,6 +24,82 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/chat/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 会话列表（最近更新在前） */
+        get: operations["list_chat_sessions"];
+        put?: never;
+        /** 新建会话 */
+        post: operations["create_chat_session"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/sessions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 会话详情（全部消息） */
+        get: operations["get_chat_session"];
+        put?: never;
+        post?: never;
+        /** 删除会话 */
+        delete: operations["delete_chat_session"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/sessions/{id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 应用提案：整文件覆盖写盘（父目录自动创建），标记 applied。写盘后文件监听自动推送前端刷新。 */
+        post: operations["apply_chat_proposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/sessions/{id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 发送消息并流式生成回复。响应为 SSE（text/event-stream），data 帧为 JSON：
+         *     `{"type":"delta","text":"…"}` 正文增量 / `{"type":"thinking","text":"…"}` 思考增量 /
+         *     `{"type":"done","message":{…}}` 完成（完整助手消息，含解析出的提案）/
+         *     `{"type":"error","message":"…"}` 失败。
+         *     客户端断开连接即中止生成（不保存部分回复）。同一会话同时只允许一个生成。
+         */
+        post: operations["send_chat_message"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/db/characters": {
         parameters: {
             query?: never;
@@ -268,6 +344,15 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ApplyProposalRequest: {
+            /** @description 项目根目录绝对路径 */
+            path: string;
+            /** @description 提案 id（会话内唯一，见消息的 proposals[].id） */
+            proposal_id: string;
+        };
+        ApplyProposalResponse: {
+            proposal: components["schemas"]["Proposal"];
+        };
         CardFile: {
             /** @description 子文件内容（markdown） */
             body: string;
@@ -316,6 +401,18 @@ export interface components {
             /** @description 自由标签 */
             tags: string[];
         };
+        ChatMessage: {
+            /** Format: int64 */
+            at: number;
+            /** @description user 消息引用的项目文件（相对路径） */
+            attachments?: string[];
+            /** @description 原始内容（assistant 含 shiro-edit 块，前端渲染时剥离；保留原文供后续轮次引用） */
+            content: string;
+            /** @description assistant 消息解析出的提案 */
+            proposals?: components["schemas"]["Proposal"][];
+            /** @description user / assistant */
+            role: string;
+        };
         CreateCharacterRequest: {
             /** @description 角色显示名（写入 frontmatter 的 name） */
             name: string;
@@ -337,6 +434,12 @@ export interface components {
             name?: string;
             /** @description 项目文件夹绝对路径（须已存在；任意内容的文件夹均可） */
             path: string;
+        };
+        CreateSessionRequest: {
+            /** @description 项目根目录绝对路径 */
+            path: string;
+            /** @description 会话标题（缺省「新会话」，首条用户消息自动回填） */
+            title?: string | null;
         };
         ErrorResponse: {
             message: string;
@@ -390,6 +493,17 @@ export interface components {
         ProjectListResponse: {
             projects: components["schemas"]["ProjectItem"][];
         };
+        /** @description 整文件覆盖提案（模型输出解析而来；applied = 已写盘） */
+        Proposal: {
+            applied?: boolean;
+            /** Format: int64 */
+            applied_at?: number | null;
+            /** @description 修改后的完整文件内容 */
+            content: string;
+            /** @description 项目内相对路径 */
+            file: string;
+            id: string;
+        };
         RenameEntryRequest: {
             /** @description 新名字（文件名含后缀） */
             new_name: string;
@@ -413,6 +527,35 @@ export interface components {
             parse_error?: string | null;
             /** @description 保存后能否仍解析为角色卡（false = frontmatter 缺失/损坏/未标记类型，该卡不进列表） */
             parsed: boolean;
+        };
+        SendMessageRequest: {
+            /** @description 引用的项目文件（相对路径；内容在前端不可见，由 daemon 注入上下文） */
+            attachments?: string[];
+            /** @description 用户输入原文 */
+            content: string;
+            /** @description 项目根目录绝对路径 */
+            path: string;
+        };
+        SessionDetail: {
+            /** Format: int64 */
+            created_at: number;
+            id: string;
+            messages: components["schemas"]["ChatMessage"][];
+            title: string;
+            /** Format: int64 */
+            updated_at: number;
+        };
+        SessionListResponse: {
+            sessions: components["schemas"]["SessionSummary"][];
+        };
+        SessionSummary: {
+            /** Format: int64 */
+            created_at: number;
+            id: string;
+            message_count: number;
+            title: string;
+            /** Format: int64 */
+            updated_at: number;
         };
         SheetExcerpt: {
             /** @description 正文预览（markdown 剥离标记后取开头约 160 字；纯文本直接取开头） */
@@ -494,6 +637,276 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    list_chat_sessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 项目根目录绝对路径 */
+                path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 会话列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionListResponse"];
+                };
+            };
+            /** @description 项目目录不存在 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    create_chat_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description 已创建 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionDetail"];
+                };
+            };
+            /** @description 项目目录不存在 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 写入失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_chat_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 项目根目录绝对路径 */
+                path: string;
+                /** @description 会话 id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 会话详情 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionDetail"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 会话不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_chat_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 项目根目录绝对路径 */
+                path: string;
+                /** @description 会话 id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已删除 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 会话不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    apply_chat_proposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 会话 id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyProposalRequest"];
+            };
+        };
+        responses: {
+            /** @description 已写入文件 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplyProposalResponse"];
+                };
+            };
+            /** @description 非法路径或提案已应用 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 会话或提案不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    send_chat_message: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 会话 id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description SSE 事件流（text/event-stream）：data 为 {type: delta|thinking|done|error, …} */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 参数错误（目录不存在 / 内容为空 / 模型未配置） */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 上一条回复还在生成中 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
         };
     };

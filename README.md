@@ -54,3 +54,4 @@ cd shiro-app && npm run gen:types
 **前端**
 
 - [正文编辑器](docs/frontend/editor.md)：实时预览、表格编辑、底部工具栏、自动保存
+- [Chat](docs/frontend/chat.md)：对话式修改项目文档（提案 → 确认 → 写盘）

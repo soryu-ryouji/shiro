@@ -1,5 +1,6 @@
 mod api;
 mod assets;
+mod chat;
 mod llm;
 mod model_api;
 mod watch;
@@ -39,6 +40,7 @@ async fn main() {
             generated
         }),
         watch_hub: Default::default(),
+        chat: Default::default(),
     };
 
     let (router, doc) = api::build_router(state.clone(), cli.serve_dir);
