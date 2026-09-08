@@ -15,9 +15,9 @@ import { killStrays } from './kill-strays.mjs'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(import.meta.url)
 const tmp = path.join(root, 'tools', '.tmp', 'ui-check')
-const projDir = path.join(tmp, 'project')
+const projFolder = path.join(tmp, 'project')
 const sheetRel = '正文/测试文稿.md'
-const sheetAbs = path.join(projDir, '正文', '测试文稿.md')
+const sheetAbs = path.join(projFolder, '正文', '测试文稿.md')
 
 // ---------- 预检：清理此前运行残留的进程（electron/vite/daemon），防止占端口、锁 exe、抢 CDP ----------
 
@@ -61,7 +61,7 @@ function check(name, actual, expected) {
 fs.rmSync(tmp, { recursive: true, force: true })
 fs.mkdirSync(path.dirname(sheetAbs), { recursive: true })
 fs.writeFileSync(sheetAbs, '# 自检文稿\n\n种子段落文本。\n')
-fs.writeFileSync(path.join(projDir, '正文', '笔记.txt'), '纯文本笔记。\n# 不是标题\nhello bug\n')
+fs.writeFileSync(path.join(projFolder, '正文', '笔记.txt'), '纯文本笔记。\n# 不是标题\nhello bug\n')
 
 // ---------- 构建主进程与 preload（同 scripts/dev.mjs） ----------
 
@@ -209,7 +209,7 @@ try {
   const created = await fetch(`${conn.api}/api/v1/projects/create`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${conn.token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: projDir, name: '自检项目' }),
+    body: JSON.stringify({ path: projFolder, name: '自检项目' }),
   })
   if (!created.ok) throw new Error(`注册临时项目失败: HTTP ${created.status}`)
 

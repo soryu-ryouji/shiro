@@ -16,7 +16,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   })
   ipcMain.handle(IPC.winClose, () => getWindow()?.close())
 
-  ipcMain.handle(IPC.pickDirectory, async (_event, title: string) => {
+  ipcMain.handle(IPC.pickFolder, async (_event, title: string) => {
     const win = getWindow()
     if (!win) return null
     const result = await dialog.showOpenDialog(win, {

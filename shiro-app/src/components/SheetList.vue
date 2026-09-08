@@ -5,7 +5,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { apiPost } from '../api'
 import { hasShell, isMac, shell } from '../platform'
-import { findDir, projectStore, type TreeNode } from '../stores/project'
+import { findFolder, projectStore, type TreeNode } from '../stores/project'
 import { stripSheetExt } from '../utils/sheet'
 import type { components } from '../api-types'
 import ContextMenu, { type MenuItem } from './ContextMenu.vue'
@@ -24,11 +24,11 @@ function onHeadDblClick(e: MouseEvent) {
 }
 
 /** 顶栏标题：选中目录名（项目根为固定文案） */
-const dirTitle = computed(() => (projectStore.selectedDir ? (projectStore.selectedDir.split('/').at(-1) ?? '') : '根目录'))
+const folderTitle = computed(() => (projectStore.selectedFolder ? (projectStore.selectedFolder.split('/').at(-1) ?? '') : '根目录'))
 
 /** 选中目录的直接文稿（file 节点） */
 const sheets = computed(() =>
-  (findDir(projectStore.tree, projectStore.selectedDir) ?? []).filter((n) => n.kind === 'file'),
+  (findFolder(projectStore.tree, projectStore.selectedFolder) ?? []).filter((n) => n.kind === 'file'),
 )
 
 // ---- 正文预览：目录切换 / 树变化 / 保存完成时拉取目录预览列表 ----
@@ -43,7 +43,7 @@ async function refreshExcerpts() {
   try {
     const res = await apiPost<components['schemas']['ExcerptsResponse']>(
       '/api/v1/projects/excerpts',
-      { path: project.path, dir: projectStore.selectedDir },
+      { path: project.path, folder: projectStore.selectedFolder },
     )
     const map: Record<string, string> = {}
     for (const it of res.excerpts ?? []) map[it.file] = it.excerpt
@@ -54,7 +54,7 @@ async function refreshExcerpts() {
 }
 
 watch(
-  () => [projectStore.selectedDir, projectStore.tree] as const,
+  () => [projectStore.selectedFolder, projectStore.tree] as const,
   () => void refreshExcerpts(),
 )
 // 保存完成后同步该篇预览
@@ -178,7 +178,7 @@ async function confirmNaming() {
   if (!name) return
   const project = projectStore.current
   if (!project) return
-  const file = `${projectStore.selectedDir ? projectStore.selectedDir + '/' : ''}${name}.md`
+  const file = `${projectStore.selectedFolder ? projectStore.selectedFolder + '/' : ''}${name}.md`
   try {
     await apiPost('/api/v1/projects/file/create', { path: project.path, file })
     await projectStore.refreshTree()
@@ -263,8 +263,8 @@ async function confirmRename(path: string) {
     </div>
 
     <!-- 目录名横带（Ulysses 式列表头）：名称左下对齐，底部横线与列表分隔 -->
-    <div class="dir-band" @dblclick="onHeadDblClick">
-      <span class="dir-band-text">{{ dirTitle }}</span>
+    <div class="folder-band" @dblclick="onHeadDblClick">
+      <span class="folder-band-text">{{ folderTitle }}</span>
     </div>
 
     <!-- 筛选行：顶栏漏斗开关 -->
@@ -364,7 +364,7 @@ async function confirmRename(path: string) {
 }
 
 /* 目录名横带：名称左下对齐 + 底部横线（Ulysses 式列表头）；与顶栏同高 40px，兼窗口拖拽区 */
-.dir-band {
+.folder-band {
   flex: none;
   display: flex;
   align-items: flex-end;
@@ -375,7 +375,7 @@ async function confirmRename(path: string) {
   user-select: none;
 }
 
-.dir-band-text {
+.folder-band-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

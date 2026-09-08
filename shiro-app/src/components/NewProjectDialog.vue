@@ -12,15 +12,15 @@ const emit = defineEmits<{ close: []; created: [] }>()
 const { onMaskDown, onMaskUp } = useDialogMask(() => emit('close'))
 
 const name = ref('')
-const dir = ref('')
+const folder = ref('')
 const busy = ref(false)
 const error = ref('')
 
-const canCreate = computed(() => dir.value !== '' && !busy.value)
+const canCreate = computed(() => folder.value !== '' && !busy.value)
 
-async function pickDir() {
-  const picked = await shell.pickDirectory('选择项目文件夹')
-  if (picked) dir.value = picked
+async function pickFolder() {
+  const picked = await shell.pickFolder('选择项目文件夹')
+  if (picked) folder.value = picked
 }
 
 async function create() {
@@ -29,7 +29,7 @@ async function create() {
   error.value = ''
   try {
     await apiPost<components['schemas']['ProjectItem']>('/api/v1/projects/create', {
-      path: dir.value,
+      path: folder.value,
       name: name.value.trim(),
     })
     emit('created')
@@ -49,9 +49,9 @@ async function create() {
 
       <label class="field">
         <span class="field-label">项目文件夹</span>
-        <div class="dir-row">
-          <input :value="dir" class="input" type="text" placeholder="选择已有的文件夹" readonly />
-          <button class="btn" :disabled="!hasShell" @click="pickDir">选择…</button>
+        <div class="folder-row">
+          <input :value="folder" class="input" type="text" placeholder="选择已有的文件夹" readonly />
+          <button class="btn" :disabled="!hasShell" @click="pickFolder">选择…</button>
         </div>
       </label>
 
@@ -123,12 +123,12 @@ async function create() {
   border-color: var(--accent);
 }
 
-.dir-row {
+.folder-row {
   display: flex;
   gap: 8px;
 }
 
-.dir-row .input {
+.folder-row .input {
   flex: 1;
   min-width: 0;
 }

@@ -8,26 +8,26 @@ import { spawnSync } from 'node:child_process'
  * @param projectRoot 项目根目录（如 D:\Projects\Ryouji\shiro）
  */
 export function killStrays(projectRoot) {
-  const appDir = `${projectRoot}\\shiro-app\\node_modules\\electron`
+  const appFolder = `${projectRoot}\\shiro-app\\node_modules\\electron`
   const viteBin = `${projectRoot}\\shiro-app\\node_modules\\vite\\bin\\vite.js`
-  const daemonDir = `${projectRoot}\\shiro-daemon\\target`
+  const daemonFolder = `${projectRoot}\\shiro-daemon\\target`
   if (process.platform !== 'win32') {
     // POSIX 兜底：按命令行模式 pkill（无 ExecutablePath 可查，模式已足够窄）
     let count = 0
-    for (const pat of [`${appDir}`, viteBin, `${daemonDir}`]) {
+    for (const pat of [`${appFolder}`, viteBin, `${daemonFolder}`]) {
       const r = spawnSync('pkill', ['-f', pat], { stdio: 'ignore' })
       if (r.status === 0) count++
     }
     return count
   }
   const ps = [
-    `$appDir = '${appDir}'`,
+    `$appFolder = '${appFolder}'`,
     `$viteBin = '${viteBin}'`,
-    `$daemonDir = '${daemonDir}'`,
+    `$daemonFolder = '${daemonFolder}'`,
     `$procs = Get-CimInstance Win32_Process | Where-Object {`,
-    `  ($_.Name -eq 'electron.exe' -and $_.ExecutablePath -and $_.ExecutablePath.StartsWith($appDir, 'OrdinalIgnoreCase')) -or`,
+    `  ($_.Name -eq 'electron.exe' -and $_.ExecutablePath -and $_.ExecutablePath.StartsWith($appFolder, 'OrdinalIgnoreCase')) -or`,
     `  ($_.Name -eq 'node.exe' -and $_.CommandLine -and $_.CommandLine.IndexOf($viteBin, 'OrdinalIgnoreCase') -ge 0) -or`,
-    `  ($_.Name -eq 'shiro-daemon.exe' -and $_.ExecutablePath -and $_.ExecutablePath.StartsWith($daemonDir, 'OrdinalIgnoreCase'))`,
+    `  ($_.Name -eq 'shiro-daemon.exe' -and $_.ExecutablePath -and $_.ExecutablePath.StartsWith($daemonFolder, 'OrdinalIgnoreCase'))`,
     `}`,
     `$count = 0`,
     `foreach ($p in $procs) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue; $count++ }`,

@@ -151,7 +151,7 @@ shiro-app/src/api-types.d.ts（TS 类型，不手改）
 - 桌面版 token 由 Electron 启动时随机生成、env 传入不落盘；局域网 key 存 `~/.config/shiro/config.toml`
 - 项目路径为绝对路径，文件路径为项目内相对路径（daemon 侧拒绝 `..` 逃逸）
 - **项目内容端点只允许访问已登记项目**（history.toml，路径 canonicalize 后比对）：未登记返回 403。tree / excerpts / file / folder / entry / watch / chat 均适用；`projects/create` 是唯一的登记入口
-- 目录用 `folder` 命名（面向用户的词汇）；Rust 内部沿用 std 的 `dir` 不变
+- 目录统一用 `folder` 命名：API 路径/字段、Rust 自有标识符、前端状态与组件、IPC 通道；仅 std/第三方 API（`read_dir`、`ServeDir` 等）保持原样
 - 方法不再承载语义，端点即操作：路径用动词后缀区分同资源的不同操作（`list` / `create` / `read` / `write` / `delete` / `save`）
 
 ### app

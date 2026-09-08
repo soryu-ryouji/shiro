@@ -14,15 +14,15 @@ export const projectStore = reactive({
   /** 项目目录树（目录与 .md 文件） */
   tree: [] as TreeNode[],
   /** 第二栏选中的目录（项目内相对路径；'' = 项目根） */
-  selectedDir: '正文',
+  selectedFolder: '正文',
   /** 编辑器当前打开的文稿（项目内相对路径） */
   currentFile: null as string | null,
   /** 编辑区标题栏的标签（有序，可拖拽调整） */
   tabs: [] as string[],
   /** 正在新建子目录的父目录（'' = 项目根；null = 未在命名） */
-  namingDir: null as string | null,
+  namingFolder: null as string | null,
   /** 正在重命名的目录（null = 未在重命名） */
-  renamingDir: null as string | null,
+  renamingFolder: null as string | null,
   /** 编辑器状态（Editor 写入；字数常驻右上角浮层，保存失败以错误色提示） */
   wordCount: 0,
   saveState: 'saved' as 'saved' | 'saving' | 'error',
@@ -33,11 +33,11 @@ export const projectStore = reactive({
     this.current = project
     this.currentFile = null
     this.tabs = []
-    this.selectedDir = '正文'
+    this.selectedFolder = '正文'
     await this.refreshTree()
     // 默认选中「正文」；没有则退回第一个根目录，再无目录退回项目根（根级散落文稿）
-    if (!findDir(this.tree, '正文')) {
-      this.selectedDir = this.tree.find((n) => n.kind === 'folder')?.path ?? ''
+    if (!findFolder(this.tree, '正文')) {
+      this.selectedFolder = this.tree.find((n) => n.kind === 'folder')?.path ?? ''
     }
     // 监听目录变动（外部编辑/同步盘/AI 写稿）；切换项目先停旧监听
     stopWatch?.()
@@ -95,21 +95,21 @@ export const projectStore = reactive({
   },
 
   /** 新建子目录（parentRel '' = 项目根） */
-  async createDir(parentRel: string, name: string) {
+  async createFolder(parentRel: string, name: string) {
     if (!this.current) return
-    const dir = parentRel ? `${parentRel}/${name}` : name
-    await apiPost('/api/v1/projects/folder/create', { path: this.current.path, folder: dir })
-    this.namingDir = null
+    const folder = parentRel ? `${parentRel}/${name}` : name
+    await apiPost('/api/v1/projects/folder/create', { path: this.current.path, folder })
+    this.namingFolder = null
     await this.refreshTree()
   },
 
   /** 删除目录（daemon 侧：空目录直删，非空移 .shiro/trash/） */
-  async removeDir(rel: string) {
+  async removeFolder(rel: string) {
     if (!this.current) return
     await apiPost('/api/v1/projects/folder/delete', { path: this.current.path, folder: rel })
     // 选中目录/当前文稿/标签在被删子树内时回退
-    if (this.selectedDir === rel || this.selectedDir.startsWith(rel + '/')) {
-      this.selectedDir = rel.split('/').slice(0, -1).join('/')
+    if (this.selectedFolder === rel || this.selectedFolder.startsWith(rel + '/')) {
+      this.selectedFolder = rel.split('/').slice(0, -1).join('/')
     }
     this.tabs = this.tabs.filter((t) => t !== rel && !t.startsWith(rel + '/'))
     if (this.currentFile === rel || this.currentFile?.startsWith(rel + '/')) {
@@ -129,7 +129,7 @@ export const projectStore = reactive({
     const parent = rel.split('/').slice(0, -1).join('/')
     const newRel = parent ? `${parent}/${newName}` : newName
     const remap = (p: string) => (p === rel || p.startsWith(rel + '/') ? newRel + p.slice(rel.length) : p)
-    this.selectedDir = remap(this.selectedDir)
+    this.selectedFolder = remap(this.selectedFolder)
     this.tabs = this.tabs.map(remap)
     if (this.currentFile) this.currentFile = remap(this.currentFile)
     await this.refreshTree()
@@ -181,12 +181,12 @@ if (import.meta.env.DEV || location.hash.includes('open=')) {
 }
 
 /** 在目录树中查找目录节点的直接子节点；未找到返回 null */
-export function findDir(nodes: TreeNode[], path: string): TreeNode[] | null {
+export function findFolder(nodes: TreeNode[], path: string): TreeNode[] | null {
   if (path === '') return nodes
   for (const node of nodes) {
     if (node.kind !== 'folder') continue
     if (node.path === path) return node.children ?? []
-    const found = findDir(node.children ?? [], path)
+    const found = findFolder(node.children ?? [], path)
     if (found !== null) return found
   }
   return null

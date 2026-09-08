@@ -48,8 +48,8 @@ provide('openTreeMenu', (e: MouseEvent, node: TreeNodeData) => {
 
 function treeMenuItems(node: TreeNodeData): MenuItem[] {
   const items: MenuItem[] = [
-    { label: '新建子目录', action: () => (projectStore.namingDir = node.path) },
-    { label: '重命名…', action: () => (projectStore.renamingDir = node.path) },
+    { label: '新建子目录', action: () => (projectStore.namingFolder = node.path) },
+    { label: '重命名…', action: () => (projectStore.renamingFolder = node.path) },
   ]
   // 文件管理器能力是桌面壳能力，局域网浏览器形态没有
   if (hasShell) {
@@ -61,7 +61,7 @@ function treeMenuItems(node: TreeNodeData): MenuItem[] {
   items.push({
     label: '删除目录（移至回收站）',
     danger: true,
-    action: () => void projectStore.removeDir(node.path),
+    action: () => void projectStore.removeFolder(node.path),
   })
   return items
 }
@@ -71,16 +71,16 @@ const rootNamingInput = ref<HTMLInputElement | null>(null)
 const rootNewName = ref('')
 
 function startRootNaming() {
-  projectStore.namingDir = ''
+  projectStore.namingFolder = ''
   rootNewName.value = ''
   void nextTick(() => rootNamingInput.value?.focus())
 }
 
 async function confirmRootNaming() {
   const name = rootNewName.value.trim().replace(/[/\\]/g, '')
-  projectStore.namingDir = null
+  projectStore.namingFolder = null
   if (!name) return
-  await projectStore.createDir('', name)
+  await projectStore.createFolder('', name)
 }
 
 function openMenu(e: MouseEvent, item: ProjectItem) {
@@ -130,7 +130,7 @@ async function removeRecord(item: ProjectItem) {
 const renamingProject = ref<ProjectItem | null>(null)
 
 /** 文件夹名（path 末段）；重命名文件夹对话框预填用——与项目显示名（project.toml 的 name）解耦，不能混用 */
-function dirName(path: string): string {
+function folderName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path
 }
 
@@ -206,23 +206,23 @@ function openProjectMenu(e: MouseEvent) {
     <div class="proj-divider" />
     <div class="tree">
       <!-- 根级新建文件夹的命名行 -->
-      <div v-if="projectStore.namingDir === ''" class="naming-row root-naming">
+      <div v-if="projectStore.namingFolder === ''" class="naming-row root-naming">
         <input
           ref="rootNamingInput"
           v-model="rootNewName"
           type="text"
           placeholder="目录名"
           @keydown.enter="confirmRootNaming"
-          @keydown.esc="projectStore.namingDir = null"
+          @keydown.esc="projectStore.namingFolder = null"
           @blur="confirmRootNaming"
         />
       </div>
       <!-- 根目录行：选中的中栏列出项目根级散落的文稿 -->
       <div
-        class="root-dir-row"
-        :class="{ active: projectStore.selectedDir === '' }"
+        class="root-folder-row"
+        :class="{ active: projectStore.selectedFolder === '' }"
         title="项目根目录"
-        @click="projectStore.selectedDir = ''"
+        @click="projectStore.selectedFolder = ''"
       >
         <Icon name="folder" :size="14" class="folder" />
         <span class="row-name">根目录</span>
@@ -292,7 +292,7 @@ function openProjectMenu(e: MouseEvent) {
   <PromptDialog
     v-if="renamingProject"
     title="重命名文件夹"
-    :initial="dirName(renamingProject.path)"
+    :initial="folderName(renamingProject.path)"
     placeholder="新名称"
     @close="renamingProject = null"
     @submit="submitRename"
@@ -545,7 +545,7 @@ function openProjectMenu(e: MouseEvent) {
 
 /* 根目录行：查看项目根级散落文稿的入口，与目录行的 folder 图标对齐（箭头槽 14px + gap 4px + 行缩进 8px）；
    与下方目录列表留出间隔，区分「根目录」与同级目录列表 */
-.root-dir-row {
+.root-folder-row {
   margin-bottom: 6px;
   display: flex;
   align-items: center;
@@ -561,29 +561,29 @@ function openProjectMenu(e: MouseEvent) {
 }
 
 @media (hover: hover) {
-  .root-dir-row:hover {
+  .root-folder-row:hover {
     background: var(--border);
   }
 }
 
-.root-dir-row .folder {
+.root-folder-row .folder {
   flex: none;
   color: var(--text-dim);
 }
 
-.root-dir-row .row-name {
+.root-folder-row .row-name {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.root-dir-row.active {
+.root-folder-row.active {
   background: var(--accent-soft);
   color: var(--accent);
   font-weight: 600;
 }
 
-.root-dir-row.active .folder {
+.root-folder-row.active .folder {
   color: var(--accent);
 }
 

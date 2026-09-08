@@ -8,7 +8,7 @@ export const IPC = {
   winMinimize: 'shiro:win-minimize',
   winMaximizeToggle: 'shiro:win-maximize-toggle',
   winClose: 'shiro:win-close',
-  pickDirectory: 'shiro:pick-directory',
+  pickFolder: 'shiro:pick-folder',
   showInFolder: 'shiro:show-in-folder',
   openPath: 'shiro:open-path',
   trashItem: 'shiro:trash-item',
@@ -25,7 +25,7 @@ export interface ShiroShell {
   toggleMaximizeWindow(): Promise<boolean>
   closeWindow(): Promise<void>
   /** 弹系统目录选择框（取消返回 null） */
-  pickDirectory(title: string): Promise<string | null>
+  pickFolder(title: string): Promise<string | null>
   /** 在系统文件管理器中显示该路径（定位到父级并选中） */
   showInFolder(path: string): Promise<void>
   /** 用系统默认方式打开路径（目录=打开文件夹窗口） */

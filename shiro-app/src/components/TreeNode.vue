@@ -11,23 +11,23 @@ const props = defineProps<{ node: TreeNode; depth?: number }>()
 const openTreeMenu = inject<(e: MouseEvent, node: TreeNode) => void>('openTreeMenu', () => {})
 
 const open = ref(true)
-const isDir = computed(() => props.node.kind === 'folder')
-const dirChildren = computed(() => (props.node.children ?? []).filter((c) => c.kind === 'folder'))
+const isFolder = computed(() => props.node.kind === 'folder')
+const folderChildren = computed(() => (props.node.children ?? []).filter((c) => c.kind === 'folder'))
 
 function onRowClick() {
-  projectStore.selectedDir = props.node.path
+  projectStore.selectedFolder = props.node.path
   open.value = true
 }
 
 // ---- 新建子目录：内联命名行 ----
-const naming = computed(() => projectStore.namingDir === props.node.path)
+const naming = computed(() => projectStore.namingFolder === props.node.path)
 const namingInput = ref<HTMLInputElement | null>(null)
 const newName = ref('')
 
 watch(
-  () => projectStore.namingDir,
-  async (dir) => {
-    if (dir === props.node.path) {
+  () => projectStore.namingFolder,
+  async (folder) => {
+    if (folder === props.node.path) {
       open.value = true
       newName.value = ''
       await nextTick()
@@ -37,23 +37,23 @@ watch(
 )
 
 async function confirmNaming() {
-  // 目录名不允许路径分隔符（多级创建经 API 的 dir 参数另行支持，此处是单层命名）
+  // 目录名不允许路径分隔符（多级创建经 API 的 folder 参数另行支持，此处是单层命名）
   const name = newName.value.trim().replace(/[/\\]/g, '')
   newName.value = '' // Enter 确认后输入框卸载会再触发 blur，先清空防二次提交
-  projectStore.namingDir = null
+  projectStore.namingFolder = null
   if (!name) return
-  await projectStore.createDir(props.node.path, name)
+  await projectStore.createFolder(props.node.path, name)
 }
 
-// ---- 重命名：本行就地变为输入框（store.renamingDir 由右键菜单触发） ----
-const renaming = computed(() => projectStore.renamingDir === props.node.path)
+// ---- 重命名：本行就地变为输入框（store.renamingFolder 由右键菜单触发） ----
+const renaming = computed(() => projectStore.renamingFolder === props.node.path)
 const renameInput = ref<HTMLInputElement | null>(null)
 const renameValue = ref('')
 
 watch(
-  () => projectStore.renamingDir,
-  async (dir) => {
-    if (dir === props.node.path) {
+  () => projectStore.renamingFolder,
+  async (folder) => {
+    if (folder === props.node.path) {
       renameValue.value = props.node.name
       await nextTick()
       renameInput.value?.focus()
@@ -64,30 +64,30 @@ watch(
 
 async function confirmRename() {
   const name = renameValue.value.trim().replace(/[/\\]/g, '')
-  projectStore.renamingDir = null
+  projectStore.renamingFolder = null
   if (!name || name === props.node.name) return
   await projectStore.renameEntry(props.node.path, name)
 }
 </script>
 
 <template>
-  <div v-if="isDir" class="tree-node">
+  <div v-if="isFolder" class="tree-node">
     <div
       v-if="!renaming"
       class="tree-row"
-      :class="{ active: projectStore.selectedDir === node.path }"
+      :class="{ active: projectStore.selectedFolder === node.path }"
       :style="{ paddingLeft: `${8 + (depth ?? 0) * 14}px` }"
       @click="onRowClick"
       @contextmenu.prevent="openTreeMenu($event, node)"
     >
-      <button v-if="dirChildren.length" class="arrow" :class="{ open }" @click.stop="open = !open">
+      <button v-if="folderChildren.length" class="arrow" :class="{ open }" @click.stop="open = !open">
         <Icon name="chevronRight" :size="12" />
       </button>
       <span v-else class="arrow-slot"></span>
       <Icon name="folder" :size="14" class="folder" />
       <span class="node-name">{{ node.name }}</span>
       <span class="row-actions">
-        <button class="row-btn" title="新建子目录" @click.stop="projectStore.namingDir = node.path">
+        <button class="row-btn" title="新建子目录" @click.stop="projectStore.namingFolder = node.path">
           <Icon name="plus" :size="12" />
         </button>
         <button class="row-btn" title="更多操作" @mousedown.stop @click.stop="openTreeMenu($event, node)">
@@ -102,7 +102,7 @@ async function confirmRename() {
         v-model="renameValue"
         type="text"
         @keydown.enter="confirmRename"
-        @keydown.esc="projectStore.renamingDir = null"
+        @keydown.esc="projectStore.renamingFolder = null"
         @blur="confirmRename"
       />
     </div>
@@ -114,11 +114,11 @@ async function confirmRename() {
           type="text"
           placeholder="目录名"
           @keydown.enter="confirmNaming"
-          @keydown.esc="projectStore.namingDir = null"
+          @keydown.esc="projectStore.namingFolder = null"
           @blur="confirmNaming"
         />
       </div>
-      <TreeNode v-for="child in dirChildren" :key="child.path" :node="child" :depth="(depth ?? 0) + 1" />
+      <TreeNode v-for="child in folderChildren" :key="child.path" :node="child" :depth="(depth ?? 0) + 1" />
     </div>
   </div>
 </template>

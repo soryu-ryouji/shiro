@@ -38,10 +38,10 @@ if (target !== native) {
   if (add.status !== 0) process.exit(add.status ?? 1)
 }
 
-const rsDir = path.join(root, '..', 'shiro-daemon')
+const rsFolder = path.join(root, '..', 'shiro-daemon')
 const result = spawnSync(
   'cargo',
-  ['build', '--release', '--manifest-path', path.join(rsDir, 'Cargo.toml'), '--target', target],
+  ['build', '--release', '--manifest-path', path.join(rsFolder, 'Cargo.toml'), '--target', target],
   { stdio: 'inherit' },
 )
 if (result.error || result.status !== 0) {
@@ -49,7 +49,7 @@ if (result.error || result.status !== 0) {
 }
 
 const exe = target.includes('windows') ? 'shiro-daemon.exe' : 'shiro-daemon'
-const built = path.join(rsDir, 'target', target, 'release', exe)
+const built = path.join(rsFolder, 'target', target, 'release', exe)
 const out = path.join(root, 'resources', 'shiro-daemon')
 fs.rmSync(out, { recursive: true, force: true })
 fs.mkdirSync(out, { recursive: true })
