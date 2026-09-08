@@ -42,6 +42,7 @@ cd shiro-app && npm run gen:types
 **总体**
 
 - [架构设计](docs/architecture.md)：总体架构、核心原则、部署形态（桌面版/局域网访问/服务器版）、仓库结构
+- [项目结构总览](docs/structure.md)：仓库布局、前后端分层与模块职责、REST API 清单
 - [技术栈](docs/tech-stack.md)：语言与框架选型
 - [AI写作工具制作思考](./docs/AI写作工具制作思考.md): 制作思考说明
 - [资产格式](docs/asset-format.md)：资产文件的 frontmatter、区块与命名约定

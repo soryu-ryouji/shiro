@@ -101,12 +101,15 @@ daemon 直接 serve 前端静态资源，局域网内的设备（iPad、手机�
 shiro/
 ├── shiro-daemon/             ← Rust 后端（桌面版与服务器版共用）
 ├── shiro-app/                ← 桌面应用
-├── tools/                    ← 仓库级脚本（构建/安装/冒烟/性能压测）
+├── tools/                    ← 仓库级脚本（构建/安装/打包）
 └── docs/                     ← 设计文档
 ```
 
+各目录的分层、模块职责与 REST API 清单见 [项目结构总览](./structure.md)。
+
 ## 文档
 
+- [项目结构总览](./structure.md)
 - [技术栈](./tech-stack.md)
 - [存储设计](./backend/storage.md)
 - [模型接入设计](./backend/model-access.md)

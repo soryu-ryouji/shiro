@@ -1,0 +1,246 @@
+# 项目结构总览
+
+面向开发者的代码地图：仓库布局、前后端分层与依赖方向、REST API 清单、关键数据流。
+总体架构与部署形态见 [架构设计](./architecture.md)，技术选型见 [技术栈](./tech-stack.md)。
+
+## 1. 仓库布局
+
+```text
+shiro/
+├── shiro-daemon/                  ← Rust 后端（axum + tokio，独立二进制）
+│   ├── src/
+│   │   ├── main.rs                CLI 入口（--port/--host/--serve-dir/--dump-openapi）+ AppState 组装
+│   │   ├── api.rs                 项目/文件路由 + 鉴权中间件 + 静态资源 serve + 共享工具
+│   │   ├── assets.rs              内容库资产 API（全局人物库角色卡）
+│   │   ├── model_api.rs           模型档案 API（CRUD + 默认档案 + 连接测试）
+│   │   ├── chat/                  Chat 会话：mod.rs 存储/上下文/提案，api.rs HTTP 端点
+│   │   ├── llm.rs                 LLM provider 层（OpenAI 兼容 + Anthropic，流式/重试/用量）
+│   │   └── watch.rs               项目目录文件监听（notify + 防抖 + 广播 Hub）
+│   └── openapi.json               固化契约（契约测试校验与代码同步）
+│
+├── shiro-app/                     ← Electron 壳 + Vue 3 前端
+│   ├── electron/                  壳层：主进程/窗口/IPC（业务数据不过 IPC）
+│   ├── src/
+│   │   ├── App.vue                应用布局：侧栏 + 顶栏 + 内容区（按导航切换视图）
+│   │   ├── views/                 视图层：Project / Chat / Database / Model
+│   │   ├── panels/                侧栏面板：ProjectPanel / DatabasePanel / ModelPanel
+│   │   ├── components/            组件层：编辑器、列表、对话框、通用控件
+│   │   ├── stores/                状态层：project / chat / database / model
+│   │   ├── api.ts                 连接参数 + fetch 封装
+│   │   ├── api-types.d.ts         契约类型（生成，不手改）
+│   │   ├── platform.ts            Electron shell 能力收敛（浏览器形态 no-op）
+│   │   └── utils/                 编辑器/预览/表格/字数/字体/滚动条等纯前端逻辑
+│   └── tools/                     前端自检与测试脚本
+│
+├── tools/                         仓库级脚本（构建/安装/打包）
+└── docs/                          设计文档（本文件为结构总览）
+```
+
+## 2. 进程与分层总图
+
+```text
+┌──────────────────── 渲染进程：shiro-app（Vue 3 + TS）─────────────────────┐
+│  视图层      views/          页面组合与业务编排                             │
+│  面板层      panels/         侧栏内容（随 Activity 切换）                   │
+│  组件层      components/     编辑器与通用控件                               │
+│  状态层      stores/         前端状态 + API 调用                            │
+│  基础层      api.ts · platform.ts · utils/                                 │
+└────────────────────────────────────┬──────────────────────────────────────┘
+                                     │ HTTP：REST + SSE（Bearer token）
+┌────────────────────────────────────▼──────────────────────────────────────┐
+│                        shiro-daemon（Rust，独立进程）                       │
+│  入口层   main.rs            CLI、AppState、监听                               │
+│  HTTP 层  api.rs · assets.rs · model_api.rs · chat/api.rs                  │
+│           路由 / 鉴权 / 参数校验 / 静态资源                                   │
+│  领域层   chat/mod.rs · watch.rs · llm.rs                                  │
+│           会话与提案 / 文件监听 / provider 调用                               │
+│  存储层   项目文件夹（正文 + .shiro/）· ~/.config/shiro/（config.toml 等）    │
+└────────────────────────────────────────────────────────────────────────────┘
+        ▲
+        │ IPC 仅壳功能（窗口控制/目录选择/文件管理器），业务数据一律走 HTTP
+┌───────┴────────────┐
+│ electron/ 壳层      │  main.ts 拉起 daemon（随机端口 + token）→ 加载前端
+└────────────────────┘
+```
+
+## 3. 后端分层（shiro-daemon）
+
+### 3.1 模块职责
+
+| 层 | 模块 | 职责 | 依赖 |
+| -- | ---- | ---- | ---- |
+| 入口 | `main.rs` | CLI 解析、AppState（token / WatchHub / Chat Hub）组装、监听 | api、chat、watch |
+| HTTP | `api.rs` | app/projects 路由、鉴权中间件、静态资源 SPA 回退；**共享工具**：`config_dir` / `resolve_inside` / `ApiError` / `is_sheet_file` / `excerpt_from_content` 等 | assets、model_api、chat、watch |
+| HTTP | `assets.rs` | 全局人物库：角色卡列表/详情/新建/保存（简卡单文件 + 深卡目录） | api（工具） |
+| HTTP | `model_api.rs` | 模型档案：列表/注册/删除/连接测试，key 只回掩码 | api、llm |
+| HTTP | `chat/api.rs` | 会话 CRUD、消息 SSE 流式生成、提案应用 | chat/mod、llm、api |
+| 领域 | `chat/mod.rs` | 会话持久化（`<项目>/.shiro/chat/`）、上下文组装（目录树 + 历史 + 引用文件）、`shiro-edit` 提案解析、运行互斥 | api（工具）、llm |
+| 领域 | `watch.rs` | notify 递归监听 + 300ms 防抖，按项目广播变更集；订阅引用计数 | 独立 |
+| 领域 | `llm.rs` | provider 抽象：档案配置读写、OpenAI 兼容 / Anthropic 双协议、流式回调、重试、用量归一 | api（config_dir） |
+| 存储 | 文件系统 | 项目文件夹是唯一权威数据源；全局配置与内容库在 `~/.config/shiro/` | — |
+
+### 3.2 依赖方向
+
+```text
+main.rs
+  └─→ api.rs（路由注册 + AppState）
+        ├─→ assets.rs ──┐
+        ├─→ model_api.rs ├─→ api.rs 共享工具（config_dir / ApiError / resolve_inside …）
+        ├─→ chat/api.rs ──→ chat/mod.rs ──→ llm.rs
+        └─→ watch.rs
+```
+
+约定：HTTP handler 只做参数校验与响应组装，领域逻辑放各自 `mod.rs`；`api.rs` 兼作共享工具模块（路径安全、错误类型、配置目录）。
+
+## 4. 前端分层（shiro-app）
+
+### 4.1 模块职责
+
+| 层 | 模块 | 职责 |
+| -- | ---- | ---- |
+| 壳 | `electron/main.ts` | 窗口创建、预选端口 + 随机 token、spawn/回收 daemon、加载前端 |
+| 壳 | `electron/ipc.ts` · `preload.ts` · `ipc-contract.ts` | 壳功能 IPC（窗口控制、目录选择、文件管理器定位）；契约单一定义、白名单暴露 |
+| 入口 | `App.vue` | 导航（Project / Chat / Database / Model）、启动轮询、侧栏显隐与栏宽、全局设置弹窗 |
+| 视图 | `views/ProjectView.vue` | 写作模式：文稿列表 + 标签栏 + 编辑器 + 预览 |
+| 视图 | `views/ChatView.vue` | 项目/会话选择、消息流、引用文件、提案卡片与应用 |
+| 视图 | `views/DatabaseView.vue` | 人物库：列表 + 筛选 + 详情（渲染/编辑） |
+| 视图 | `views/ModelView.vue` | 模型档案注册与管理、默认档案切换、连接测试 |
+| 面板 | `panels/ProjectPanel.vue` | 项目列表/目录树、新建/重命名/删除入口 |
+| 面板 | `panels/DatabasePanel.vue` · `ModelPanel.vue` | 各模块侧栏导航与列表 |
+| 组件 | `components/` | `Editor`（CodeMirror）、`EditorTabs`、`SheetList`、`TreeNode`、对话框（Preview/Prompt/Confirm/NewProject/Settings）、`SearchSelect`、`ContextMenu`、`Icon`、布局件（Sidebar/ActivityBar/TitleBar/WindowControls） |
+| 状态 | `stores/project.ts` | 当前项目、目录树、标签、文稿内容、SSE 监听订阅 |
+| 状态 | `stores/chat.ts` | 项目/会话列表、消息流（fetch 流式解析 SSE）、提案应用 |
+| 状态 | `stores/database.ts` | 人物库列表/详情/编辑 |
+| 状态 | `stores/model.ts` | 模型档案列表/默认项 |
+| 基础 | `api.ts` · `platform.ts` · `utils/` | 连接参数与 fetch；shell 能力收敛；编辑器/预览/表格/字数/字体等纯逻辑 |
+
+`components/LogDialog.vue`（LLM 调用日志回放）当前未接线，保留备用。
+
+### 4.2 依赖方向
+
+```text
+main.ts → App.vue ─→ Sidebar ─→ panels/
+              └────→ views/ ─→ components/（展示与交互）
+                       └────→ stores/ ─→ api.ts ─→ daemon REST API
+                                  └────→ utils/fileWatch（SSE 订阅）
+```
+
+约定：业务请求集中在 stores（`project` / `chat` / `database` / `model`）；项目文稿相关的轻量操作（保存、新建、删除、目录树）存在组件内直调 `apiFetch` 的情况（Editor / SheetList / ProjectPanel / NewProjectDialog），不强行绕一层 store。
+
+## 5. 契约链路
+
+```text
+Rust 代码（#[utoipa::path] + ToSchema）
+   │  cargo run -- --dump-openapi > openapi.json
+   ▼
+shiro-daemon/openapi.json（固化契约）
+   │  npm run gen:types
+   ▼
+shiro-app/src/api-types.d.ts（TS 类型，不手改）
+```
+
+- 契约测试 `api::tests::openapi_json_in_sync` 校验固化文件与代码一致
+- 改 API 的固定动作：重新 dump → `gen:types` → `cargo test` → `typecheck`
+
+## 6. REST API
+
+### 鉴权与约定
+
+- 全部 `/api/*` 要求 `Authorization: Bearer <token>`；SSE（`EventSource` 无法自定义 header）走 `?key=` 查询参数
+- 桌面版 token 由 Electron 启动时随机生成、env 传入不落盘；局域网 key 存 `~/.config/shiro/config.toml`
+- `GET /health` 与前端静态资源不鉴权
+- 路径参数中的项目路径为绝对路径，文件路径为项目内相对路径（daemon 侧拒绝 `..` 逃逸）
+
+### app
+
+| 方法 | 路径 | 说明 |
+| ---- | ---- | ---- |
+| GET | `/api/v1/app/startup` | 启动状态（当前直接 ready，为初始化流程预留） |
+
+### projects（项目与文稿）
+
+| 方法 | 路径 | 说明 |
+| ---- | ---- | ---- |
+| GET | `/api/v1/projects` | 项目列表（history.toml，最近打开在前） |
+| POST | `/api/v1/projects` | 登记已有文件夹为项目（VSCode 打开文件夹式） |
+| DELETE | `/api/v1/projects` | 删除项目记录（不删文件夹） |
+| POST | `/api/v1/projects/rename` | 重命名项目文件夹本体 |
+| GET | `/api/v1/projects/tree` | 目录树（目录 + `.md/.markdown/.txt`） |
+| GET | `/api/v1/projects/excerpts` | 目录内文稿正文预览（列表摘要用） |
+| GET | `/api/v1/projects/file` | 读取文稿 |
+| PUT | `/api/v1/projects/file` | 保存文稿（临时文件 + rename 原子覆盖） |
+| POST | `/api/v1/projects/file` | 新建文稿 |
+| DELETE | `/api/v1/projects/file` | 删除文稿（移入 `.shiro/trash/`） |
+| POST | `/api/v1/projects/dir` | 新建目录（幂等） |
+| DELETE | `/api/v1/projects/dir` | 删除目录（空目录直删，非空入回收站） |
+| POST | `/api/v1/projects/entry/rename` | 重命名文件/目录 |
+| GET | `/api/v1/projects/watch` | **SSE** 目录变动推送（防抖 300ms，`{"changed":[...]}`） |
+
+### chat（对话式修改项目文档）
+
+| 方法 | 路径 | 说明 |
+| ---- | ---- | ---- |
+| GET | `/api/v1/chat/sessions` | 会话列表 |
+| POST | `/api/v1/chat/sessions` | 新建会话 |
+| GET | `/api/v1/chat/sessions/{id}` | 会话详情（全部消息） |
+| DELETE | `/api/v1/chat/sessions/{id}` | 删除会话 |
+| POST | `/api/v1/chat/sessions/{id}/messages` | **SSE** 发消息流式生成：`delta` / `thinking` / `done`（含提案）/ `error`；断开即中止；同会话互斥（409） |
+| POST | `/api/v1/chat/sessions/{id}/apply` | 应用提案：整文件覆盖写盘 |
+
+详见 [Chat 设计](./frontend/chat.md)。
+
+### db（全局人物库）
+
+| 方法 | 路径 | 说明 |
+| ---- | ---- | ---- |
+| GET | `/api/v1/db/characters` | 角色列表 |
+| POST | `/api/v1/db/characters` | 新建角色卡骨架（同名自动追加 `-2/-3`） |
+| GET | `/api/v1/db/characters/{id}` | 角色详情（单文件简卡 / 目录深卡） |
+| PUT | `/api/v1/db/characters/{id}` | 保存角色卡（原子覆盖；解析失败也保存并返回提示） |
+
+### model（模型档案）
+
+| 方法 | 路径 | 说明 |
+| ---- | ---- | ---- |
+| GET | `/api/v1/model/profiles` | 档案列表（含默认档案） |
+| POST | `/api/v1/model/profiles` | 注册/更新档案（同 key 覆盖；首个自动为默认） |
+| DELETE | `/api/v1/model/profiles/{key}` | 删除档案（默认项自动回退） |
+| POST | `/api/v1/model/profiles/{key}/test` | 测试连接（最小真实调用 ping） |
+
+### 其它
+
+| 方法 | 路径 | 说明 |
+| ---- | ---- | ---- |
+| GET | `/health` | 存活探测（无鉴权） |
+| — | `/{任意路径}` | `--serve-dir` 存在时挂载前端静态资源，SPA 回退 `index.html`（无鉴权） |
+
+## 7. 关键数据流
+
+**编辑保存与外部变更同步**
+
+```text
+Editor 输入 → 防抖 → projectStore 保存（PUT /projects/file）
+  → daemon 临时文件 + rename 原子写
+  → notify 防抖 300ms → SSE /projects/watch 推送
+  → 前端刷新目录树；当前文稿被外部修改时重载编辑器
+```
+
+**Chat 生成与提案应用**
+
+```text
+ChatView 发消息 → POST /chat/sessions/{id}/messages（fetch 流式读 SSE）
+  → chat/mod 组装上下文（system + 目录树 + 最近 20 条历史 + 引用文件）
+  → llm::chat_stream（重试/双协议）→ delta/thinking 帧转发前端
+  → 流结束：解析 shiro-edit 提案 → 助手消息落盘（.shiro/chat/<id>.json）→ done 帧
+  → 用户点「应用」→ POST /apply → 整文件覆盖写盘 → 文件监听 SSE 通知前端刷新
+```
+
+## 8. 构建、测试与发布入口
+
+| 目的 | 命令 |
+| ---- | ---- |
+| 桌面开发模式 | `cd shiro-app && npm run dev`（构建 daemon + 主进程，起 vite + electron） |
+| 后端测试 + 契约固化 | `cd shiro-daemon && cargo test`；改 API 后 `cargo run -- --dump-openapi > openapi.json` |
+| 前端类型 + 构建 | `cd shiro-app && npm run gen:types && npm run build` |
+| 前端自检 | `cd shiro-app && npm run test:ui`（Electron 会话） |
+| 打包分发 | `./tools/build.sh`（macOS/Linux）· `./tools/build.ps1`（Windows） |
