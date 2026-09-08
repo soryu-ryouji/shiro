@@ -14,7 +14,7 @@ AUTH="Authorization: Bearer smoke"
 FAILED=0
 
 rm -rf "$TMP"
-mkdir -p "$HOME_DIR" "$PROJ/正文"
+mkdir -p "$HOME_DIR" "$PROJ/正文" "$TMP/other"
 printf '# 测试文稿\n' > "$PROJ/正文/001.md"
 
 (cd "$ROOT/shiro-daemon" && cargo build --quiet) || { echo "daemon 构建失败"; exit 1; }
@@ -56,18 +56,23 @@ code=$(curl -s -o "$TMP/body" -w '%{http_code}' -X POST "$BASE/api/v1/app/startu
 
 # ---- app / projects ----
 post /api/v1/app/startup; expect "app/startup" 200 '"ready"'
-post /api/v1/projects/create "{\"path\":\"$PROJ\",\"name\":\"冒烟项目\"}"; expect "projects/create" 201 '"冒烟项目"'
+# 带尾斜杠登记：验证 canonicalize 去重（同一文件夹不会存成两条）
+post /api/v1/projects/create "{\"path\":\"$PROJ/\",\"name\":\"冒烟项目\"}"; expect "projects/create" 201 '"冒烟项目"'
+post /api/v1/projects/create "{\"path\":\"$PROJ\",\"name\":\"冒烟项目\"}"; expect "projects/create（重复登记）" 201 '"冒烟项目"'
 post /api/v1/projects/list; expect "projects/list" 200 '冒烟项目'
+if [ "$(grep -o '冒烟项目' "$TMP/body" | wc -l | tr -d ' ')" = "1" ]; then echo "ok   projects/create 路径规范化去重"; else echo "FAIL projects/create 去重"; FAILED=1; fi
+# 未登记目录：内容端点拒绝
+post /api/v1/projects/tree "{\"path\":\"$TMP/other\"}"; expect "projects/tree（未登记 → 403）" 403 '未登记'
 post /api/v1/projects/tree "{\"path\":\"$PROJ\"}"; expect "projects/tree" 200 '001.md'
 post /api/v1/projects/file/read "{\"path\":\"$PROJ\",\"file\":\"正文/001.md\"}"; expect "file/read" 200 '测试文稿'
 post /api/v1/projects/file/write "{\"path\":\"$PROJ\",\"file\":\"正文/001.md\",\"content\":\"# 改写\\n\"}"; expect "file/write" 200 '改写'
 post /api/v1/projects/file/create "{\"path\":\"$PROJ\",\"file\":\"正文/002.md\"}"; expect "file/create" 201
-post /api/v1/projects/excerpts "{\"path\":\"$PROJ\",\"dir\":\"正文\"}"; expect "projects/excerpts" 200 '002.md'
-post /api/v1/projects/dir/create "{\"path\":\"$PROJ\",\"dir\":\"大纲\"}"; expect "dir/create" 201
+post /api/v1/projects/excerpts "{\"path\":\"$PROJ\",\"folder\":\"正文\"}"; expect "projects/excerpts" 200 '002.md'
+post /api/v1/projects/folder/create "{\"path\":\"$PROJ\",\"folder\":\"大纲\"}"; expect "folder/create" 201
 post /api/v1/projects/entry/rename "{\"path\":\"$PROJ\",\"rel\":\"正文/002.md\",\"new_name\":\"003.md\"}"; expect "entry/rename" 204
 post /api/v1/projects/file/read "{\"path\":\"$PROJ\",\"file\":\"正文/003.md\"}"; expect "file/read（改名后）" 200
 post /api/v1/projects/file/delete "{\"path\":\"$PROJ\",\"file\":\"正文/003.md\"}"; expect "file/delete" 204
-post /api/v1/projects/dir/delete "{\"path\":\"$PROJ\",\"dir\":\"大纲\"}"; expect "dir/delete" 204
+post /api/v1/projects/folder/delete "{\"path\":\"$PROJ\",\"folder\":\"大纲\"}"; expect "folder/delete" 204
 
 # ---- 目录监听（POST + SSE） ----
 curl -sN --max-time 3 -X POST -H "$AUTH" -H 'Content-Type: application/json' \

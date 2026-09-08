@@ -253,7 +253,9 @@ fn write_project_name(target: &Path, name: &str) -> Result<(), ApiError> {
 async fn create_project(
     Json(req): Json<CreateProjectRequest>,
 ) -> Result<(StatusCode, Json<ProjectItem>), ApiError> {
-    let target = PathBuf::from(req.path.trim());
+    // 规范化（解析符号链接、去尾斜杠）：避免同一文件夹以不同字符串重复登记
+    let target = std::fs::canonicalize(req.path.trim())
+        .map_err(|_| bad_request("项目文件夹不存在"))?;
     if !target.is_dir() {
         return Err(bad_request("项目文件夹不存在"));
     }
@@ -321,8 +323,13 @@ pub struct RemoveProjectRequest {
     security(("bearer_token" = []))
 )]
 async fn remove_project(Json(req): Json<RemoveProjectRequest>) -> StatusCode {
+    // 请求路径与登记路径都容忍非规范形式（尾斜杠/符号链接）
+    let key = std::fs::canonicalize(req.path.trim()).ok();
     let mut history = load_history();
-    history.projects.retain(|e| e.path != req.path);
+    history.projects.retain(|e| match &key {
+        Some(k) => !same_path(&e.path, k),
+        None => e.path != req.path,
+    });
     let _ = save_history(&history);
     StatusCode::NO_CONTENT
 }
@@ -341,13 +348,45 @@ pub(crate) fn resolve_inside(root: &Path, rel: &str) -> Result<PathBuf, ApiError
     Ok(root.join(rel_path))
 }
 
+/// 路径等价：字符串相等，或 canonicalize 后相等（容忍尾斜杠、符号链接差异）
+fn same_path(a: &str, b: &Path) -> bool {
+    let pa = Path::new(a);
+    if pa == b {
+        return true;
+    }
+    std::fs::canonicalize(pa).map(|ca| ca == b).unwrap_or(false)
+}
+
+/// 项目登记校验：路径必须已登记在 history.toml（防止通过 API 读写任意路径）。
+/// 返回规范化后的项目根（canonicalize：解析符号链接、去尾斜杠），后续路径拼接均以它为根。
+pub(crate) fn ensure_registered(path: &str) -> Result<PathBuf, ApiError> {
+    let root = std::fs::canonicalize(path).map_err(|_| bad_request("项目目录不存在"))?;
+    if !root.is_dir() {
+        return Err(bad_request("项目目录不存在"));
+    }
+    let registered = load_history()
+        .projects
+        .iter()
+        .any(|e| same_path(&e.path, &root));
+    if registered {
+        Ok(root)
+    } else {
+        Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                message: "项目未登记：请先在 Project 页打开该项目".into(),
+            }),
+        ))
+    }
+}
+
 #[derive(Serialize, ToSchema)]
 pub struct TreeNode {
     /// 节点名（文件含 .md/.markdown/.txt 后缀）
     pub name: String,
     /// 项目内相对路径
     pub path: String,
-    /// dir / file
+    /// 节点类型：folder / file
     pub kind: String,
     /// 文件修改时间（epoch 秒，仅 file）
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -385,7 +424,7 @@ fn build_tree(dir: &Path, root: &Path) -> Vec<TreeNode> {
             dirs.push(TreeNode {
                 name,
                 path: rel,
-                kind: "dir".into(),
+                kind: "folder".into(),
                 modified: None,
                 children: Some(build_tree(&path, root)),
             });
@@ -436,10 +475,7 @@ pub struct TreeResponse {
     security(("bearer_token" = []))
 )]
 async fn project_tree(Json(req): Json<TreeRequest>) -> Result<Json<TreeResponse>, ApiError> {
-    let root = PathBuf::from(&req.path);
-    if !root.is_dir() {
-        return Err(bad_request("项目目录不存在"));
-    }
+    let root = ensure_registered(&req.path)?;
     Ok(Json(TreeResponse {
         children: build_tree(&root, &root),
     }))
@@ -450,7 +486,7 @@ pub struct ExcerptsRequest {
     /// 项目根目录绝对路径
     pub path: String,
     /// 项目内相对路径（'' = 项目根）
-    pub dir: String,
+    pub folder: String,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -596,14 +632,11 @@ async fn project_excerpts(
 ) -> Result<Json<ExcerptsResponse>, ApiError> {
     const HEAD_BYTES: usize = 4096;
     const MAX_CHARS: usize = 160;
-    let root = PathBuf::from(&req.path);
-    if !root.is_dir() {
-        return Err(bad_request("项目目录不存在"));
-    }
-    let dir = if req.dir.is_empty() {
+    let root = ensure_registered(&req.path)?;
+    let dir = if req.folder.is_empty() {
         root.clone()
     } else {
-        let d = resolve_inside(&root, &req.dir)?;
+        let d = resolve_inside(&root, &req.folder)?;
         if !d.is_dir() {
             return Err(bad_request("目录不存在"));
         }
@@ -675,7 +708,7 @@ pub(crate) fn file_mtime(path: &Path) -> u64 {
     security(("bearer_token" = []))
 )]
 async fn read_project_file(Json(req): Json<ReadFileRequest>) -> Result<Json<FileContent>, ApiError> {
-    let target = resolve_inside(&PathBuf::from(&req.path), &req.file)?;
+    let target = resolve_inside(&ensure_registered(&req.path)?, &req.file)?;
     if !target.is_file() {
         return Err((
             StatusCode::NOT_FOUND,
@@ -717,7 +750,7 @@ pub struct WriteFileRequest {
 async fn write_project_file(
     Json(req): Json<WriteFileRequest>,
 ) -> Result<Json<FileContent>, ApiError> {
-    let target = resolve_inside(&PathBuf::from(&req.path), &req.file)?;
+    let target = resolve_inside(&ensure_registered(&req.path)?, &req.file)?;
     let tmp = target.with_extension("md.shiro-tmp");
     std::fs::write(&tmp, &req.content).map_err(internal_error)?;
     std::fs::rename(&tmp, &target).map_err(internal_error)?;
@@ -752,7 +785,7 @@ pub struct CreateFileRequest {
 async fn create_project_file(
     Json(req): Json<CreateFileRequest>,
 ) -> Result<(StatusCode, Json<FileContent>), ApiError> {
-    let target = resolve_inside(&PathBuf::from(&req.path), &req.file)?;
+    let target = resolve_inside(&ensure_registered(&req.path)?, &req.file)?;
     if target.exists() {
         return Err((
             StatusCode::CONFLICT,
@@ -775,19 +808,19 @@ async fn create_project_file(
 }
 
 #[derive(Deserialize, ToSchema)]
-pub struct CreateDirRequest {
+pub struct CreateFolderRequest {
     /// 项目根目录绝对路径
     pub path: String,
     /// 项目内相对路径（多级自动创建）
-    pub dir: String,
+    pub folder: String,
 }
 
 /// 新建目录（幂等：已存在返回 200）
 #[utoipa::path(
     post,
-    path = "/api/v1/projects/dir/create",
+    path = "/api/v1/projects/folder/create",
     tag = "projects",
-    request_body = CreateDirRequest,
+    request_body = CreateFolderRequest,
     responses(
         (status = 201, description = "已创建"),
         (status = 200, description = "目录已存在"),
@@ -796,8 +829,10 @@ pub struct CreateDirRequest {
     ),
     security(("bearer_token" = []))
 )]
-async fn create_project_dir(Json(req): Json<CreateDirRequest>) -> Result<StatusCode, ApiError> {
-    let target = resolve_inside(&PathBuf::from(&req.path), &req.dir)?;
+async fn create_project_folder(
+    Json(req): Json<CreateFolderRequest>,
+) -> Result<StatusCode, ApiError> {
+    let target = resolve_inside(&ensure_registered(&req.path)?, &req.folder)?;
     if target.is_dir() {
         return Ok(StatusCode::OK);
     }
@@ -806,19 +841,19 @@ async fn create_project_dir(Json(req): Json<CreateDirRequest>) -> Result<StatusC
 }
 
 #[derive(Deserialize, ToSchema)]
-pub struct RemoveDirRequest {
+pub struct RemoveFolderRequest {
     /// 项目根目录绝对路径
     pub path: String,
     /// 项目内相对路径（不允许根目录与 .shiro）
-    pub dir: String,
+    pub folder: String,
 }
 
 /// 删除目录：空目录直接删除；非空目录移入项目回收站（.shiro/trash/，可手动恢复）
 #[utoipa::path(
     post,
-    path = "/api/v1/projects/dir/delete",
+    path = "/api/v1/projects/folder/delete",
     tag = "projects",
-    request_body = RemoveDirRequest,
+    request_body = RemoveFolderRequest,
     responses(
         (status = 204, description = "已删除"),
         (status = 400, description = "路径非法或受保护", body = ErrorResponse),
@@ -827,10 +862,12 @@ pub struct RemoveDirRequest {
     ),
     security(("bearer_token" = []))
 )]
-async fn remove_project_dir(Json(req): Json<RemoveDirRequest>) -> Result<StatusCode, ApiError> {
-    let root = PathBuf::from(&req.path);
-    let target = resolve_inside(&root, &req.dir)?;
-    if req.dir.split(['/', '\\']).next() == Some(".shiro") {
+async fn remove_project_folder(
+    Json(req): Json<RemoveFolderRequest>,
+) -> Result<StatusCode, ApiError> {
+    let root = ensure_registered(&req.path)?;
+    let target = resolve_inside(&root, &req.folder)?;
+    if req.folder.split(['/', '\\']).next() == Some(".shiro") {
         return Err(bad_request(".shiro 是 shiro 的工作目录，不能删除"));
     }
     if !target.is_dir() {
@@ -879,15 +916,7 @@ pub struct RenameProjectRequest {
 async fn rename_project(
     Json(req): Json<RenameProjectRequest>,
 ) -> Result<Json<ProjectItem>, ApiError> {
-    let src = PathBuf::from(&req.path);
-    if !src.is_dir() {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                message: "项目目录不存在".into(),
-            }),
-        ));
-    }
+    let src = ensure_registered(&req.path)?;
     let name = validate_name(&req.new_name)?;
     let Some(parent) = src.parent() else {
         return Err(bad_request("不能重命名根目录"));
@@ -916,7 +945,7 @@ async fn rename_project(
     let new_path = dst.to_string_lossy().to_string();
     let mut history = load_history();
     for entry in &mut history.projects {
-        if entry.path == req.path {
+        if same_path(&entry.path, &src) {
             entry.path = new_path.clone();
             entry.opened_at = now_secs();
         }
@@ -960,7 +989,7 @@ async fn rename_entry(Json(req): Json<RenameEntryRequest>) -> Result<StatusCode,
     if req.rel.split(['/', '\\']).next() == Some(".shiro") {
         return Err(bad_request(".shiro 是 shiro 的工作目录，不能重命名"));
     }
-    let root = PathBuf::from(&req.path);
+    let root = ensure_registered(&req.path)?;
     let src = resolve_inside(&root, &req.rel)?;
     if !src.exists() {
         return Err((
@@ -1010,7 +1039,7 @@ pub struct RemoveFileRequest {
     security(("bearer_token" = []))
 )]
 async fn remove_project_file(Json(req): Json<RemoveFileRequest>) -> Result<StatusCode, ApiError> {
-    let root = PathBuf::from(&req.path);
+    let root = ensure_registered(&req.path)?;
     let target = resolve_inside(&root, &req.file)?;
     if !target.is_file() {
         return Err((
@@ -1051,10 +1080,7 @@ async fn watch_project(
     State(state): State<AppState>,
     Json(req): Json<WatchRequest>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
-    let root = PathBuf::from(&req.path);
-    if !root.is_dir() {
-        return Err(bad_request("项目目录不存在"));
-    }
+    let root = ensure_registered(&req.path)?;
     let (rx, guard) = state.watch_hub.subscribe(&root);
     let stream = BroadcastStream::new(rx).map(move |item| {
         let _guard = &guard; // 订阅守卫随流存活：客户端断开 → 流 drop → 退订（归零停监听）
@@ -1123,8 +1149,8 @@ pub fn build_router(
         .routes(routes!(write_project_file))
         .routes(routes!(create_project_file))
         .routes(routes!(remove_project_file))
-        .routes(routes!(create_project_dir))
-        .routes(routes!(remove_project_dir))
+        .routes(routes!(create_project_folder))
+        .routes(routes!(remove_project_folder))
         .routes(routes!(rename_project))
         .routes(routes!(rename_entry))
         .routes(routes!(watch_project))

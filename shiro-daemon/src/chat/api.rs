@@ -12,7 +12,6 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::convert::Infallible;
-use std::path::PathBuf;
 use std::time::Duration;
 use tokio_stream::wrappers::ReceiverStream;
 use utoipa::ToSchema;
@@ -47,10 +46,7 @@ pub struct SessionListResponse {
 pub(crate) async fn list_chat_sessions(
     Json(req): Json<ChatProjectRequest>,
 ) -> Result<Json<SessionListResponse>, crate::api::ApiError> {
-    let root = PathBuf::from(&req.path);
-    if !root.is_dir() {
-        return Err(bad_request("项目目录不存在"));
-    }
+    let root = crate::api::ensure_registered(&req.path)?;
     Ok(Json(SessionListResponse {
         sessions: chat::list_sessions(&root),
     }))
@@ -82,10 +78,7 @@ pub struct CreateSessionRequest {
 pub(crate) async fn create_chat_session(
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<(StatusCode, Json<SessionDetail>), crate::api::ApiError> {
-    let root = PathBuf::from(&req.path);
-    if !root.is_dir() {
-        return Err(bad_request("项目目录不存在"));
-    }
+    let root = crate::api::ensure_registered(&req.path)?;
     let detail = chat::create_session(&root, req.title.as_deref().unwrap_or(""))
         .map_err(|e| bad_request(&e))?;
     Ok((StatusCode::CREATED, Json(detail)))
@@ -117,7 +110,7 @@ pub struct SessionRefRequest {
 pub(crate) async fn get_chat_session(
     Json(req): Json<SessionRefRequest>,
 ) -> Result<Json<SessionDetail>, crate::api::ApiError> {
-    let root = PathBuf::from(&req.path);
+    let root = crate::api::ensure_registered(&req.path)?;
     let session = chat::read_session(&root, &req.id)
         .ok_or_else(|| not_found("会话不存在"))?;
     Ok(Json(session.detail()))
@@ -139,7 +132,7 @@ pub(crate) async fn get_chat_session(
 pub(crate) async fn delete_chat_session(
     Json(req): Json<SessionRefRequest>,
 ) -> Result<StatusCode, crate::api::ApiError> {
-    let root = PathBuf::from(&req.path);
+    let root = crate::api::ensure_registered(&req.path)?;
     chat::delete_session(&root, &req.id).map_err(|_| not_found("会话不存在"))?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -192,10 +185,7 @@ pub(crate) async fn send_chat_message(
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, crate::api::ApiError>
 {
     let id = req.id.clone();
-    let root = PathBuf::from(&req.path);
-    if !root.is_dir() {
-        return Err(bad_request("项目目录不存在"));
-    }
+    let root = crate::api::ensure_registered(&req.path)?;
     if req.content.trim().is_empty() {
         return Err(bad_request("消息内容为空"));
     }
@@ -322,7 +312,7 @@ pub struct ApplyProposalResponse {
 pub(crate) async fn apply_chat_proposal(
     Json(req): Json<ApplyProposalRequest>,
 ) -> Result<Json<ApplyProposalResponse>, crate::api::ApiError> {
-    let root = PathBuf::from(&req.path);
+    let root = crate::api::ensure_registered(&req.path)?;
     let mut session =
         chat::read_session(&root, &req.id).ok_or_else(|| not_found("会话不存在"))?;
     let proposal = chat::apply_proposal(&root, &mut session, &req.proposal_id)

@@ -11,8 +11,8 @@ const props = defineProps<{ node: TreeNode; depth?: number }>()
 const openTreeMenu = inject<(e: MouseEvent, node: TreeNode) => void>('openTreeMenu', () => {})
 
 const open = ref(true)
-const isDir = computed(() => props.node.kind === 'dir')
-const dirChildren = computed(() => (props.node.children ?? []).filter((c) => c.kind === 'dir'))
+const isDir = computed(() => props.node.kind === 'folder')
+const dirChildren = computed(() => (props.node.children ?? []).filter((c) => c.kind === 'folder'))
 
 function onRowClick() {
   projectStore.selectedDir = props.node.path

@@ -150,6 +150,8 @@ shiro-app/src/api-types.d.ts（TS 类型，不手改）
 - 鉴权一律走 `Authorization: Bearer <token>`（SSE 也用 header，前端以 fetch 流式消费，非 EventSource）
 - 桌面版 token 由 Electron 启动时随机生成、env 传入不落盘；局域网 key 存 `~/.config/shiro/config.toml`
 - 项目路径为绝对路径，文件路径为项目内相对路径（daemon 侧拒绝 `..` 逃逸）
+- **项目内容端点只允许访问已登记项目**（history.toml，路径 canonicalize 后比对）：未登记返回 403。tree / excerpts / file / folder / entry / watch / chat 均适用；`projects/create` 是唯一的登记入口
+- 目录用 `folder` 命名（面向用户的词汇）；Rust 内部沿用 std 的 `dir` 不变
 - 方法不再承载语义，端点即操作：路径用动词后缀区分同资源的不同操作（`list` / `create` / `read` / `write` / `delete` / `save`）
 
 ### app
@@ -167,13 +169,13 @@ shiro-app/src/api-types.d.ts（TS 类型，不手改）
 | `POST /api/v1/projects/remove` | `{path}` | 移除项目记录（不删文件夹） |
 | `POST /api/v1/projects/rename` | `{path, new_name}` | 重命名项目文件夹本体 |
 | `POST /api/v1/projects/tree` | `{path}` | 目录树（目录 + `.md/.markdown/.txt`） |
-| `POST /api/v1/projects/excerpts` | `{path, dir}` | 目录内文稿正文预览（列表摘要用） |
+| `POST /api/v1/projects/excerpts` | `{path, folder}` | 目录内文稿正文预览（列表摘要用） |
 | `POST /api/v1/projects/file/read` | `{path, file}` | 读取文稿 |
 | `POST /api/v1/projects/file/write` | `{path, file, content}` | 保存文稿（临时文件 + rename 原子覆盖） |
 | `POST /api/v1/projects/file/create` | `{path, file}` | 新建文稿 |
 | `POST /api/v1/projects/file/delete` | `{path, file}` | 删除文稿（移入 `.shiro/trash/`） |
-| `POST /api/v1/projects/dir/create` | `{path, dir}` | 新建目录（幂等） |
-| `POST /api/v1/projects/dir/delete` | `{path, dir}` | 删除目录（空目录直删，非空入回收站） |
+| `POST /api/v1/projects/folder/create` | `{path, folder}` | 新建目录（幂等） |
+| `POST /api/v1/projects/folder/delete` | `{path, folder}` | 删除目录（空目录直删，非空入回收站） |
 | `POST /api/v1/projects/entry/rename` | `{path, rel, new_name}` | 重命名文件/目录 |
 | `POST /api/v1/projects/watch` | `{path}` | **SSE** 目录变动推送（防抖 300ms，`{"changed":[...]}`；客户端 fetch 流式消费 + 自动重连） |
 

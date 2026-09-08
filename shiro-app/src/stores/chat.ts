@@ -89,7 +89,7 @@ export const chatStore = reactive({
     const out: string[] = []
     const walk = (nodes: TreeNode[]) => {
       for (const n of nodes) {
-        if (n.kind === 'dir') walk(n.children ?? [])
+        if (n.kind === 'folder') walk(n.children ?? [])
         else out.push(n.path)
       }
     }

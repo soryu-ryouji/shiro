@@ -37,7 +37,7 @@ export const projectStore = reactive({
     await this.refreshTree()
     // 默认选中「正文」；没有则退回第一个根目录，再无目录退回项目根（根级散落文稿）
     if (!findDir(this.tree, '正文')) {
-      this.selectedDir = this.tree.find((n) => n.kind === 'dir')?.path ?? ''
+      this.selectedDir = this.tree.find((n) => n.kind === 'folder')?.path ?? ''
     }
     // 监听目录变动（外部编辑/同步盘/AI 写稿）；切换项目先停旧监听
     stopWatch?.()
@@ -98,7 +98,7 @@ export const projectStore = reactive({
   async createDir(parentRel: string, name: string) {
     if (!this.current) return
     const dir = parentRel ? `${parentRel}/${name}` : name
-    await apiPost('/api/v1/projects/dir/create', { path: this.current.path, dir })
+    await apiPost('/api/v1/projects/folder/create', { path: this.current.path, folder: dir })
     this.namingDir = null
     await this.refreshTree()
   },
@@ -106,7 +106,7 @@ export const projectStore = reactive({
   /** 删除目录（daemon 侧：空目录直删，非空移 .shiro/trash/） */
   async removeDir(rel: string) {
     if (!this.current) return
-    await apiPost('/api/v1/projects/dir/delete', { path: this.current.path, dir: rel })
+    await apiPost('/api/v1/projects/folder/delete', { path: this.current.path, folder: rel })
     // 选中目录/当前文稿/标签在被删子树内时回退
     if (this.selectedDir === rel || this.selectedDir.startsWith(rel + '/')) {
       this.selectedDir = rel.split('/').slice(0, -1).join('/')
@@ -184,7 +184,7 @@ if (import.meta.env.DEV || location.hash.includes('open=')) {
 export function findDir(nodes: TreeNode[], path: string): TreeNode[] | null {
   if (path === '') return nodes
   for (const node of nodes) {
-    if (node.kind !== 'dir') continue
+    if (node.kind !== 'folder') continue
     if (node.path === path) return node.children ?? []
     const found = findDir(node.children ?? [], path)
     if (found !== null) return found

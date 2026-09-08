@@ -291,40 +291,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/projects/dir/create": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** 新建目录（幂等：已存在返回 200） */
-        post: operations["create_project_dir"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/dir/delete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** 删除目录：空目录直接删除；非空目录移入项目回收站（.shiro/trash/，可手动恢复） */
-        post: operations["remove_project_dir"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/projects/entry/rename": {
         parameters: {
             query?: never;
@@ -421,6 +387,40 @@ export interface paths {
         put?: never;
         /** 保存文稿：同目录临时文件 + rename 原子覆盖，写入中断不腐蚀已有正文（见 storage.md 备份与快照） */
         post: operations["write_project_file"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/folder/create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 新建目录（幂等：已存在返回 200） */
+        post: operations["create_project_folder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/folder/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 删除目录：空目录直接删除；非空目录移入项目回收站（.shiro/trash/，可手动恢复） */
+        post: operations["remove_project_folder"];
         delete?: never;
         options?: never;
         head?: never;
@@ -599,15 +599,15 @@ export interface components {
             /** @description 角色显示名（写入 frontmatter 的 name） */
             name: string;
         };
-        CreateDirRequest: {
-            /** @description 项目内相对路径（多级自动创建） */
-            dir: string;
-            /** @description 项目根目录绝对路径 */
-            path: string;
-        };
         CreateFileRequest: {
             /** @description 项目内相对路径（父目录自动创建） */
             file: string;
+            /** @description 项目根目录绝对路径 */
+            path: string;
+        };
+        CreateFolderRequest: {
+            /** @description 项目内相对路径（多级自动创建） */
+            folder: string;
             /** @description 项目根目录绝对路径 */
             path: string;
         };
@@ -628,7 +628,7 @@ export interface components {
         };
         ExcerptsRequest: {
             /** @description 项目内相对路径（'' = 项目根） */
-            dir: string;
+            folder: string;
             /** @description 项目根目录绝对路径 */
             path: string;
         };
@@ -706,15 +706,15 @@ export interface components {
             /** @description 项目根目录绝对路径 */
             path: string;
         };
-        RemoveDirRequest: {
-            /** @description 项目内相对路径（不允许根目录与 .shiro） */
-            dir: string;
-            /** @description 项目根目录绝对路径 */
-            path: string;
-        };
         RemoveFileRequest: {
             /** @description 文稿相对路径 */
             file: string;
+            /** @description 项目根目录绝对路径 */
+            path: string;
+        };
+        RemoveFolderRequest: {
+            /** @description 项目内相对路径（不允许根目录与 .shiro） */
+            folder: string;
             /** @description 项目根目录绝对路径 */
             path: string;
         };
@@ -799,7 +799,7 @@ export interface components {
         TreeNode: {
             /** @description 子节点（仅 dir） */
             children?: components["schemas"]["TreeNode"][] | null;
-            /** @description dir / file */
+            /** @description 节点类型：folder / file */
             kind: string;
             /**
              * Format: int64
@@ -1529,98 +1529,6 @@ export interface operations {
             };
         };
     };
-    create_project_dir: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateDirRequest"];
-            };
-        };
-        responses: {
-            /** @description 目录已存在 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 已创建 */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 路径非法 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 未鉴权 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    remove_project_dir: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RemoveDirRequest"];
-            };
-        };
-        responses: {
-            /** @description 已删除 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 路径非法或受保护 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 未鉴权 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 目录不存在 */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
     rename_entry: {
         parameters: {
             query?: never;
@@ -1902,6 +1810,98 @@ export interface operations {
             };
             /** @description 写入失败 */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_project_folder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateFolderRequest"];
+            };
+        };
+        responses: {
+            /** @description 目录已存在 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 已创建 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 路径非法 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    remove_project_folder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemoveFolderRequest"];
+            };
+        };
+        responses: {
+            /** @description 已删除 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 路径非法或受保护 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 目录不存在 */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -206,7 +206,7 @@ try {
 
   // ---------- 注册临时项目（经 daemon API；连接参数从页面 hash 读） ----------
 
-  const created = await fetch(`${conn.api}/api/v1/projects`, {
+  const created = await fetch(`${conn.api}/api/v1/projects/create`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${conn.token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ path: projDir, name: '自检项目' }),

@@ -821,103 +821,6 @@
         ]
       }
     },
-    "/api/v1/projects/dir/create": {
-      "post": {
-        "tags": [
-          "projects"
-        ],
-        "summary": "新建目录（幂等：已存在返回 200）",
-        "operationId": "create_project_dir",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateDirRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "目录已存在"
-          },
-          "201": {
-            "description": "已创建"
-          },
-          "400": {
-            "description": "路径非法",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "未鉴权"
-          }
-        },
-        "security": [
-          {
-            "bearer_token": []
-          }
-        ]
-      }
-    },
-    "/api/v1/projects/dir/delete": {
-      "post": {
-        "tags": [
-          "projects"
-        ],
-        "summary": "删除目录：空目录直接删除；非空目录移入项目回收站（.shiro/trash/，可手动恢复）",
-        "operationId": "remove_project_dir",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RemoveDirRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "204": {
-            "description": "已删除"
-          },
-          "400": {
-            "description": "路径非法或受保护",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "未鉴权"
-          },
-          "404": {
-            "description": "目录不存在",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer_token": []
-          }
-        ]
-      }
-    },
     "/api/v1/projects/entry/rename": {
       "post": {
         "tags": [
@@ -1242,6 +1145,103 @@
           },
           "500": {
             "description": "写入失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/folder/create": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "新建目录（幂等：已存在返回 200）",
+        "operationId": "create_project_folder",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFolderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "目录已存在"
+          },
+          "201": {
+            "description": "已创建"
+          },
+          "400": {
+            "description": "路径非法",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/folder/delete": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "删除目录：空目录直接删除；非空目录移入项目回收站（.shiro/trash/，可手动恢复）",
+        "operationId": "remove_project_folder",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveFolderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "已删除"
+          },
+          "400": {
+            "description": "路径非法或受保护",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "目录不存在",
             "content": {
               "application/json": {
                 "schema": {
@@ -1739,23 +1739,6 @@
           }
         }
       },
-      "CreateDirRequest": {
-        "type": "object",
-        "required": [
-          "path",
-          "dir"
-        ],
-        "properties": {
-          "dir": {
-            "type": "string",
-            "description": "项目内相对路径（多级自动创建）"
-          },
-          "path": {
-            "type": "string",
-            "description": "项目根目录绝对路径"
-          }
-        }
-      },
       "CreateFileRequest": {
         "type": "object",
         "required": [
@@ -1766,6 +1749,23 @@
           "file": {
             "type": "string",
             "description": "项目内相对路径（父目录自动创建）"
+          },
+          "path": {
+            "type": "string",
+            "description": "项目根目录绝对路径"
+          }
+        }
+      },
+      "CreateFolderRequest": {
+        "type": "object",
+        "required": [
+          "path",
+          "folder"
+        ],
+        "properties": {
+          "folder": {
+            "type": "string",
+            "description": "项目内相对路径（多级自动创建）"
           },
           "path": {
             "type": "string",
@@ -1823,10 +1823,10 @@
         "type": "object",
         "required": [
           "path",
-          "dir"
+          "folder"
         ],
         "properties": {
-          "dir": {
+          "folder": {
             "type": "string",
             "description": "项目内相对路径（'' = 项目根）"
           },
@@ -2066,23 +2066,6 @@
           }
         }
       },
-      "RemoveDirRequest": {
-        "type": "object",
-        "required": [
-          "path",
-          "dir"
-        ],
-        "properties": {
-          "dir": {
-            "type": "string",
-            "description": "项目内相对路径（不允许根目录与 .shiro）"
-          },
-          "path": {
-            "type": "string",
-            "description": "项目根目录绝对路径"
-          }
-        }
-      },
       "RemoveFileRequest": {
         "type": "object",
         "required": [
@@ -2093,6 +2076,23 @@
           "file": {
             "type": "string",
             "description": "文稿相对路径"
+          },
+          "path": {
+            "type": "string",
+            "description": "项目根目录绝对路径"
+          }
+        }
+      },
+      "RemoveFolderRequest": {
+        "type": "object",
+        "required": [
+          "path",
+          "folder"
+        ],
+        "properties": {
+          "folder": {
+            "type": "string",
+            "description": "项目内相对路径（不允许根目录与 .shiro）"
           },
           "path": {
             "type": "string",
@@ -2379,7 +2379,7 @@
           },
           "kind": {
             "type": "string",
-            "description": "dir / file"
+            "description": "节点类型：folder / file"
           },
           "modified": {
             "type": [

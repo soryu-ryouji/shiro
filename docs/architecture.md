@@ -76,6 +76,8 @@ daemon 直接 serve 前端静态资源，局域网内的设备（iPad、手机�
 - 桌面版默认只监听 `127.0.0.1`，局域网访问是显式开启的开关（监听 `0.0.0.0`），开启后展示局域网地址
 - 认证沿用 hawk 的「URL + KEY」模式：用户在桌面端 app 设置中生成或填写访问 key（256-bit 随机值，存 `~/.config/shiro/config.toml`），修改后旧 key 立即失效（401），无登录端点、无会话令牌
 - 静态资源不鉴权（不含数据，数据全在 API 后面）；全部 `/api/*` 为 POST + JSON body，要求 `Authorization: Bearer <key>`，未带或错误返回 401，移动端首次打开时由前端展示 key 输入页，输入后存 localStorage
+- 项目内容端点只允许访问已登记项目（history.toml，路径 canonicalize 后比对），未登记返回 403；登记入口 `POST /api/v1/projects/create` 由桌面端系统目录选择器发起
+- 待办：登记与移除/重命名目前不区分凭据来源，局域网 key 上线时应限定为桌面凭据（否则 key 持有者可登记任意目录，绕开上述限制）
 - SSE 也走 POST + fetch 流式消费（非 EventSource），鉴权同样用 Authorization header，token 不进 URL
 - 桌面 app 自身继续使用启动时生成的随机 token（env 传入，不落盘，防本机恶意网页）；局域网 key 与启动 token 共用同一鉴权中间件（同一个 header 位）
 - 局域网模式使用明文 HTTP（内容不出内网）；模型 API key 只在 daemon 侧使用，不下发给前端
