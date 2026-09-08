@@ -15,3 +15,12 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   const text = await res.text()
   return (text ? JSON.parse(text) : undefined) as T
 }
+
+/** POST JSON 便捷封装：API 操作统一 POST + body（约定见 docs/structure.md） */
+export function apiPost<T>(path: string, body?: unknown): Promise<T> {
+  return apiFetch<T>(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+}

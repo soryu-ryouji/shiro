@@ -15,6 +15,9 @@ cd shiro-app && npm install && npm run dev
 # 后端：改 API 后重新固化契约并跑契约测试
 cd shiro-daemon && cargo run -- --dump-openapi > openapi.json && cargo test
 
+# API 冒烟（全部端点，临时 HOME 隔离，不调真实 LLM）
+./tools/smoke-api.sh
+
 # 前端类型从契约生成
 cd shiro-app && npm run gen:types
 ```

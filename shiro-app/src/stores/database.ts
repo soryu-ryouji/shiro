@@ -1,6 +1,6 @@
 // 内容库（Database）视图状态：侧栏分类选择 + 全局人物库角色列表/详情/编辑（API 见 shiro-daemon/src/assets.rs）
 import { computed, reactive } from 'vue'
-import { apiFetch } from '../api'
+import { apiPost } from '../api'
 import type { components } from '../api-types'
 
 export type CharacterSummary = components['schemas']['CharacterSummary']
@@ -42,8 +42,8 @@ export const dbStore = reactive({
     this.loading = true
     this.error = ''
     try {
-      const res = await apiFetch<components['schemas']['CharacterListResponse']>(
-        '/api/v1/db/characters',
+      const res = await apiPost<components['schemas']['CharacterListResponse']>(
+        '/api/v1/db/characters/list',
       )
       this.characters = res.characters ?? []
       this.charactersLoaded = true
@@ -72,9 +72,7 @@ export const dbStore = reactive({
   async loadCharacter(id: string) {
     this.detailLoading = true
     try {
-      this.detail = await apiFetch<CharacterDetail>(
-        `/api/v1/db/characters/${encodeURIComponent(id)}`,
-      )
+      this.detail = await apiPost<CharacterDetail>('/api/v1/db/characters/get', { id })
     } catch (e) {
       this.error = e instanceof Error ? e.message : String(e)
     } finally {
@@ -86,13 +84,9 @@ export const dbStore = reactive({
   async saveCharacter(id: string, content: string): Promise<boolean> {
     this.error = ''
     try {
-      const res = await apiFetch<components['schemas']['SaveCharacterResponse']>(
-        `/api/v1/db/characters/${encodeURIComponent(id)}`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content }),
-        },
+      const res = await apiPost<components['schemas']['SaveCharacterResponse']>(
+        '/api/v1/db/characters/save',
+        { id, content },
       )
       this.parseError = res.parsed ? '' : (res.parse_error ?? '解析失败')
       if (!res.parsed) return false
@@ -108,11 +102,7 @@ export const dbStore = reactive({
   async createCharacter(name: string) {
     this.error = ''
     try {
-      const res = await apiFetch<CharacterDetail>('/api/v1/db/characters', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
-      })
+      const res = await apiPost<CharacterDetail>('/api/v1/db/characters/create', { name })
       await this.refreshCharacters(true)
       this.selectedId = res.id
       await this.loadCharacter(res.id)

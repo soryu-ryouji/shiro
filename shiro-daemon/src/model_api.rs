@@ -5,7 +5,6 @@
 use crate::api::{ApiError, ErrorResponse, bad_request, config_dir, internal_error};
 use crate::llm::{self, Profile};
 use axum::Json;
-use axum::extract::Path;
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -56,8 +55,8 @@ fn list_response() -> ProfileListResponse {
 
 /// 档案列表（含默认档案指定）
 #[utoipa::path(
-    get,
-    path = "/api/v1/model/profiles",
+    post,
+    path = "/api/v1/model/profiles/list",
     tag = "model",
     responses(
         (status = 200, description = "档案列表", body = ProfileListResponse),
@@ -88,7 +87,7 @@ pub struct UpsertProfileRequest {
 /// 注册/更新档案（同 key 覆盖；首个档案自动成为默认）
 #[utoipa::path(
     post,
-    path = "/api/v1/model/profiles",
+    path = "/api/v1/model/profiles/save",
     tag = "model",
     request_body = UpsertProfileRequest,
     responses(
@@ -184,12 +183,18 @@ pub struct ProfileTestResponse {
     pub latency_ms: Option<u64>,
 }
 
+#[derive(Deserialize, ToSchema)]
+pub struct ProfileKeyRequest {
+    /// 档案 key
+    pub key: String,
+}
+
 /// 测试档案连接（发一个最小真实调用 ping；验证端点 + 密钥 + 模型 + 协议）
 #[utoipa::path(
     post,
-    path = "/api/v1/model/profiles/{key}/test",
+    path = "/api/v1/model/profiles/test",
     tag = "model",
-    params(("key" = String, Path, description = "档案 key")),
+    request_body = ProfileKeyRequest,
     responses(
         (status = 200, description = "测试结果（ok 标识连通与否，message 说明）", body = ProfileTestResponse),
         (status = 404, description = "档案不存在", body = ErrorResponse),
@@ -198,8 +203,9 @@ pub struct ProfileTestResponse {
     security(("bearer_token" = []))
 )]
 pub(crate) async fn test_profile(
-    Path(key): Path<String>,
+    Json(req): Json<ProfileKeyRequest>,
 ) -> Result<Json<ProfileTestResponse>, ApiError> {
+    let key = req.key;
     let (profiles, _) = llm::read_profiles(&config_dir());
     let p = profiles
         .iter()
@@ -230,10 +236,10 @@ pub(crate) async fn test_profile(
 
 /// 删除档案；删除默认档案时默认项回退到剩余第一个
 #[utoipa::path(
-    delete,
-    path = "/api/v1/model/profiles/{key}",
+    post,
+    path = "/api/v1/model/profiles/delete",
     tag = "model",
-    params(("key" = String, Path, description = "档案 key")),
+    request_body = ProfileKeyRequest,
     responses(
         (status = 200, description = "已删除（含更新后列表）", body = ProfileListResponse),
         (status = 404, description = "档案不存在", body = ErrorResponse),
@@ -243,8 +249,9 @@ pub(crate) async fn test_profile(
     security(("bearer_token" = []))
 )]
 pub(crate) async fn delete_profile(
-    Path(key): Path<String>,
+    Json(req): Json<ProfileKeyRequest>,
 ) -> Result<Json<ProfileListResponse>, ApiError> {
+    let key = req.key;
     let (mut profiles, default) = llm::read_profiles(&config_dir());
     let before = profiles.len();
     profiles.retain(|p| p.key != key);

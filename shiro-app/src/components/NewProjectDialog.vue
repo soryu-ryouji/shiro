@@ -3,7 +3,7 @@
 // 项目文件夹（系统目录选择框，经 IPC；任意已有文件夹，VSCode「打开文件夹」式）。
 // 显示名与文件夹名解耦；遮罩/Esc 关闭行为见 useDialog。
 import { computed, ref } from 'vue'
-import { apiFetch } from '../api'
+import { apiPost } from '../api'
 import { hasShell, shell } from '../platform'
 import { useDialogMask } from '../composables/useDialog'
 import type { components } from '../api-types'
@@ -28,10 +28,9 @@ async function create() {
   busy.value = true
   error.value = ''
   try {
-    await apiFetch<components['schemas']['ProjectItem']>('/api/v1/projects', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: dir.value, name: name.value.trim() }),
+    await apiPost<components['schemas']['ProjectItem']>('/api/v1/projects/create', {
+      path: dir.value,
+      name: name.value.trim(),
     })
     emit('created')
     emit('close')

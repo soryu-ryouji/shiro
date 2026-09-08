@@ -18,7 +18,7 @@ shiro 前后端完全解耦，通过 HTTP API 通信。桌面版中 Electron 只
 │  │ 剧本项目/内容库      │   │ provider 抽象     │                   │
 │  │                    │   │ SSE 流式          │                   │
 │  └────────────────────┘   └─────────────────┘                   │
-│       REST API (utoipa, OpenAPI schema)                         │
+│       HTTP API（统一 POST + JSON，OpenAPI schema）                │
 │       静态资源 serve（前端）                                      │
 └──────────────────────────────┬──────────────────────────────────┘
                                │ HTTP
@@ -36,7 +36,7 @@ shiro 前后端完全解耦，通过 HTTP API 通信。桌面版中 Electron 只
 
 **1. 前端只认识 HTTP API**
 
-Web 前端不依赖 Electron IPC，只通过 REST API 通信。
+Web 前端不依赖 Electron IPC，只通过 HTTP API 通信。
 
 **2. 后端不依赖 Electron**
 
@@ -44,7 +44,7 @@ Web 前端不依赖 Electron IPC，只通过 REST API 通信。
 
 **3. API 契约先行**
 
-REST API 由代码生成 OpenAPI schema（utoipa：`#[utoipa::path]` 标注端点、DTO derive `ToSchema`，路由与文档同一来源），固化于 `shiro-daemon/openapi.json`（改 API 后 `cargo run -- --dump-openapi > openapi.json` 重新固化，契约测试校验同步），TypeScript 类型从 schema 生成（`npm run gen:types`），前后端不允许手写对接口。
+HTTP API 由代码生成 OpenAPI schema（utoipa：`#[utoipa::path]` 标注端点、DTO derive `ToSchema`，路由与文档同一来源），固化于 `shiro-daemon/openapi.json`（改 API 后 `cargo run -- --dump-openapi > openapi.json` 重新固化，契约测试校验同步），TypeScript 类型从 schema 生成（`npm run gen:types`），前后端不允许手写对接口。全部端点为 POST + JSON body（`GET /health` 与静态资源除外），约定见[项目结构总览](./structure.md)。
 
 **4. 编辑计算归 app，存储与管理归 daemon**
 
@@ -75,9 +75,9 @@ daemon 直接 serve 前端静态资源，局域网内的设备（iPad、手机�
 
 - 桌面版默认只监听 `127.0.0.1`，局域网访问是显式开启的开关（监听 `0.0.0.0`），开启后展示局域网地址
 - 认证沿用 hawk 的「URL + KEY」模式：用户在桌面端 app 设置中生成或填写访问 key（256-bit 随机值，存 `~/.config/shiro/config.toml`），修改后旧 key 立即失效（401），无登录端点、无会话令牌
-- 静态资源不鉴权（不含数据，数据全在 API 后面）；全部 `/api/*` 要求 `Authorization: Bearer <key>`，未带或错误返回 401，移动端首次打开时由前端展示 key 输入页，输入后存 localStorage
-- SSE 走 `?key=` 查询参数（EventSource 无法自定义 header），daemon 以同一逻辑校验
-- 桌面 app 自身继续使用启动时生成的随机 token（env 传入，不落盘，防本机恶意网页），鉴权中间件同时接受两种凭据
+- 静态资源不鉴权（不含数据，数据全在 API 后面）；全部 `/api/*` 为 POST + JSON body，要求 `Authorization: Bearer <key>`，未带或错误返回 401，移动端首次打开时由前端展示 key 输入页，输入后存 localStorage
+- SSE 也走 POST + fetch 流式消费（非 EventSource），鉴权同样用 Authorization header，token 不进 URL
+- 桌面 app 自身继续使用启动时生成的随机 token（env 传入，不落盘，防本机恶意网页）；局域网 key 与启动 token 共用同一鉴权中间件（同一个 header 位）
 - 局域网模式使用明文 HTTP（内容不出内网）；模型 API key 只在 daemon 侧使用，不下发给前端
 - 并发编辑采用单写者 + 乐观锁：保存带版本号，版本过期则拒绝并提示刷新；CRDT 协同列为后续项，暂不实现
 - 文档被其他设备修改时，通过 SSE 通知前端提示刷新
@@ -105,7 +105,7 @@ shiro/
 └── docs/                     ← 设计文档
 ```
 
-各目录的分层、模块职责与 REST API 清单见 [项目结构总览](./structure.md)。
+各目录的分层、模块职责与 API 清单见 [项目结构总览](./structure.md)。
 
 ## 文档
 

@@ -11,56 +11,20 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        get?: never;
+        put?: never;
         /**
          * 启动状态。当前无后台初始化流程，直接返回 ready；
          *     后续加入初始化流程后按 starting → ready/error 流转。
          */
-        get: operations["startup"];
-        put?: never;
-        post?: never;
+        post: operations["startup"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/chat/sessions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 会话列表（最近更新在前） */
-        get: operations["list_chat_sessions"];
-        put?: never;
-        /** 新建会话 */
-        post: operations["create_chat_session"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/chat/sessions/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 会话详情（全部消息） */
-        get: operations["get_chat_session"];
-        put?: never;
-        post?: never;
-        /** 删除会话 */
-        delete: operations["delete_chat_session"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/chat/sessions/{id}/apply": {
+    "/api/v1/chat/sessions/apply": {
         parameters: {
             query?: never;
             header?: never;
@@ -77,7 +41,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/chat/sessions/{id}/messages": {
+    "/api/v1/chat/sessions/create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 新建会话 */
+        post: operations["create_chat_session"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/sessions/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 删除会话 */
+        post: operations["delete_chat_session"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/sessions/get": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 会话详情（全部消息） */
+        post: operations["get_chat_session"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/sessions/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 会话列表（最近更新在前） */
+        post: operations["list_chat_sessions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/sessions/messages": {
         parameters: {
             query?: never;
             header?: never;
@@ -100,15 +132,14 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/db/characters": {
+    "/api/v1/db/characters/create": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** 全局人物库角色列表 */
-        get: operations["list_characters"];
+        get?: never;
         put?: never;
         /** 新建角色卡（骨架）：同名自动追加 -2/-3 序号；返回可直接进入编辑的详情 */
         post: operations["create_character"];
@@ -118,36 +149,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/db/characters/{id}": {
+    "/api/v1/db/characters/get": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
+        get?: never;
+        put?: never;
         /** 角色详情（单文件简卡：frontmatter 字段 + 正文；目录深卡：index.md + 子文件列表） */
-        get: operations["get_character"];
-        /**
-         * 保存角色卡：临时文件 + rename 原子覆盖（同文稿保存）。
-         *     宽容策略：解析失败也保存（用户手改中途不丢内容），但返回 parse_error 提示该卡会从列表消失。
-         */
-        put: operations["save_character"];
-        post?: never;
+        post: operations["get_character"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/model/profiles": {
+    "/api/v1/db/characters/list": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
+        get?: never;
+        put?: never;
+        /** 全局人物库角色列表 */
+        post: operations["list_characters"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/db/characters/save": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 保存角色卡：临时文件 + rename 原子覆盖（同文稿保存）。
+         *     宽容策略：解析失败也保存（用户手改中途不丢内容），但返回 parse_error 提示该卡会从列表消失。
+         */
+        post: operations["save_character"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/model/profiles/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 删除档案；删除默认档案时默认项回退到剩余第一个 */
+        post: operations["delete_profile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/model/profiles/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
         /** 档案列表（含默认档案指定） */
-        get: operations["list_profiles"];
+        post: operations["list_profiles"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/model/profiles/save": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
         put?: never;
         /** 注册/更新档案（同 key 覆盖；首个档案自动成为默认） */
         post: operations["upsert_profile"];
@@ -157,24 +254,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/model/profiles/{key}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** 删除档案；删除默认档案时默认项回退到剩余第一个 */
-        delete: operations["delete_profile"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/model/profiles/{key}/test": {
+    "/api/v1/model/profiles/test": {
         parameters: {
             query?: never;
             header?: never;
@@ -191,29 +271,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/projects": {
+    "/api/v1/projects/create": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** 项目列表（history.toml 记录，最近打开在前） */
-        get: operations["list_projects"];
+        get?: never;
         put?: never;
         /**
          * 新建项目：把选中的已有文件夹登记为项目（VSCode「打开文件夹」式），并导入记录。
          *     项目显示名写入 .shiro/project.toml 的 name（与文件夹名解耦）；留空则保留已有或用文件夹名。
          */
         post: operations["create_project"];
-        /** 删除项目记录（只从 history.toml 移除，不删除文件夹本身） */
-        delete: operations["remove_project"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/projects/dir": {
+    "/api/v1/projects/dir/create": {
         parameters: {
             query?: never;
             header?: never;
@@ -224,8 +302,24 @@ export interface paths {
         put?: never;
         /** 新建目录（幂等：已存在返回 200） */
         post: operations["create_project_dir"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/dir/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
         /** 删除目录：空目录直接删除；非空目录移入项目回收站（.shiro/trash/，可手动恢复） */
-        delete: operations["remove_project_dir"];
+        post: operations["remove_project_dir"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -255,31 +349,113 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 目录内全部文稿的正文预览（每篇取开头几行，Ulysses 式列表） */
-        get: operations["project_excerpts"];
+        get?: never;
         put?: never;
-        post?: never;
+        /** 目录内全部文稿的正文预览（每篇取开头几行，Ulysses 式列表） */
+        post: operations["project_excerpts"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/projects/file": {
+    "/api/v1/projects/file/create": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** 读取文稿内容 */
-        get: operations["read_project_file"];
-        /** 保存文稿：同目录临时文件 + rename 原子覆盖，写入中断不腐蚀已有正文（见 storage.md 备份与快照） */
-        put: operations["write_project_file"];
+        get?: never;
+        put?: never;
         /** 新建文稿（空文件） */
         post: operations["create_project_file"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/file/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
         /** 删除文稿：移入项目回收站（.shiro/trash/，可手动恢复） */
-        delete: operations["remove_project_file"];
+        post: operations["remove_project_file"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/file/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 读取文稿内容 */
+        post: operations["read_project_file"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/file/write": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 保存文稿：同目录临时文件 + rename 原子覆盖，写入中断不腐蚀已有正文（见 storage.md 备份与快照） */
+        post: operations["write_project_file"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 项目列表（history.toml 记录，最近打开在前） */
+        post: operations["list_projects"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 删除项目记录（只从 history.toml 移除，不删除文件夹本身） */
+        post: operations["remove_project"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -309,10 +485,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 项目目录树（目录与文稿文件；目录在前，文件名排序） */
-        get: operations["project_tree"];
+        get?: never;
         put?: never;
-        post?: never;
+        /** 项目目录树（目录与文稿文件；目录在前，文件名排序） */
+        post: operations["project_tree"];
         delete?: never;
         options?: never;
         head?: never;
@@ -326,14 +502,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        get?: never;
+        put?: never;
         /**
          * 监听项目目录变动：SSE 推送防抖 300ms 后的变更相对路径集合（`.` 开头路径段与临时文件已过滤）。
          *     每帧 data 为 JSON：`{"changed":["正文/a.md"]}`；changed 为空数组表示事件滞后溢出，订阅方应全量刷新。
-         *     鉴权走 `?key=` 查询参数（EventSource 无法自定义 header）。监听随连接建立而启动、所有订阅断开后停止。
+         *     监听随连接建立而启动、所有订阅断开后停止。
          */
-        get: operations["watch_project"];
-        put?: never;
-        post?: never;
+        post: operations["watch_project"];
         delete?: never;
         options?: never;
         head?: never;
@@ -345,6 +521,8 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         ApplyProposalRequest: {
+            /** @description 会话 id */
+            id: string;
             /** @description 项目根目录绝对路径 */
             path: string;
             /** @description 提案 id（会话内唯一，见消息的 proposals[].id） */
@@ -413,6 +591,10 @@ export interface components {
             /** @description user / assistant */
             role: string;
         };
+        ChatProjectRequest: {
+            /** @description 项目根目录绝对路径 */
+            path: string;
+        };
         CreateCharacterRequest: {
             /** @description 角色显示名（写入 frontmatter 的 name） */
             name: string;
@@ -444,6 +626,12 @@ export interface components {
         ErrorResponse: {
             message: string;
         };
+        ExcerptsRequest: {
+            /** @description 项目内相对路径（'' = 项目根） */
+            dir: string;
+            /** @description 项目根目录绝对路径 */
+            path: string;
+        };
         ExcerptsResponse: {
             excerpts: components["schemas"]["SheetExcerpt"][];
         };
@@ -454,6 +642,14 @@ export interface components {
              * @description 修改时间（epoch 秒）
              */
             modified: number;
+        };
+        GetCharacterRequest: {
+            /** @description 角色 id（单文件卡去 .md 的文件名；深卡为目录名） */
+            id: string;
+        };
+        ProfileKeyRequest: {
+            /** @description 档案 key */
+            key: string;
         };
         ProfileListResponse: {
             /** @description 默认档案 key（无档案时为 null） */
@@ -504,6 +700,28 @@ export interface components {
             file: string;
             id: string;
         };
+        ReadFileRequest: {
+            /** @description 项目内相对路径（如 正文/第一卷/001 序章.md） */
+            file: string;
+            /** @description 项目根目录绝对路径 */
+            path: string;
+        };
+        RemoveDirRequest: {
+            /** @description 项目内相对路径（不允许根目录与 .shiro） */
+            dir: string;
+            /** @description 项目根目录绝对路径 */
+            path: string;
+        };
+        RemoveFileRequest: {
+            /** @description 文稿相对路径 */
+            file: string;
+            /** @description 项目根目录绝对路径 */
+            path: string;
+        };
+        RemoveProjectRequest: {
+            /** @description 要移除记录的项目路径（只删记录，不删文件夹） */
+            path: string;
+        };
         RenameEntryRequest: {
             /** @description 新名字（文件名含后缀） */
             new_name: string;
@@ -521,6 +739,8 @@ export interface components {
         SaveCharacterRequest: {
             /** @description 完整文件内容（含 frontmatter） */
             content: string;
+            /** @description 角色 id（单文件卡去 .md 的文件名；深卡为目录名） */
+            id: string;
         };
         SaveCharacterResponse: {
             character?: null | components["schemas"]["CharacterSummary"];
@@ -533,6 +753,8 @@ export interface components {
             attachments?: string[];
             /** @description 用户输入原文 */
             content: string;
+            /** @description 会话 id */
+            id: string;
             /** @description 项目根目录绝对路径 */
             path: string;
         };
@@ -547,6 +769,12 @@ export interface components {
         };
         SessionListResponse: {
             sessions: components["schemas"]["SessionSummary"][];
+        };
+        SessionRefRequest: {
+            /** @description 会话 id */
+            id: string;
+            /** @description 项目根目录绝对路径 */
+            path: string;
         };
         SessionSummary: {
             /** Format: int64 */
@@ -583,6 +811,10 @@ export interface components {
             /** @description 项目内相对路径 */
             path: string;
         };
+        TreeRequest: {
+            /** @description 项目根目录绝对路径 */
+            path: string;
+        };
         TreeResponse: {
             children: components["schemas"]["TreeNode"][];
         };
@@ -596,6 +828,10 @@ export interface components {
             protocol?: string | null;
             /** @description 思考强度：缺省/空 = 不启用；low / medium / high */
             thinking?: string | null;
+        };
+        WatchRequest: {
+            /** @description 项目根目录绝对路径 */
+            path: string;
         };
         WriteFileRequest: {
             content: string;
@@ -640,28 +876,29 @@ export interface operations {
             };
         };
     };
-    list_chat_sessions: {
+    apply_chat_proposal: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /** @description 项目根目录绝对路径 */
-                path: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyProposalRequest"];
+            };
+        };
         responses: {
-            /** @description 会话列表 */
+            /** @description 已写入文件 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SessionListResponse"];
+                    "application/json": components["schemas"]["ApplyProposalResponse"];
                 };
             };
-            /** @description 项目目录不存在 */
+            /** @description 非法路径或提案已应用 */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -676,6 +913,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description 会话或提案不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
         };
     };
@@ -728,19 +974,56 @@ export interface operations {
             };
         };
     };
+    delete_chat_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionRefRequest"];
+            };
+        };
+        responses: {
+            /** @description 已删除 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 会话不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_chat_session: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /** @description 项目根目录绝对路径 */
-                path: string;
-                /** @description 会话 id */
-                id: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionRefRequest"];
+            };
+        };
         responses: {
             /** @description 会话详情 */
             200: {
@@ -769,71 +1052,29 @@ export interface operations {
             };
         };
     };
-    delete_chat_session: {
+    list_chat_sessions: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /** @description 项目根目录绝对路径 */
-                path: string;
-                /** @description 会话 id */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 已删除 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未鉴权 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 会话不存在 */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    apply_chat_proposal: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 会话 id */
-                id: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ApplyProposalRequest"];
+                "application/json": components["schemas"]["ChatProjectRequest"];
             };
         };
         responses: {
-            /** @description 已写入文件 */
+            /** @description 会话列表 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApplyProposalResponse"];
+                    "application/json": components["schemas"]["SessionListResponse"];
                 };
             };
-            /** @description 非法路径或提案已应用 */
+            /** @description 项目目录不存在 */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -849,25 +1090,13 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description 会话或提案不存在 */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
         };
     };
     send_chat_message: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /** @description 会话 id */
-                id: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody: {
@@ -907,33 +1136,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
-            };
-        };
-    };
-    list_characters: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 角色列表（按显示名排序） */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CharacterListResponse"];
-                };
-            };
-            /** @description 未鉴权 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
@@ -990,13 +1192,14 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /** @description 角色 id（单文件卡去 .md 的文件名；深卡为目录名） */
-                id: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GetCharacterRequest"];
+            };
+        };
         responses: {
             /** @description 角色详情 */
             200: {
@@ -1034,14 +1237,38 @@ export interface operations {
             };
         };
     };
+    list_characters: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 角色列表（按显示名排序） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterListResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     save_character: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /** @description 角色 id（db/人物/ 下文件名去掉 .md） */
-                id: string;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody: {
@@ -1076,6 +1303,55 @@ export interface operations {
                 content?: never;
             };
             /** @description 角色不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 写入失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_profile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description 已删除（含更新后列表） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileListResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 档案不存在 */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -1171,65 +1447,18 @@ export interface operations {
             };
         };
     };
-    delete_profile: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 档案 key */
-                key: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 已删除（含更新后列表） */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileListResponse"];
-                };
-            };
-            /** @description 未鉴权 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 档案不存在 */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 写入失败 */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
     test_profile: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /** @description 档案 key */
-                key: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileKeyRequest"];
+            };
+        };
         responses: {
             /** @description 测试结果（ok 标识连通与否，message 说明） */
             200: {
@@ -1255,33 +1484,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
-            };
-        };
-    };
-    list_projects: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 项目列表 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProjectListResponse"];
-                };
-            };
-            /** @description 未鉴权 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
@@ -1324,34 +1526,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
-            };
-        };
-    };
-    remove_project: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 要移除记录的项目路径（只删记录，不删文件夹） */
-                path: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 已删除 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未鉴权 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
@@ -1404,15 +1578,14 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /** @description 项目根目录绝对路径 */
-                path: string;
-                /** @description 项目内相对路径（不允许根目录与 .shiro） */
-                dir: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemoveDirRequest"];
+            };
+        };
         responses: {
             /** @description 已删除 */
             204: {
@@ -1508,15 +1681,14 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /** @description 项目根目录绝对路径 */
-                path: string;
-                /** @description 项目内相对路径（'' = 项目根） */
-                dir: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExcerptsRequest"];
+            };
+        };
         responses: {
             /** @description 预览列表 */
             200: {
@@ -1545,19 +1717,114 @@ export interface operations {
             };
         };
     };
+    create_project_file: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateFileRequest"];
+            };
+        };
+        responses: {
+            /** @description 已创建 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileContent"];
+                };
+            };
+            /** @description 路径非法 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 文件已存在 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    remove_project_file: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RemoveFileRequest"];
+            };
+        };
+        responses: {
+            /** @description 已删除（移入回收站） */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 路径非法 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 文件不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     read_project_file: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /** @description 项目根目录绝对路径 */
-                path: string;
-                /** @description 项目内相对路径（如 正文/第一卷/001 序章.md） */
-                file: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReadFileRequest"];
+            };
+        };
         responses: {
             /** @description 文稿内容 */
             200: {
@@ -1644,7 +1911,34 @@ export interface operations {
             };
         };
     };
-    create_project_file: {
+    list_projects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 项目列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectListResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    remove_project: {
         parameters: {
             query?: never;
             header?: never;
@@ -1653,91 +1947,23 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateFileRequest"];
+                "application/json": components["schemas"]["RemoveProjectRequest"];
             };
         };
         responses: {
-            /** @description 已创建 */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FileContent"];
-                };
-            };
-            /** @description 路径非法 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 未鉴权 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 文件已存在 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    remove_project_file: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 项目根目录绝对路径 */
-                path: string;
-                /** @description 文稿相对路径 */
-                file: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 已删除（移入回收站） */
+            /** @description 已删除 */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description 路径非法 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             /** @description 未鉴权 */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description 文件不存在 */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
             };
         };
     };
@@ -1803,13 +2029,14 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /** @description 项目根目录绝对路径 */
-                path: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TreeRequest"];
+            };
+        };
         responses: {
             /** @description 目录树 */
             200: {
@@ -1842,15 +2069,16 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /** @description 项目根目录绝对路径 */
-                path: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchRequest"];
+            };
+        };
         responses: {
-            /** @description SSE 事件流（text/event-stream）：data 为 {"changed":[...]}；鉴权走 ?key= 查询参数 */
+            /** @description SSE 事件流（text/event-stream）：data 为 {"changed":[...]} */
             200: {
                 headers: {
                     [name: string]: unknown;

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { apiFetch, hasConnection } from './api'
+import { apiPost, hasConnection } from './api'
 import { hasShell, shell } from './platform'
 import type { NavItem, NavKey } from './types'
 import Sidebar from './components/Sidebar.vue'
@@ -49,7 +49,7 @@ onMounted(async () => {
   }
   for (;;) {
     try {
-      const res = await apiFetch<{ status: string }>('/api/v1/app/startup')
+      const res = await apiPost<{ status: string }>('/api/v1/app/startup')
       if (res.status === 'ready') {
         status.value = 'ready'
         // 调试深链：hash 带 open=<项目路径>（可叠加 file=<文稿相对路径>）时启动后直接进入写作模式

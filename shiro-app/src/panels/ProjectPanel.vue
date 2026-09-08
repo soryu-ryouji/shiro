@@ -3,7 +3,7 @@
 // - 区块右上 +：新建项目（选已有文件夹作项目目录，项目名写入 .shiro/project.toml 显示，见 NewProjectDialog）
 // - 列表项悬停浮现 ···（单击或右键调出菜单）：打开文件位置（仅桌面端）/ 删除记录（不删文件夹）
 import { nextTick, onMounted, provide, ref } from 'vue'
-import { apiFetch } from '../api'
+import { apiPost } from '../api'
 import { hasShell, shell } from '../platform'
 import { projectStore, type ProjectItem, type TreeNode as TreeNodeData } from '../stores/project'
 import Icon from '../components/Icon.vue'
@@ -20,7 +20,7 @@ const menu = ref<{ x: number; y: number; item: ProjectItem } | null>(null)
 
 async function refresh() {
   try {
-    const res = await apiFetch<{ projects?: ProjectItem[] }>('/api/v1/projects')
+    const res = await apiPost<{ projects?: ProjectItem[] }>('/api/v1/projects/list')
     projects.value = res.projects ?? []
     loadError.value = ''
   } catch (e) {
@@ -119,7 +119,7 @@ function menuItems(item: ProjectItem): MenuItem[] {
 /** 只删 history.toml 里的记录，不动文件夹本身 */
 async function removeRecord(item: ProjectItem) {
   try {
-    await apiFetch(`/api/v1/projects?path=${encodeURIComponent(item.path)}`, { method: 'DELETE' })
+    await apiPost('/api/v1/projects/remove', { path: item.path })
     await refresh()
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : String(e)
@@ -138,10 +138,9 @@ async function submitRename(newName: string) {
   const item = renamingProject.value
   if (!item) return
   try {
-    const renamed = await apiFetch<ProjectItem>('/api/v1/projects/rename', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: item.path, new_name: newName }),
+    const renamed = await apiPost<ProjectItem>('/api/v1/projects/rename', {
+      path: item.path,
+      new_name: newName,
     })
     // 写作模式下重命名当前打开的项目时，同步项目头标题与路径（后端返回新 path 与显示名）
     if (projectStore.current?.path === item.path) {
@@ -161,7 +160,7 @@ async function confirmDeleteFolder() {
   if (!item) return
   try {
     await shell.trashItem(item.path)
-    await apiFetch(`/api/v1/projects?path=${encodeURIComponent(item.path)}`, { method: 'DELETE' })
+    await apiPost('/api/v1/projects/remove', { path: item.path })
     // 写作模式下删除当前打开的项目时，退回列表模式
     if (projectStore.current?.path === item.path) projectStore.close()
     await refresh()

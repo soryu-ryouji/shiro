@@ -4,7 +4,7 @@
 // 切换文稿/卸载前先 flush 保存；磁盘外部变动（其他编辑器/同步盘/AI 写稿）经 daemon 监听推送，由 onExternalFileChange 回调重载。
 // 排版对齐：正文首行与次栏列表首项同高（顶栏 40px + 标签页条 36px + 间距 24px = .cm-content 上内边距 24px）。
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { apiFetch } from '../api'
+import { apiPost } from '../api'
 import { projectStore, onExternalFileChange } from '../stores/project'
 import { countWords, countStrategy } from '../utils/wordcount'
 import { editorParaMode, outlineMode } from '../utils/font'
@@ -37,10 +37,10 @@ async function flushSave() {
   pending = null
   projectStore.saveState = 'saving'
   try {
-    await apiFetch<FileContent>('/api/v1/projects/file', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: projectStore.current.path, file, content }),
+    await apiPost<FileContent>('/api/v1/projects/file/write', {
+      path: projectStore.current.path,
+      file,
+      content,
     })
     // 保存期间又有输入（pending 重新有值）时保持 saving，等下一轮 flush
     projectStore.saveState = pending === null ? 'saved' : 'saving'
@@ -378,9 +378,10 @@ async function loadFile() {
   if (!view || !file || !projectStore.current) return
   loading.value = true
   try {
-    const res = await apiFetch<FileContent>(
-      `/api/v1/projects/file?path=${encodeURIComponent(projectStore.current.path)}&file=${encodeURIComponent(file)}`,
-    )
+    const res = await apiPost<FileContent>('/api/v1/projects/file/read', {
+      path: projectStore.current.path,
+      file,
+    })
     view.setState(makeState(res.content ?? '', isPlainFile.value))
     collectOutline(view.state)
     selectedCount.value = 0

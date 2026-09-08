@@ -3,7 +3,7 @@
 // 顶栏（窗口拖拽区）：右侧筛选（按标题子串过滤）、排序（名称/修改时间升降序）与新建（列表首行内联命名）；下方目录名横带（左下对齐 + 底部横线）。
 // 每项展示：时间 + 标题 + 正文预览（daemon excerpts 接口，剥离 markdown 取开头约 160 字，两行截断）。
 import { computed, nextTick, ref, watch } from 'vue'
-import { apiFetch } from '../api'
+import { apiPost } from '../api'
 import { hasShell, isMac, shell } from '../platform'
 import { findDir, projectStore, type TreeNode } from '../stores/project'
 import { stripSheetExt } from '../utils/sheet'
@@ -41,8 +41,9 @@ async function refreshExcerpts() {
     return
   }
   try {
-    const res = await apiFetch<components['schemas']['ExcerptsResponse']>(
-      `/api/v1/projects/excerpts?path=${encodeURIComponent(project.path)}&dir=${encodeURIComponent(projectStore.selectedDir)}`,
+    const res = await apiPost<components['schemas']['ExcerptsResponse']>(
+      '/api/v1/projects/excerpts',
+      { path: project.path, dir: projectStore.selectedDir },
     )
     const map: Record<string, string> = {}
     for (const it of res.excerpts ?? []) map[it.file] = it.excerpt
@@ -179,11 +180,7 @@ async function confirmNaming() {
   if (!project) return
   const file = `${projectStore.selectedDir ? projectStore.selectedDir + '/' : ''}${name}.md`
   try {
-    await apiFetch('/api/v1/projects/file', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: project.path, file }),
-    })
+    await apiPost('/api/v1/projects/file/create', { path: project.path, file })
     await projectStore.refreshTree()
     projectStore.openFile(file)
   } catch (e) {

@@ -1,6 +1,6 @@
 // 当前打开项目的写作状态（单例 reactive，规模还小不引 Pinia）
 import { reactive } from 'vue'
-import { apiFetch } from '../api'
+import { apiPost } from '../api'
 import { watchProject, type WatchEventData } from '../utils/fileWatch'
 import type { components } from '../api-types'
 
@@ -41,7 +41,10 @@ export const projectStore = reactive({
     }
     // 监听目录变动（外部编辑/同步盘/AI 写稿）；切换项目先停旧监听
     stopWatch?.()
-    stopWatch = watchProject(project.path, (e) => void handleFsChange(e))
+    stopWatch = watchProject(project.path, {
+      onEvent: (e) => void handleFsChange(e),
+      onAuthError: () => console.warn('[shiro] 目录监听鉴权失败，已停止重连'),
+    })
   },
 
   close() {
@@ -82,9 +85,9 @@ export const projectStore = reactive({
 
   async refreshTree() {
     if (!this.current) return
-    const res = await apiFetch<components['schemas']['TreeResponse']>(
-      `/api/v1/projects/tree?path=${encodeURIComponent(this.current.path)}`,
-    )
+    const res = await apiPost<components['schemas']['TreeResponse']>('/api/v1/projects/tree', {
+      path: this.current.path,
+    })
     const children = res.children ?? []
     // 内容一致不替换：避免监听推送/手动操作引发的重复刷新触发下游 watcher（文稿预览等）
     if (JSON.stringify(children) === JSON.stringify(this.tree)) return
@@ -95,11 +98,7 @@ export const projectStore = reactive({
   async createDir(parentRel: string, name: string) {
     if (!this.current) return
     const dir = parentRel ? `${parentRel}/${name}` : name
-    await apiFetch('/api/v1/projects/dir', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: this.current.path, dir }),
-    })
+    await apiPost('/api/v1/projects/dir/create', { path: this.current.path, dir })
     this.namingDir = null
     await this.refreshTree()
   },
@@ -107,10 +106,7 @@ export const projectStore = reactive({
   /** 删除目录（daemon 侧：空目录直删，非空移 .shiro/trash/） */
   async removeDir(rel: string) {
     if (!this.current) return
-    await apiFetch(
-      `/api/v1/projects/dir?path=${encodeURIComponent(this.current.path)}&dir=${encodeURIComponent(rel)}`,
-      { method: 'DELETE' },
-    )
+    await apiPost('/api/v1/projects/dir/delete', { path: this.current.path, dir: rel })
     // 选中目录/当前文稿/标签在被删子树内时回退
     if (this.selectedDir === rel || this.selectedDir.startsWith(rel + '/')) {
       this.selectedDir = rel.split('/').slice(0, -1).join('/')
@@ -125,10 +121,10 @@ export const projectStore = reactive({
   /** 重命名项目内条目（文件/目录）：选中目录/标签/当前文稿的路径前缀联动替换 */
   async renameEntry(rel: string, newName: string) {
     if (!this.current) return
-    await apiFetch('/api/v1/projects/entry/rename', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: this.current.path, rel, new_name: newName }),
+    await apiPost('/api/v1/projects/entry/rename', {
+      path: this.current.path,
+      rel,
+      new_name: newName,
     })
     const parent = rel.split('/').slice(0, -1).join('/')
     const newRel = parent ? `${parent}/${newName}` : newName
@@ -142,10 +138,7 @@ export const projectStore = reactive({
   /** 删除文稿（移 .shiro/trash/，可手动恢复） */
   async removeFile(rel: string) {
     if (!this.current) return
-    await apiFetch(
-      `/api/v1/projects/file?path=${encodeURIComponent(this.current.path)}&file=${encodeURIComponent(rel)}`,
-      { method: 'DELETE' },
-    )
+    await apiPost('/api/v1/projects/file/delete', { path: this.current.path, file: rel })
     this.tabs = this.tabs.filter((t) => t !== rel)
     if (this.currentFile === rel) this.currentFile = null
     await this.refreshTree()
@@ -172,9 +165,10 @@ async function handleFsChange(e: WatchEventData) {
   if (!file || !externalFileHandler) return
   if (e.changed.length > 0 && !e.changed.includes(file)) return
   try {
-    const res = await apiFetch<FileContent>(
-      `/api/v1/projects/file?path=${encodeURIComponent(project.path)}&file=${encodeURIComponent(file)}`,
-    )
+    const res = await apiPost<FileContent>('/api/v1/projects/file/read', {
+      path: project.path,
+      file,
+    })
     externalFileHandler(file, res.content)
   } catch {
     externalFileHandler(file, null)

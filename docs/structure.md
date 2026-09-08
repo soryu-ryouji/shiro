@@ -1,6 +1,6 @@
 # 项目结构总览
 
-面向开发者的代码地图：仓库布局、前后端分层与依赖方向、REST API 清单、关键数据流。
+面向开发者的代码地图：仓库布局、前后端分层与依赖方向、API 清单（统一 POST）、关键数据流。
 总体架构与部署形态见 [架构设计](./architecture.md)，技术选型见 [技术栈](./tech-stack.md)。
 
 ## 1. 仓库布局
@@ -46,7 +46,7 @@ shiro/
 │  状态层      stores/         前端状态 + API 调用                            │
 │  基础层      api.ts · platform.ts · utils/                                 │
 └────────────────────────────────────┬──────────────────────────────────────┘
-                                     │ HTTP：REST + SSE（Bearer token）
+                                     │ HTTP：POST + JSON（SSE 流式）· Bearer token
 ┌────────────────────────────────────▼──────────────────────────────────────┐
 │                        shiro-daemon（Rust，独立进程）                       │
 │  入口层   main.rs            CLI、AppState、监听                               │
@@ -108,7 +108,7 @@ main.rs
 | 面板 | `panels/ProjectPanel.vue` | 项目列表/目录树、新建/重命名/删除入口 |
 | 面板 | `panels/DatabasePanel.vue` · `ModelPanel.vue` | 各模块侧栏导航与列表 |
 | 组件 | `components/` | `Editor`（CodeMirror）、`EditorTabs`、`SheetList`、`TreeNode`、对话框（Preview/Prompt/Confirm/NewProject/Settings）、`SearchSelect`、`ContextMenu`、`Icon`、布局件（Sidebar/ActivityBar/TitleBar/WindowControls） |
-| 状态 | `stores/project.ts` | 当前项目、目录树、标签、文稿内容、SSE 监听订阅 |
+| 状态 | `stores/project.ts` | 当前项目、目录树、标签、文稿内容、目录监听订阅（fetch 流式 + 重连） |
 | 状态 | `stores/chat.ts` | 项目/会话列表、消息流（fetch 流式解析 SSE）、提案应用 |
 | 状态 | `stores/database.ts` | 人物库列表/详情/编辑 |
 | 状态 | `stores/model.ts` | 模型档案列表/默认项 |
@@ -121,8 +121,8 @@ main.rs
 ```text
 main.ts → App.vue ─→ Sidebar ─→ panels/
               └────→ views/ ─→ components/（展示与交互）
-                       └────→ stores/ ─→ api.ts ─→ daemon REST API
-                                  └────→ utils/fileWatch（SSE 订阅）
+                       └────→ stores/ ─→ api.ts（apiPost）─→ daemon API
+                                  └────→ utils/fileWatch（POST + fetch 流式订阅）
 ```
 
 约定：业务请求集中在 stores（`project` / `chat` / `database` / `model`）；项目文稿相关的轻量操作（保存、新建、删除、目录树）存在组件内直调 `apiFetch` 的情况（Editor / SheetList / ProjectPanel / NewProjectDialog），不强行绕一层 store。
@@ -142,97 +142,100 @@ shiro-app/src/api-types.d.ts（TS 类型，不手改）
 - 契约测试 `api::tests::openapi_json_in_sync` 校验固化文件与代码一致
 - 改 API 的固定动作：重新 dump → `gen:types` → `cargo test` → `typecheck`
 
-## 6. REST API
+## 6. API（统一 POST）
 
-### 鉴权与约定
+### 约定
 
-- 全部 `/api/*` 要求 `Authorization: Bearer <token>`；SSE（`EventSource` 无法自定义 header）走 `?key=` 查询参数
+- **全部 `/api/v1/*` 统一 POST + JSON body**（含读操作与 path 参数，避免路径进 URL）；唯一例外是 `GET /health` 与静态资源（基础设施探针）
+- 鉴权一律走 `Authorization: Bearer <token>`（SSE 也用 header，前端以 fetch 流式消费，非 EventSource）
 - 桌面版 token 由 Electron 启动时随机生成、env 传入不落盘；局域网 key 存 `~/.config/shiro/config.toml`
-- `GET /health` 与前端静态资源不鉴权
-- 路径参数中的项目路径为绝对路径，文件路径为项目内相对路径（daemon 侧拒绝 `..` 逃逸）
+- 项目路径为绝对路径，文件路径为项目内相对路径（daemon 侧拒绝 `..` 逃逸）
+- 方法不再承载语义，端点即操作：路径用动词后缀区分同资源的不同操作（`list` / `create` / `read` / `write` / `delete` / `save`）
 
 ### app
 
-| 方法 | 路径 | 说明 |
+| 路径 | 请求 | 说明 |
 | ---- | ---- | ---- |
-| GET | `/api/v1/app/startup` | 启动状态（当前直接 ready，为初始化流程预留） |
+| `POST /api/v1/app/startup` | `{}` | 启动状态（当前直接 ready，为初始化流程预留） |
 
 ### projects（项目与文稿）
 
-| 方法 | 路径 | 说明 |
+| 路径 | 请求 | 说明 |
 | ---- | ---- | ---- |
-| GET | `/api/v1/projects` | 项目列表（history.toml，最近打开在前） |
-| POST | `/api/v1/projects` | 登记已有文件夹为项目（VSCode 打开文件夹式） |
-| DELETE | `/api/v1/projects` | 删除项目记录（不删文件夹） |
-| POST | `/api/v1/projects/rename` | 重命名项目文件夹本体 |
-| GET | `/api/v1/projects/tree` | 目录树（目录 + `.md/.markdown/.txt`） |
-| GET | `/api/v1/projects/excerpts` | 目录内文稿正文预览（列表摘要用） |
-| GET | `/api/v1/projects/file` | 读取文稿 |
-| PUT | `/api/v1/projects/file` | 保存文稿（临时文件 + rename 原子覆盖） |
-| POST | `/api/v1/projects/file` | 新建文稿 |
-| DELETE | `/api/v1/projects/file` | 删除文稿（移入 `.shiro/trash/`） |
-| POST | `/api/v1/projects/dir` | 新建目录（幂等） |
-| DELETE | `/api/v1/projects/dir` | 删除目录（空目录直删，非空入回收站） |
-| POST | `/api/v1/projects/entry/rename` | 重命名文件/目录 |
-| GET | `/api/v1/projects/watch` | **SSE** 目录变动推送（防抖 300ms，`{"changed":[...]}`） |
+| `POST /api/v1/projects/list` | `{}` | 项目列表（history.toml，最近打开在前） |
+| `POST /api/v1/projects/create` | `{path, name?}` | 登记已有文件夹为项目（VSCode 打开文件夹式） |
+| `POST /api/v1/projects/remove` | `{path}` | 移除项目记录（不删文件夹） |
+| `POST /api/v1/projects/rename` | `{path, new_name}` | 重命名项目文件夹本体 |
+| `POST /api/v1/projects/tree` | `{path}` | 目录树（目录 + `.md/.markdown/.txt`） |
+| `POST /api/v1/projects/excerpts` | `{path, dir}` | 目录内文稿正文预览（列表摘要用） |
+| `POST /api/v1/projects/file/read` | `{path, file}` | 读取文稿 |
+| `POST /api/v1/projects/file/write` | `{path, file, content}` | 保存文稿（临时文件 + rename 原子覆盖） |
+| `POST /api/v1/projects/file/create` | `{path, file}` | 新建文稿 |
+| `POST /api/v1/projects/file/delete` | `{path, file}` | 删除文稿（移入 `.shiro/trash/`） |
+| `POST /api/v1/projects/dir/create` | `{path, dir}` | 新建目录（幂等） |
+| `POST /api/v1/projects/dir/delete` | `{path, dir}` | 删除目录（空目录直删，非空入回收站） |
+| `POST /api/v1/projects/entry/rename` | `{path, rel, new_name}` | 重命名文件/目录 |
+| `POST /api/v1/projects/watch` | `{path}` | **SSE** 目录变动推送（防抖 300ms，`{"changed":[...]}`；客户端 fetch 流式消费 + 自动重连） |
 
 ### chat（对话式修改项目文档）
 
-| 方法 | 路径 | 说明 |
+| 路径 | 请求 | 说明 |
 | ---- | ---- | ---- |
-| GET | `/api/v1/chat/sessions` | 会话列表 |
-| POST | `/api/v1/chat/sessions` | 新建会话 |
-| GET | `/api/v1/chat/sessions/{id}` | 会话详情（全部消息） |
-| DELETE | `/api/v1/chat/sessions/{id}` | 删除会话 |
-| POST | `/api/v1/chat/sessions/{id}/messages` | **SSE** 发消息流式生成：`delta` / `thinking` / `done`（含提案）/ `error`；断开即中止；同会话互斥（409） |
-| POST | `/api/v1/chat/sessions/{id}/apply` | 应用提案：整文件覆盖写盘 |
+| `POST /api/v1/chat/sessions/list` | `{path}` | 会话列表 |
+| `POST /api/v1/chat/sessions/create` | `{path, title?}` | 新建会话 |
+| `POST /api/v1/chat/sessions/get` | `{path, id}` | 会话详情（全部消息） |
+| `POST /api/v1/chat/sessions/delete` | `{path, id}` | 删除会话 |
+| `POST /api/v1/chat/sessions/messages` | `{path, id, content, attachments?}` | **SSE** 发消息流式生成：`delta` / `thinking` / `done`（含提案）/ `error`；断开即中止；同会话互斥（409） |
+| `POST /api/v1/chat/sessions/apply` | `{path, id, proposal_id}` | 应用提案：整文件覆盖写盘 |
 
 详见 [Chat 设计](./frontend/chat.md)。
 
 ### db（全局人物库）
 
-| 方法 | 路径 | 说明 |
+| 路径 | 请求 | 说明 |
 | ---- | ---- | ---- |
-| GET | `/api/v1/db/characters` | 角色列表 |
-| POST | `/api/v1/db/characters` | 新建角色卡骨架（同名自动追加 `-2/-3`） |
-| GET | `/api/v1/db/characters/{id}` | 角色详情（单文件简卡 / 目录深卡） |
-| PUT | `/api/v1/db/characters/{id}` | 保存角色卡（原子覆盖；解析失败也保存并返回提示） |
+| `POST /api/v1/db/characters/list` | `{}` | 角色列表 |
+| `POST /api/v1/db/characters/create` | `{name}` | 新建角色卡骨架（同名自动追加 `-2/-3`） |
+| `POST /api/v1/db/characters/get` | `{id}` | 角色详情（单文件简卡 / 目录深卡） |
+| `POST /api/v1/db/characters/save` | `{id, content}` | 保存角色卡（原子覆盖；解析失败也保存并返回提示） |
 
 ### model（模型档案）
 
-| 方法 | 路径 | 说明 |
+| 路径 | 请求 | 说明 |
 | ---- | ---- | ---- |
-| GET | `/api/v1/model/profiles` | 档案列表（含默认档案） |
-| POST | `/api/v1/model/profiles` | 注册/更新档案（同 key 覆盖；首个自动为默认） |
-| DELETE | `/api/v1/model/profiles/{key}` | 删除档案（默认项自动回退） |
-| POST | `/api/v1/model/profiles/{key}/test` | 测试连接（最小真实调用 ping） |
+| `POST /api/v1/model/profiles/list` | `{}` | 档案列表（含默认档案） |
+| `POST /api/v1/model/profiles/save` | `{key, base_url, model, protocol?, thinking?, api_key?}` | 注册/更新档案（同 key 覆盖；首个自动为默认） |
+| `POST /api/v1/model/profiles/delete` | `{key}` | 删除档案（默认项自动回退） |
+| `POST /api/v1/model/profiles/test` | `{key}` | 测试连接（最小真实调用 ping） |
 
 ### 其它
 
-| 方法 | 路径 | 说明 |
-| ---- | ---- | ---- |
-| GET | `/health` | 存活探测（无鉴权） |
-| — | `/{任意路径}` | `--serve-dir` 存在时挂载前端静态资源，SPA 回退 `index.html`（无鉴权） |
+| 路径 | 说明 |
+| ---- | ---- |
+| `GET /health` | 存活探测（无鉴权） |
+| `GET /{任意路径}` | `--serve-dir` 存在时挂载前端静态资源，SPA 回退 `index.html`（无鉴权） |
+
+冒烟：`./tools/smoke-api.sh`（临时 HOME 隔离，逐端点校验，不触发真实 LLM 调用）。
 
 ## 7. 关键数据流
 
 **编辑保存与外部变更同步**
 
 ```text
-Editor 输入 → 防抖 → projectStore 保存（PUT /projects/file）
+Editor 输入 → 防抖 → projectStore 保存（POST /projects/file/write）
   → daemon 临时文件 + rename 原子写
-  → notify 防抖 300ms → SSE /projects/watch 推送
+  → notify 防抖 300ms → SSE /projects/watch 推送（POST + fetch 流式，断线自动重连）
   → 前端刷新目录树；当前文稿被外部修改时重载编辑器
 ```
 
 **Chat 生成与提案应用**
 
 ```text
-ChatView 发消息 → POST /chat/sessions/{id}/messages（fetch 流式读 SSE）
+ChatView 发消息 → POST /chat/sessions/messages（fetch 流式读 SSE）
   → chat/mod 组装上下文（system + 目录树 + 最近 20 条历史 + 引用文件）
   → llm::chat_stream（重试/双协议）→ delta/thinking 帧转发前端
   → 流结束：解析 shiro-edit 提案 → 助手消息落盘（.shiro/chat/<id>.json）→ done 帧
-  → 用户点「应用」→ POST /apply → 整文件覆盖写盘 → 文件监听 SSE 通知前端刷新
+  → 用户点「应用」→ POST /chat/sessions/apply → 整文件覆盖写盘 → 文件监听 SSE 通知前端刷新
 ```
 
 ## 8. 构建、测试与发布入口

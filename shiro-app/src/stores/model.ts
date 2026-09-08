@@ -2,7 +2,7 @@
 // 界面分区：注册分区「模型导入」（注册表单）、管理分区「模型管理」（档案列表）。
 // 供应商预设学 pi 内置目录：模型清单完整内置，端点与协议不暴露给用户。
 import { reactive } from 'vue'
-import { apiFetch } from '../api'
+import { apiPost } from '../api'
 import type { components } from '../api-types'
 
 export type ProfileSummary = components['schemas']['ProfileSummary']
@@ -211,7 +211,7 @@ export const modelStore = reactive({
     this.loading = true
     this.error = ''
     try {
-      const res = await apiFetch<ProfileListResponse>('/api/v1/model/profiles')
+      const res = await apiPost<ProfileListResponse>('/api/v1/model/profiles/list')
       this.profiles = res.profiles ?? []
       this.defaultKey = res.default_key ?? null
       this.loaded = true
@@ -277,17 +277,13 @@ export const modelStore = reactive({
     this.error = ''
     this.savedOk = false
     try {
-      const res = await apiFetch<ProfileListResponse>('/api/v1/model/profiles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          key,
-          base_url: this.baseUrl.trim(),
-          model: this.model.trim(),
-          protocol: this.protocol,
-          thinking: this.thinking || undefined,
-          api_key: this.apiKey.trim() || undefined,
-        }),
+      const res = await apiPost<ProfileListResponse>('/api/v1/model/profiles/save', {
+        key,
+        base_url: this.baseUrl.trim(),
+        model: this.model.trim(),
+        protocol: this.protocol,
+        thinking: this.thinking || undefined,
+        api_key: this.apiKey.trim() || undefined,
       })
       this.profiles = res.profiles ?? []
       this.defaultKey = res.default_key ?? null
@@ -310,9 +306,9 @@ export const modelStore = reactive({
     this.testing[key] = 'run'
     this.testResults[key] = undefined
     try {
-      const res = await apiFetch<components['schemas']['ProfileTestResponse']>(
-        `/api/v1/model/profiles/${encodeURIComponent(key)}/test`,
-        { method: 'POST' },
+      const res = await apiPost<components['schemas']['ProfileTestResponse']>(
+        '/api/v1/model/profiles/test',
+        { key },
       )
       this.testResults[key] = { ok: res.ok, message: res.message }
     } catch (e) {
@@ -328,10 +324,7 @@ export const modelStore = reactive({
   async remove(key: string) {
     this.error = ''
     try {
-      const res = await apiFetch<ProfileListResponse>(
-        `/api/v1/model/profiles/${encodeURIComponent(key)}`,
-        { method: 'DELETE' },
-      )
+      const res = await apiPost<ProfileListResponse>('/api/v1/model/profiles/delete', { key })
       this.profiles = res.profiles ?? []
       this.defaultKey = res.default_key ?? null
     } catch (e) {

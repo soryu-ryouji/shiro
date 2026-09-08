@@ -39,14 +39,16 @@ V1 无 token 预算制，靠上述截断上限控制；预算制与摘要链见 
 
 ## API（tag `chat`，见 `shiro-daemon/src/chat/api.rs`）
 
-| 方法 | 路径 | 说明 |
+全部为 `POST` + JSON body（约定见 [项目结构总览](../structure.md#6-api统一-post)）：
+
+| 路径 | 请求 | 说明 |
 | ---- | ---- | ---- |
-| GET | `/api/v1/chat/sessions?path=` | 会话列表（最近更新在前） |
-| POST | `/api/v1/chat/sessions` | 新建会话 `{path, title?}` |
-| GET | `/api/v1/chat/sessions/{id}?path=` | 会话详情（全部消息） |
-| DELETE | `/api/v1/chat/sessions/{id}?path=` | 删除会话 |
-| POST | `/api/v1/chat/sessions/{id}/messages` | 发消息，SSE 流式响应（delta / thinking / done / error 帧）；客户端断开即中止；同一会话同时只允许一个生成（409） |
-| POST | `/api/v1/chat/sessions/{id}/apply` | 应用提案 `{path, proposal_id}`，整文件覆盖写盘 |
+| `POST /api/v1/chat/sessions/list` | `{path}` | 会话列表（最近更新在前） |
+| `POST /api/v1/chat/sessions/create` | `{path, title?}` | 新建会话 |
+| `POST /api/v1/chat/sessions/get` | `{path, id}` | 会话详情（全部消息） |
+| `POST /api/v1/chat/sessions/delete` | `{path, id}` | 删除会话 |
+| `POST /api/v1/chat/sessions/messages` | `{path, id, content, attachments?}` | 发消息，SSE 流式响应（delta / thinking / done / error 帧）；客户端断开即中止；同一会话同时只允许一个生成（409） |
+| `POST /api/v1/chat/sessions/apply` | `{path, id, proposal_id}` | 应用提案，整文件覆盖写盘 |
 
 ## 已知边界（V1）
 

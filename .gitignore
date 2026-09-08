@@ -4,3 +4,4 @@ dist-electron/
 target/
 out/
 shiro-app/resources/
+tools/.tmp/

@@ -1,7 +1,8 @@
 // Chat（对话式修改项目文档）状态：项目选择 / 会话列表 / SSE 消息流 / 提案应用。
 // API 见 shiro-daemon/src/chat/api.rs；提案为整文件覆盖，用户确认后写盘。
 import { reactive } from 'vue'
-import { apiFetch, apiBase, apiToken } from '../api'
+import { apiPost, apiBase, apiToken } from '../api'
+import { createSseParser } from '../utils/sse'
 import type { components } from '../api-types'
 import { projectStore, type TreeNode } from './project'
 
@@ -45,7 +46,7 @@ export const chatStore = reactive({
 
   /** 拉项目列表；默认选中写作页正在打开的项目 */
   async loadProjects() {
-    const res = await apiFetch<{ projects: ProjectItem[] }>('/api/v1/projects')
+    const res = await apiPost<{ projects: ProjectItem[] }>('/api/v1/projects/list')
     this.projects = res.projects.filter((p) => p.exists)
     const opened = projectStore.current
     if (opened && this.projects.some((p) => p.path === opened.path)) {
@@ -69,9 +70,9 @@ export const chatStore = reactive({
   async refreshSessions() {
     if (!this.projectPath) return
     try {
-      const res = await apiFetch<{ sessions: SessionSummary[] }>(
-        `/api/v1/chat/sessions?path=${encodeURIComponent(this.projectPath)}`,
-      )
+      const res = await apiPost<{ sessions: SessionSummary[] }>('/api/v1/chat/sessions/list', {
+        path: this.projectPath,
+      })
       this.sessions = res.sessions
       this.sessionsLoaded = true
     } catch (e) {
@@ -82,9 +83,9 @@ export const chatStore = reactive({
   /** 目录树拉平为文稿相对路径列表（附件选择用） */
   async loadFiles() {
     if (!this.projectPath) return
-    const res = await apiFetch<{ children: TreeNode[] }>(
-      `/api/v1/projects/tree?path=${encodeURIComponent(this.projectPath)}`,
-    )
+    const res = await apiPost<{ children: TreeNode[] }>('/api/v1/projects/tree', {
+      path: this.projectPath,
+    })
     const out: string[] = []
     const walk = (nodes: TreeNode[]) => {
       for (const n of nodes) {
@@ -100,9 +101,10 @@ export const chatStore = reactive({
     if (this.streaming) return
     this.error = ''
     try {
-      this.session = await apiFetch<SessionDetail>(
-        `/api/v1/chat/sessions/${encodeURIComponent(id)}?path=${encodeURIComponent(this.projectPath)}`,
-      )
+      this.session = await apiPost<SessionDetail>('/api/v1/chat/sessions/get', {
+        path: this.projectPath,
+        id,
+      })
     } catch (e) {
       this.error = String(e)
     }
@@ -112,10 +114,8 @@ export const chatStore = reactive({
     if (!this.projectPath) return
     this.error = ''
     try {
-      this.session = await apiFetch<SessionDetail>('/api/v1/chat/sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: this.projectPath }),
+      this.session = await apiPost<SessionDetail>('/api/v1/chat/sessions/create', {
+        path: this.projectPath,
       })
       await this.refreshSessions()
     } catch (e) {
@@ -125,10 +125,7 @@ export const chatStore = reactive({
 
   async removeSession(id: string) {
     try {
-      await apiFetch(
-        `/api/v1/chat/sessions/${encodeURIComponent(id)}?path=${encodeURIComponent(this.projectPath)}`,
-        { method: 'DELETE' },
-      )
+      await apiPost('/api/v1/chat/sessions/delete', { path: this.projectPath, id })
       if (this.session?.id === id) this.session = null
       await this.refreshSessions()
     } catch (e) {
@@ -156,15 +153,12 @@ export const chatStore = reactive({
     const ctrl = new AbortController()
     this.abort = ctrl
     try {
-      const res = await fetch(
-        `${apiBase}/api/v1/chat/sessions/${encodeURIComponent(sid)}/messages`,
-        {
-          method: 'POST',
-          signal: ctrl.signal,
-          headers: { Authorization: `Bearer ${apiToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: this.projectPath, content, attachments }),
-        },
-      )
+      const res = await fetch(`${apiBase}/api/v1/chat/sessions/messages`, {
+        method: 'POST',
+        signal: ctrl.signal,
+        headers: { Authorization: `Bearer ${apiToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: this.projectPath, id: sid, content, attachments }),
+      })
       if (!res.ok || !res.body) {
         // 4xx 带错误文案（如模型未配置），优先展示
         let detail = `HTTP ${res.status}`
@@ -178,22 +172,17 @@ export const chatStore = reactive({
       }
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
-      let buf = ''
+      const parse = createSseParser((e) => {
+        try {
+          this.handleFrame(JSON.parse(e.data) as StreamFrame)
+        } catch {
+          // 非 JSON 帧：忽略
+        }
+      })
       for (;;) {
         const { done, value } = await reader.read()
         if (done) break
-        buf += decoder.decode(value, { stream: true })
-        // SSE 帧：data 行 + 空行分隔；keep-alive 注释行（: ping）不匹配 data: 被跳过
-        let idx: number
-        while ((idx = buf.indexOf('\n\n')) >= 0) {
-          const frame = buf.slice(0, idx)
-          buf = buf.slice(idx + 2)
-          for (const line of frame.split('\n')) {
-            if (!line.startsWith('data:')) continue
-            const payload = line.slice(5).trim()
-            if (payload) this.handleFrame(JSON.parse(payload) as StreamFrame)
-          }
-        }
+        parse(decoder.decode(value, { stream: true }))
       }
     } catch (e) {
       // 主动中止不报错（daemon 侧也不保存部分回复）
@@ -233,14 +222,11 @@ export const chatStore = reactive({
     if (!this.session || p.applied) return
     this.error = ''
     try {
-      const res = await apiFetch<{ proposal: Proposal }>(
-        `/api/v1/chat/sessions/${encodeURIComponent(this.session.id)}/apply`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: this.projectPath, proposal_id: p.id }),
-        },
-      )
+      const res = await apiPost<{ proposal: Proposal }>('/api/v1/chat/sessions/apply', {
+        path: this.projectPath,
+        id: this.session.id,
+        proposal_id: p.id,
+      })
       // 就地更新（reactive 深层替换字段，卡片状态即时变化）
       for (const msg of this.session.messages) {
         const hit = msg.proposals?.find((x) => x.id === res.proposal.id)

@@ -1,7 +1,7 @@
 use crate::watch;
 use axum::{
     Json, Router,
-    extract::{Query, Request, State},
+    extract::{Request, State},
     http::{StatusCode, header},
     middleware::Next,
     response::Response,
@@ -14,7 +14,7 @@ use std::time::Duration;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
 use tower_http::services::{ServeDir, ServeFile};
-use utoipa::{IntoParams, Modify, ToSchema};
+use utoipa::{Modify, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 #[derive(Clone)]
@@ -42,7 +42,7 @@ pub struct StartupResponse {
 /// 启动状态。当前无后台初始化流程，直接返回 ready；
 /// 后续加入初始化流程后按 starting → ready/error 流转。
 #[utoipa::path(
-    get,
+    post,
     path = "/api/v1/app/startup",
     tag = "app",
     responses(
@@ -180,8 +180,8 @@ pub(crate) fn internal_error(e: std::io::Error) -> ApiError {
 
 /// 项目列表（history.toml 记录，最近打开在前）
 #[utoipa::path(
-    get,
-    path = "/api/v1/projects",
+    post,
+    path = "/api/v1/projects/list",
     tag = "projects",
     responses(
         (status = 200, description = "项目列表", body = ProjectListResponse),
@@ -240,7 +240,7 @@ fn write_project_name(target: &Path, name: &str) -> Result<(), ApiError> {
 /// 项目显示名写入 .shiro/project.toml 的 name（与文件夹名解耦）；留空则保留已有或用文件夹名。
 #[utoipa::path(
     post,
-    path = "/api/v1/projects",
+    path = "/api/v1/projects/create",
     tag = "projects",
     request_body = CreateProjectRequest,
     responses(
@@ -302,27 +302,27 @@ fn register_project(target: &Path, display_name: Option<&str>) -> Result<String,
     Ok(key)
 }
 
-#[derive(Deserialize, IntoParams)]
-pub struct RemoveProjectQuery {
+#[derive(Deserialize, ToSchema)]
+pub struct RemoveProjectRequest {
     /// 要移除记录的项目路径（只删记录，不删文件夹）
-    path: String,
+    pub path: String,
 }
 
 /// 删除项目记录（只从 history.toml 移除，不删除文件夹本身）
 #[utoipa::path(
-    delete,
-    path = "/api/v1/projects",
+    post,
+    path = "/api/v1/projects/remove",
     tag = "projects",
-    params(RemoveProjectQuery),
+    request_body = RemoveProjectRequest,
     responses(
         (status = 204, description = "已删除"),
         (status = 401, description = "未鉴权")
     ),
     security(("bearer_token" = []))
 )]
-async fn remove_project(Query(query): Query<RemoveProjectQuery>) -> StatusCode {
+async fn remove_project(Json(req): Json<RemoveProjectRequest>) -> StatusCode {
     let mut history = load_history();
-    history.projects.retain(|e| e.path != query.path);
+    history.projects.retain(|e| e.path != req.path);
     let _ = save_history(&history);
     StatusCode::NO_CONTENT
 }
@@ -411,10 +411,10 @@ fn build_tree(dir: &Path, root: &Path) -> Vec<TreeNode> {
     dirs
 }
 
-#[derive(Deserialize, IntoParams)]
-pub struct TreeQuery {
+#[derive(Deserialize, ToSchema)]
+pub struct TreeRequest {
     /// 项目根目录绝对路径
-    path: String,
+    pub path: String,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -424,10 +424,10 @@ pub struct TreeResponse {
 
 /// 项目目录树（目录与文稿文件；目录在前，文件名排序）
 #[utoipa::path(
-    get,
+    post,
     path = "/api/v1/projects/tree",
     tag = "projects",
-    params(TreeQuery),
+    request_body = TreeRequest,
     responses(
         (status = 200, description = "目录树", body = TreeResponse),
         (status = 400, description = "项目目录不存在", body = ErrorResponse),
@@ -435,8 +435,8 @@ pub struct TreeResponse {
     ),
     security(("bearer_token" = []))
 )]
-async fn project_tree(Query(q): Query<TreeQuery>) -> Result<Json<TreeResponse>, ApiError> {
-    let root = PathBuf::from(&q.path);
+async fn project_tree(Json(req): Json<TreeRequest>) -> Result<Json<TreeResponse>, ApiError> {
+    let root = PathBuf::from(&req.path);
     if !root.is_dir() {
         return Err(bad_request("项目目录不存在"));
     }
@@ -445,12 +445,12 @@ async fn project_tree(Query(q): Query<TreeQuery>) -> Result<Json<TreeResponse>, 
     }))
 }
 
-#[derive(Deserialize, IntoParams)]
-pub struct ExcerptsQuery {
+#[derive(Deserialize, ToSchema)]
+pub struct ExcerptsRequest {
     /// 项目根目录绝对路径
-    path: String,
+    pub path: String,
     /// 项目内相对路径（'' = 项目根）
-    dir: String,
+    pub dir: String,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -580,10 +580,10 @@ pub(crate) fn excerpt_from_content(content: &str, max_chars: usize, is_markdown:
 
 /// 目录内全部文稿的正文预览（每篇取开头几行，Ulysses 式列表）
 #[utoipa::path(
-    get,
+    post,
     path = "/api/v1/projects/excerpts",
     tag = "projects",
-    params(ExcerptsQuery),
+    request_body = ExcerptsRequest,
     responses(
         (status = 200, description = "预览列表", body = ExcerptsResponse),
         (status = 400, description = "路径非法", body = ErrorResponse),
@@ -592,18 +592,18 @@ pub(crate) fn excerpt_from_content(content: &str, max_chars: usize, is_markdown:
     security(("bearer_token" = []))
 )]
 async fn project_excerpts(
-    Query(q): Query<ExcerptsQuery>,
+    Json(req): Json<ExcerptsRequest>,
 ) -> Result<Json<ExcerptsResponse>, ApiError> {
     const HEAD_BYTES: usize = 4096;
     const MAX_CHARS: usize = 160;
-    let root = PathBuf::from(&q.path);
+    let root = PathBuf::from(&req.path);
     if !root.is_dir() {
         return Err(bad_request("项目目录不存在"));
     }
-    let dir = if q.dir.is_empty() {
+    let dir = if req.dir.is_empty() {
         root.clone()
     } else {
-        let d = resolve_inside(&root, &q.dir)?;
+        let d = resolve_inside(&root, &req.dir)?;
         if !d.is_dir() {
             return Err(bad_request("目录不存在"));
         }
@@ -636,12 +636,12 @@ async fn project_excerpts(
     Ok(Json(ExcerptsResponse { excerpts }))
 }
 
-#[derive(Deserialize, IntoParams)]
-pub struct ReadFileQuery {
+#[derive(Deserialize, ToSchema)]
+pub struct ReadFileRequest {
     /// 项目根目录绝对路径
-    path: String,
+    pub path: String,
     /// 项目内相对路径（如 正文/第一卷/001 序章.md）
-    file: String,
+    pub file: String,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -662,10 +662,10 @@ pub(crate) fn file_mtime(path: &Path) -> u64 {
 
 /// 读取文稿内容
 #[utoipa::path(
-    get,
-    path = "/api/v1/projects/file",
+    post,
+    path = "/api/v1/projects/file/read",
     tag = "projects",
-    params(ReadFileQuery),
+    request_body = ReadFileRequest,
     responses(
         (status = 200, description = "文稿内容", body = FileContent),
         (status = 400, description = "路径非法", body = ErrorResponse),
@@ -674,8 +674,8 @@ pub(crate) fn file_mtime(path: &Path) -> u64 {
     ),
     security(("bearer_token" = []))
 )]
-async fn read_project_file(Query(q): Query<ReadFileQuery>) -> Result<Json<FileContent>, ApiError> {
-    let target = resolve_inside(&PathBuf::from(&q.path), &q.file)?;
+async fn read_project_file(Json(req): Json<ReadFileRequest>) -> Result<Json<FileContent>, ApiError> {
+    let target = resolve_inside(&PathBuf::from(&req.path), &req.file)?;
     if !target.is_file() {
         return Err((
             StatusCode::NOT_FOUND,
@@ -702,8 +702,8 @@ pub struct WriteFileRequest {
 
 /// 保存文稿：同目录临时文件 + rename 原子覆盖，写入中断不腐蚀已有正文（见 storage.md 备份与快照）
 #[utoipa::path(
-    put,
-    path = "/api/v1/projects/file",
+    post,
+    path = "/api/v1/projects/file/write",
     tag = "projects",
     request_body = WriteFileRequest,
     responses(
@@ -738,7 +738,7 @@ pub struct CreateFileRequest {
 /// 新建文稿（空文件）
 #[utoipa::path(
     post,
-    path = "/api/v1/projects/file",
+    path = "/api/v1/projects/file/create",
     tag = "projects",
     request_body = CreateFileRequest,
     responses(
@@ -785,7 +785,7 @@ pub struct CreateDirRequest {
 /// 新建目录（幂等：已存在返回 200）
 #[utoipa::path(
     post,
-    path = "/api/v1/projects/dir",
+    path = "/api/v1/projects/dir/create",
     tag = "projects",
     request_body = CreateDirRequest,
     responses(
@@ -805,20 +805,20 @@ async fn create_project_dir(Json(req): Json<CreateDirRequest>) -> Result<StatusC
     Ok(StatusCode::CREATED)
 }
 
-#[derive(Deserialize, IntoParams)]
-pub struct RemoveDirQuery {
+#[derive(Deserialize, ToSchema)]
+pub struct RemoveDirRequest {
     /// 项目根目录绝对路径
-    path: String,
+    pub path: String,
     /// 项目内相对路径（不允许根目录与 .shiro）
-    dir: String,
+    pub dir: String,
 }
 
 /// 删除目录：空目录直接删除；非空目录移入项目回收站（.shiro/trash/，可手动恢复）
 #[utoipa::path(
-    delete,
-    path = "/api/v1/projects/dir",
+    post,
+    path = "/api/v1/projects/dir/delete",
     tag = "projects",
-    params(RemoveDirQuery),
+    request_body = RemoveDirRequest,
     responses(
         (status = 204, description = "已删除"),
         (status = 400, description = "路径非法或受保护", body = ErrorResponse),
@@ -827,10 +827,10 @@ pub struct RemoveDirQuery {
     ),
     security(("bearer_token" = []))
 )]
-async fn remove_project_dir(Query(q): Query<RemoveDirQuery>) -> Result<StatusCode, ApiError> {
-    let root = PathBuf::from(&q.path);
-    let target = resolve_inside(&root, &q.dir)?;
-    if q.dir.split(['/', '\\']).next() == Some(".shiro") {
+async fn remove_project_dir(Json(req): Json<RemoveDirRequest>) -> Result<StatusCode, ApiError> {
+    let root = PathBuf::from(&req.path);
+    let target = resolve_inside(&root, &req.dir)?;
+    if req.dir.split(['/', '\\']).next() == Some(".shiro") {
         return Err(bad_request(".shiro 是 shiro 的工作目录，不能删除"));
     }
     if !target.is_dir() {
@@ -987,20 +987,20 @@ async fn rename_entry(Json(req): Json<RenameEntryRequest>) -> Result<StatusCode,
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[derive(Deserialize, IntoParams)]
-pub struct RemoveFileQuery {
+#[derive(Deserialize, ToSchema)]
+pub struct RemoveFileRequest {
     /// 项目根目录绝对路径
-    path: String,
+    pub path: String,
     /// 文稿相对路径
-    file: String,
+    pub file: String,
 }
 
 /// 删除文稿：移入项目回收站（.shiro/trash/，可手动恢复）
 #[utoipa::path(
-    delete,
-    path = "/api/v1/projects/file",
+    post,
+    path = "/api/v1/projects/file/delete",
     tag = "projects",
-    params(RemoveFileQuery),
+    request_body = RemoveFileRequest,
     responses(
         (status = 204, description = "已删除（移入回收站）"),
         (status = 400, description = "路径非法", body = ErrorResponse),
@@ -1009,9 +1009,9 @@ pub struct RemoveFileQuery {
     ),
     security(("bearer_token" = []))
 )]
-async fn remove_project_file(Query(q): Query<RemoveFileQuery>) -> Result<StatusCode, ApiError> {
-    let root = PathBuf::from(&q.path);
-    let target = resolve_inside(&root, &q.file)?;
+async fn remove_project_file(Json(req): Json<RemoveFileRequest>) -> Result<StatusCode, ApiError> {
+    let root = PathBuf::from(&req.path);
+    let target = resolve_inside(&root, &req.file)?;
     if !target.is_file() {
         return Err((
             StatusCode::NOT_FOUND,
@@ -1026,22 +1026,22 @@ async fn remove_project_file(Query(q): Query<RemoveFileQuery>) -> Result<StatusC
 
 // ---- 项目目录监听（SSE 推送；实现见 watch.rs，供编辑器外部变动重载，后续 AI 写稿可订阅同一 Hub） ----
 
-#[derive(Deserialize, IntoParams)]
-pub struct WatchQuery {
+#[derive(Deserialize, ToSchema)]
+pub struct WatchRequest {
     /// 项目根目录绝对路径
-    path: String,
+    pub path: String,
 }
 
 /// 监听项目目录变动：SSE 推送防抖 300ms 后的变更相对路径集合（`.` 开头路径段与临时文件已过滤）。
 /// 每帧 data 为 JSON：`{"changed":["正文/a.md"]}`；changed 为空数组表示事件滞后溢出，订阅方应全量刷新。
-/// 鉴权走 `?key=` 查询参数（EventSource 无法自定义 header）。监听随连接建立而启动、所有订阅断开后停止。
+/// 监听随连接建立而启动、所有订阅断开后停止。
 #[utoipa::path(
-    get,
+    post,
     path = "/api/v1/projects/watch",
     tag = "projects",
-    params(WatchQuery),
+    request_body = WatchRequest,
     responses(
-        (status = 200, description = "SSE 事件流（text/event-stream）：data 为 {\"changed\":[...]}；鉴权走 ?key= 查询参数"),
+        (status = 200, description = "SSE 事件流（text/event-stream）：data 为 {\"changed\":[...]}"),
         (status = 400, description = "项目目录不存在", body = ErrorResponse),
         (status = 401, description = "未鉴权")
     ),
@@ -1049,9 +1049,9 @@ pub struct WatchQuery {
 )]
 async fn watch_project(
     State(state): State<AppState>,
-    Query(q): Query<WatchQuery>,
+    Json(req): Json<WatchRequest>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
-    let root = PathBuf::from(&q.path);
+    let root = PathBuf::from(&req.path);
     if !root.is_dir() {
         return Err(bad_request("项目目录不存在"));
     }
@@ -1079,13 +1079,7 @@ async fn auth(
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "));
-    // SSE 走 ?key= 查询参数（EventSource 无法自定义 header，见 docs/architecture.md）；
-    // key 约定为 URL 安全字符（hex/base64url），此处不做反转义
-    let query_token = req
-        .uri()
-        .query()
-        .and_then(|q| q.split('&').find_map(|pair| pair.strip_prefix("key=")));
-    match header_token.or(query_token) {
+    match header_token {
         Some(t) if t == state.token => Ok(next.run(req).await),
         _ => Err(StatusCode::UNAUTHORIZED),
     }
@@ -1120,20 +1114,19 @@ pub fn build_router(
 ) -> (Router, utoipa::openapi::OpenApi) {
     let (api_router, mut doc) = OpenApiRouter::new()
         .routes(routes!(startup))
-        .routes(routes!(list_projects, create_project, remove_project))
+        .routes(routes!(list_projects))
+        .routes(routes!(create_project))
+        .routes(routes!(remove_project))
         .routes(routes!(project_tree))
         .routes(routes!(project_excerpts))
-        .routes(routes!(
-            read_project_file,
-            write_project_file,
-            create_project_file
-        ))
-        .routes(routes!(create_project_dir, remove_project_dir))
-        // 注意：utoipa-axum 的 routes! 会把同一次调用的 handler 的 MethodRouter 合并成一个，
-        // 只能组合「同路径不同方法」；不同路径必须分开注册
+        .routes(routes!(read_project_file))
+        .routes(routes!(write_project_file))
+        .routes(routes!(create_project_file))
+        .routes(routes!(remove_project_file))
+        .routes(routes!(create_project_dir))
+        .routes(routes!(remove_project_dir))
         .routes(routes!(rename_project))
         .routes(routes!(rename_entry))
-        .routes(routes!(remove_project_file))
         .routes(routes!(watch_project))
         .routes(routes!(crate::assets::list_characters))
         .routes(routes!(crate::assets::get_character))

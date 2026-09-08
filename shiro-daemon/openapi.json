@@ -15,7 +15,7 @@
   },
   "paths": {
     "/api/v1/app/startup": {
-      "get": {
+      "post": {
         "tags": [
           "app"
         ],
@@ -43,37 +43,36 @@
         ]
       }
     },
-    "/api/v1/chat/sessions": {
-      "get": {
+    "/api/v1/chat/sessions/apply": {
+      "post": {
         "tags": [
           "chat"
         ],
-        "summary": "会话列表（最近更新在前）",
-        "operationId": "list_chat_sessions",
-        "parameters": [
-          {
-            "name": "path",
-            "in": "path",
-            "description": "项目根目录绝对路径",
-            "required": true,
-            "schema": {
-              "type": "string"
+        "summary": "应用提案：整文件覆盖写盘（父目录自动创建），标记 applied。写盘后文件监听自动推送前端刷新。",
+        "operationId": "apply_chat_proposal",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyProposalRequest"
+              }
             }
-          }
-        ],
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "会话列表",
+            "description": "已写入文件",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionListResponse"
+                  "$ref": "#/components/schemas/ApplyProposalResponse"
                 }
               }
             }
           },
           "400": {
-            "description": "项目目录不存在",
+            "description": "非法路径或提案已应用",
             "content": {
               "application/json": {
                 "schema": {
@@ -84,6 +83,16 @@
           },
           "401": {
             "description": "未鉴权"
+          },
+          "404": {
+            "description": "会话或提案不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -91,7 +100,9 @@
             "bearer_token": []
           }
         ]
-      },
+      }
+    },
+    "/api/v1/chat/sessions/create": {
       "post": {
         "tags": [
           "chat"
@@ -150,33 +161,65 @@
         ]
       }
     },
-    "/api/v1/chat/sessions/{id}": {
-      "get": {
+    "/api/v1/chat/sessions/delete": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "删除会话",
+        "operationId": "delete_chat_session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionRefRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "已删除"
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "会话不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/chat/sessions/get": {
+      "post": {
         "tags": [
           "chat"
         ],
         "summary": "会话详情（全部消息）",
         "operationId": "get_chat_session",
-        "parameters": [
-          {
-            "name": "path",
-            "in": "path",
-            "description": "项目根目录绝对路径",
-            "required": true,
-            "schema": {
-              "type": "string"
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionRefRequest"
+              }
             }
           },
-          {
-            "name": "id",
-            "in": "path",
-            "description": "会话 id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "会话详情",
@@ -207,81 +250,20 @@
             "bearer_token": []
           }
         ]
-      },
-      "delete": {
-        "tags": [
-          "chat"
-        ],
-        "summary": "删除会话",
-        "operationId": "delete_chat_session",
-        "parameters": [
-          {
-            "name": "path",
-            "in": "path",
-            "description": "项目根目录绝对路径",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "id",
-            "in": "path",
-            "description": "会话 id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "已删除"
-          },
-          "401": {
-            "description": "未鉴权"
-          },
-          "404": {
-            "description": "会话不存在",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer_token": []
-          }
-        ]
       }
     },
-    "/api/v1/chat/sessions/{id}/apply": {
+    "/api/v1/chat/sessions/list": {
       "post": {
         "tags": [
           "chat"
         ],
-        "summary": "应用提案：整文件覆盖写盘（父目录自动创建），标记 applied。写盘后文件监听自动推送前端刷新。",
-        "operationId": "apply_chat_proposal",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "会话 id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "summary": "会话列表（最近更新在前）",
+        "operationId": "list_chat_sessions",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ApplyProposalRequest"
+                "$ref": "#/components/schemas/ChatProjectRequest"
               }
             }
           },
@@ -289,17 +271,17 @@
         },
         "responses": {
           "200": {
-            "description": "已写入文件",
+            "description": "会话列表",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApplyProposalResponse"
+                  "$ref": "#/components/schemas/SessionListResponse"
                 }
               }
             }
           },
           "400": {
-            "description": "非法路径或提案已应用",
+            "description": "项目目录不存在",
             "content": {
               "application/json": {
                 "schema": {
@@ -310,16 +292,6 @@
           },
           "401": {
             "description": "未鉴权"
-          },
-          "404": {
-            "description": "会话或提案不存在",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -329,24 +301,13 @@
         ]
       }
     },
-    "/api/v1/chat/sessions/{id}/messages": {
+    "/api/v1/chat/sessions/messages": {
       "post": {
         "tags": [
           "chat"
         ],
         "summary": "发送消息并流式生成回复。响应为 SSE（text/event-stream），data 帧为 JSON：\n`{\"type\":\"delta\",\"text\":\"…\"}` 正文增量 / `{\"type\":\"thinking\",\"text\":\"…\"}` 思考增量 /\n`{\"type\":\"done\",\"message\":{…}}` 完成（完整助手消息，含解析出的提案）/\n`{\"type\":\"error\",\"message\":\"…\"}` 失败。\n客户端断开连接即中止生成（不保存部分回复）。同一会话同时只允许一个生成。",
         "operationId": "send_chat_message",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "会话 id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -392,34 +353,7 @@
         ]
       }
     },
-    "/api/v1/db/characters": {
-      "get": {
-        "tags": [
-          "db"
-        ],
-        "summary": "全局人物库角色列表",
-        "operationId": "list_characters",
-        "responses": {
-          "200": {
-            "description": "角色列表（按显示名排序）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CharacterListResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "未鉴权"
-          }
-        },
-        "security": [
-          {
-            "bearer_token": []
-          }
-        ]
-      },
+    "/api/v1/db/characters/create": {
       "post": {
         "tags": [
           "db"
@@ -478,24 +412,23 @@
         ]
       }
     },
-    "/api/v1/db/characters/{id}": {
-      "get": {
+    "/api/v1/db/characters/get": {
+      "post": {
         "tags": [
           "db"
         ],
         "summary": "角色详情（单文件简卡：frontmatter 字段 + 正文；目录深卡：index.md + 子文件列表）",
         "operationId": "get_character",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "角色 id（单文件卡去 .md 的文件名；深卡为目录名）",
-            "required": true,
-            "schema": {
-              "type": "string"
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetCharacterRequest"
+              }
             }
-          }
-        ],
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "角色详情",
@@ -536,24 +469,44 @@
             "bearer_token": []
           }
         ]
-      },
-      "put": {
+      }
+    },
+    "/api/v1/db/characters/list": {
+      "post": {
+        "tags": [
+          "db"
+        ],
+        "summary": "全局人物库角色列表",
+        "operationId": "list_characters",
+        "responses": {
+          "200": {
+            "description": "角色列表（按显示名排序）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CharacterListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/db/characters/save": {
+      "post": {
         "tags": [
           "db"
         ],
         "summary": "保存角色卡：临时文件 + rename 原子覆盖（同文稿保存）。\n宽容策略：解析失败也保存（用户手改中途不丢内容），但返回 parse_error 提示该卡会从列表消失。",
         "operationId": "save_character",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "角色 id（db/人物/ 下文件名去掉 .md）",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -616,8 +569,67 @@
         ]
       }
     },
-    "/api/v1/model/profiles": {
-      "get": {
+    "/api/v1/model/profiles/delete": {
+      "post": {
+        "tags": [
+          "model"
+        ],
+        "summary": "删除档案；删除默认档案时默认项回退到剩余第一个",
+        "operationId": "delete_profile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "已删除（含更新后列表）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "档案不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "写入失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/model/profiles/list": {
+      "post": {
         "tags": [
           "model"
         ],
@@ -643,7 +655,9 @@
             "bearer_token": []
           }
         ]
-      },
+      }
+    },
+    "/api/v1/model/profiles/save": {
       "post": {
         "tags": [
           "model"
@@ -702,84 +716,23 @@
         ]
       }
     },
-    "/api/v1/model/profiles/{key}": {
-      "delete": {
-        "tags": [
-          "model"
-        ],
-        "summary": "删除档案；删除默认档案时默认项回退到剩余第一个",
-        "operationId": "delete_profile",
-        "parameters": [
-          {
-            "name": "key",
-            "in": "path",
-            "description": "档案 key",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "已删除（含更新后列表）",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileListResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "未鉴权"
-          },
-          "404": {
-            "description": "档案不存在",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "写入失败",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer_token": []
-          }
-        ]
-      }
-    },
-    "/api/v1/model/profiles/{key}/test": {
+    "/api/v1/model/profiles/test": {
       "post": {
         "tags": [
           "model"
         ],
         "summary": "测试档案连接（发一个最小真实调用 ping；验证端点 + 密钥 + 模型 + 协议）",
         "operationId": "test_profile",
-        "parameters": [
-          {
-            "name": "key",
-            "in": "path",
-            "description": "档案 key",
-            "required": true,
-            "schema": {
-              "type": "string"
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileKeyRequest"
+              }
             }
-          }
-        ],
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "测试结果（ok 标识连通与否，message 说明）",
@@ -812,34 +765,7 @@
         ]
       }
     },
-    "/api/v1/projects": {
-      "get": {
-        "tags": [
-          "projects"
-        ],
-        "summary": "项目列表（history.toml 记录，最近打开在前）",
-        "operationId": "list_projects",
-        "responses": {
-          "200": {
-            "description": "项目列表",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProjectListResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "未鉴权"
-          }
-        },
-        "security": [
-          {
-            "bearer_token": []
-          }
-        ]
-      },
+    "/api/v1/projects/create": {
       "post": {
         "tags": [
           "projects"
@@ -893,40 +819,9 @@
             "bearer_token": []
           }
         ]
-      },
-      "delete": {
-        "tags": [
-          "projects"
-        ],
-        "summary": "删除项目记录（只从 history.toml 移除，不删除文件夹本身）",
-        "operationId": "remove_project",
-        "parameters": [
-          {
-            "name": "path",
-            "in": "path",
-            "description": "要移除记录的项目路径（只删记录，不删文件夹）",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "已删除"
-          },
-          "401": {
-            "description": "未鉴权"
-          }
-        },
-        "security": [
-          {
-            "bearer_token": []
-          }
-        ]
       }
     },
-    "/api/v1/projects/dir": {
+    "/api/v1/projects/dir/create": {
       "post": {
         "tags": [
           "projects"
@@ -969,33 +864,25 @@
             "bearer_token": []
           }
         ]
-      },
-      "delete": {
+      }
+    },
+    "/api/v1/projects/dir/delete": {
+      "post": {
         "tags": [
           "projects"
         ],
         "summary": "删除目录：空目录直接删除；非空目录移入项目回收站（.shiro/trash/，可手动恢复）",
         "operationId": "remove_project_dir",
-        "parameters": [
-          {
-            "name": "path",
-            "in": "path",
-            "description": "项目根目录绝对路径",
-            "required": true,
-            "schema": {
-              "type": "string"
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveDirRequest"
+              }
             }
           },
-          {
-            "name": "dir",
-            "in": "path",
-            "description": "项目内相对路径（不允许根目录与 .shiro）",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+          "required": true
+        },
         "responses": {
           "204": {
             "description": "已删除"
@@ -1094,32 +981,22 @@
       }
     },
     "/api/v1/projects/excerpts": {
-      "get": {
+      "post": {
         "tags": [
           "projects"
         ],
         "summary": "目录内全部文稿的正文预览（每篇取开头几行，Ulysses 式列表）",
         "operationId": "project_excerpts",
-        "parameters": [
-          {
-            "name": "path",
-            "in": "path",
-            "description": "项目根目录绝对路径",
-            "required": true,
-            "schema": {
-              "type": "string"
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExcerptsRequest"
+              }
             }
           },
-          {
-            "name": "dir",
-            "in": "path",
-            "description": "项目内相对路径（'' = 项目根）",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "预览列表",
@@ -1152,131 +1029,7 @@
         ]
       }
     },
-    "/api/v1/projects/file": {
-      "get": {
-        "tags": [
-          "projects"
-        ],
-        "summary": "读取文稿内容",
-        "operationId": "read_project_file",
-        "parameters": [
-          {
-            "name": "path",
-            "in": "path",
-            "description": "项目根目录绝对路径",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "file",
-            "in": "path",
-            "description": "项目内相对路径（如 正文/第一卷/001 序章.md）",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "文稿内容",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FileContent"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "路径非法",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "未鉴权"
-          },
-          "404": {
-            "description": "文件不存在",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer_token": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "projects"
-        ],
-        "summary": "保存文稿：同目录临时文件 + rename 原子覆盖，写入中断不腐蚀已有正文（见 storage.md 备份与快照）",
-        "operationId": "write_project_file",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/WriteFileRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "已保存，返回新修改时间",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FileContent"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "路径非法",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "未鉴权"
-          },
-          "500": {
-            "description": "写入失败",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer_token": []
-          }
-        ]
-      },
+    "/api/v1/projects/file/create": {
       "post": {
         "tags": [
           "projects"
@@ -1333,33 +1086,25 @@
             "bearer_token": []
           }
         ]
-      },
-      "delete": {
+      }
+    },
+    "/api/v1/projects/file/delete": {
+      "post": {
         "tags": [
           "projects"
         ],
         "summary": "删除文稿：移入项目回收站（.shiro/trash/，可手动恢复）",
         "operationId": "remove_project_file",
-        "parameters": [
-          {
-            "name": "path",
-            "in": "path",
-            "description": "项目根目录绝对路径",
-            "required": true,
-            "schema": {
-              "type": "string"
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveFileRequest"
+              }
             }
           },
-          {
-            "name": "file",
-            "in": "path",
-            "description": "文稿相对路径",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+          "required": true
+        },
         "responses": {
           "204": {
             "description": "已删除（移入回收站）"
@@ -1386,6 +1131,185 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/file/read": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "读取文稿内容",
+        "operationId": "read_project_file",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "文稿内容",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileContent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "路径非法",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "文件不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/file/write": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "保存文稿：同目录临时文件 + rename 原子覆盖，写入中断不腐蚀已有正文（见 storage.md 备份与快照）",
+        "operationId": "write_project_file",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WriteFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "已保存，返回新修改时间",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileContent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "路径非法",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "500": {
+            "description": "写入失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/list": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "项目列表（history.toml 记录，最近打开在前）",
+        "operationId": "list_projects",
+        "responses": {
+          "200": {
+            "description": "项目列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/remove": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "删除项目记录（只从 history.toml 移除，不删除文件夹本身）",
+        "operationId": "remove_project",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "已删除"
+          },
+          "401": {
+            "description": "未鉴权"
           }
         },
         "security": [
@@ -1465,23 +1389,22 @@
       }
     },
     "/api/v1/projects/tree": {
-      "get": {
+      "post": {
         "tags": [
           "projects"
         ],
         "summary": "项目目录树（目录与文稿文件；目录在前，文件名排序）",
         "operationId": "project_tree",
-        "parameters": [
-          {
-            "name": "path",
-            "in": "path",
-            "description": "项目根目录绝对路径",
-            "required": true,
-            "schema": {
-              "type": "string"
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TreeRequest"
+              }
             }
-          }
-        ],
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "目录树",
@@ -1515,26 +1438,25 @@
       }
     },
     "/api/v1/projects/watch": {
-      "get": {
+      "post": {
         "tags": [
           "projects"
         ],
-        "summary": "监听项目目录变动：SSE 推送防抖 300ms 后的变更相对路径集合（`.` 开头路径段与临时文件已过滤）。\n每帧 data 为 JSON：`{\"changed\":[\"正文/a.md\"]}`；changed 为空数组表示事件滞后溢出，订阅方应全量刷新。\n鉴权走 `?key=` 查询参数（EventSource 无法自定义 header）。监听随连接建立而启动、所有订阅断开后停止。",
+        "summary": "监听项目目录变动：SSE 推送防抖 300ms 后的变更相对路径集合（`.` 开头路径段与临时文件已过滤）。\n每帧 data 为 JSON：`{\"changed\":[\"正文/a.md\"]}`；changed 为空数组表示事件滞后溢出，订阅方应全量刷新。\n监听随连接建立而启动、所有订阅断开后停止。",
         "operationId": "watch_project",
-        "parameters": [
-          {
-            "name": "path",
-            "in": "path",
-            "description": "项目根目录绝对路径",
-            "required": true,
-            "schema": {
-              "type": "string"
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchRequest"
+              }
             }
-          }
-        ],
+          },
+          "required": true
+        },
         "responses": {
           "200": {
-            "description": "SSE 事件流（text/event-stream）：data 为 {\"changed\":[...]}；鉴权走 ?key= 查询参数"
+            "description": "SSE 事件流（text/event-stream）：data 为 {\"changed\":[...]}"
           },
           "400": {
             "description": "项目目录不存在",
@@ -1564,9 +1486,14 @@
         "type": "object",
         "required": [
           "path",
+          "id",
           "proposal_id"
         ],
         "properties": {
+          "id": {
+            "type": "string",
+            "description": "会话 id"
+          },
           "path": {
             "type": "string",
             "description": "项目根目录绝对路径"
@@ -1788,6 +1715,18 @@
           }
         }
       },
+      "ChatProjectRequest": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "项目根目录绝对路径"
+          }
+        }
+      },
       "CreateCharacterRequest": {
         "type": "object",
         "required": [
@@ -1880,6 +1819,23 @@
           }
         }
       },
+      "ExcerptsRequest": {
+        "type": "object",
+        "required": [
+          "path",
+          "dir"
+        ],
+        "properties": {
+          "dir": {
+            "type": "string",
+            "description": "项目内相对路径（'' = 项目根）"
+          },
+          "path": {
+            "type": "string",
+            "description": "项目根目录绝对路径"
+          }
+        }
+      },
       "ExcerptsResponse": {
         "type": "object",
         "required": [
@@ -1909,6 +1865,30 @@
             "format": "int64",
             "description": "修改时间（epoch 秒）",
             "minimum": 0
+          }
+        }
+      },
+      "GetCharacterRequest": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "角色 id（单文件卡去 .md 的文件名；深卡为目录名）"
+          }
+        }
+      },
+      "ProfileKeyRequest": {
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "档案 key"
           }
         }
       },
@@ -2069,6 +2049,69 @@
           }
         }
       },
+      "ReadFileRequest": {
+        "type": "object",
+        "required": [
+          "path",
+          "file"
+        ],
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "项目内相对路径（如 正文/第一卷/001 序章.md）"
+          },
+          "path": {
+            "type": "string",
+            "description": "项目根目录绝对路径"
+          }
+        }
+      },
+      "RemoveDirRequest": {
+        "type": "object",
+        "required": [
+          "path",
+          "dir"
+        ],
+        "properties": {
+          "dir": {
+            "type": "string",
+            "description": "项目内相对路径（不允许根目录与 .shiro）"
+          },
+          "path": {
+            "type": "string",
+            "description": "项目根目录绝对路径"
+          }
+        }
+      },
+      "RemoveFileRequest": {
+        "type": "object",
+        "required": [
+          "path",
+          "file"
+        ],
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "文稿相对路径"
+          },
+          "path": {
+            "type": "string",
+            "description": "项目根目录绝对路径"
+          }
+        }
+      },
+      "RemoveProjectRequest": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "要移除记录的项目路径（只删记录，不删文件夹）"
+          }
+        }
+      },
       "RenameEntryRequest": {
         "type": "object",
         "required": [
@@ -2111,12 +2154,17 @@
       "SaveCharacterRequest": {
         "type": "object",
         "required": [
+          "id",
           "content"
         ],
         "properties": {
           "content": {
             "type": "string",
             "description": "完整文件内容（含 frontmatter）"
+          },
+          "id": {
+            "type": "string",
+            "description": "角色 id（单文件卡去 .md 的文件名；深卡为目录名）"
           }
         }
       },
@@ -2153,6 +2201,7 @@
         "type": "object",
         "required": [
           "path",
+          "id",
           "content"
         ],
         "properties": {
@@ -2166,6 +2215,10 @@
           "content": {
             "type": "string",
             "description": "用户输入原文"
+          },
+          "id": {
+            "type": "string",
+            "description": "会话 id"
           },
           "path": {
             "type": "string",
@@ -2218,6 +2271,23 @@
             "items": {
               "$ref": "#/components/schemas/SessionSummary"
             }
+          }
+        }
+      },
+      "SessionRefRequest": {
+        "type": "object",
+        "required": [
+          "path",
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "会话 id"
+          },
+          "path": {
+            "type": "string",
+            "description": "项目根目录绝对路径"
           }
         }
       },
@@ -2330,6 +2400,18 @@
           }
         }
       },
+      "TreeRequest": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "项目根目录绝对路径"
+          }
+        }
+      },
       "TreeResponse": {
         "type": "object",
         "required": [
@@ -2381,6 +2463,18 @@
               "null"
             ],
             "description": "思考强度：缺省/空 = 不启用；low / medium / high"
+          }
+        }
+      },
+      "WatchRequest": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "项目根目录绝对路径"
           }
         }
       },
