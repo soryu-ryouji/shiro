@@ -1,14 +1,8 @@
-mod app;
-mod auth;
-mod error;
-mod features;
-mod infra;
-mod llm;
-mod state;
-mod watch;
+// shiro-daemon 二进制入口：CLI 解析与启动（模块与组装见 lib.rs / app.rs）。
 
-use state::AppState;
 use clap::Parser;
+use shiro_daemon::app;
+use shiro_daemon::state::AppState;
 use std::path::PathBuf;
 
 #[derive(Parser)]
