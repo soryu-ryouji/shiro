@@ -69,6 +69,40 @@ export const PROVIDERS: {
     protocol: 'anthropic',
   },
   {
+    key: 'qwen-plan-cn',
+    label: 'Qwen 订阅（国内）',
+    baseUrl: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+    models: [
+      'qwen3.8-max',
+      'qwen3.8-flash',
+      'qwen3.7-max',
+      'qwen3.7-plus',
+      'qwen3.6-plus',
+      'kimi-k2.6',
+      'glm-5.2',
+      'deepseek-v4-pro',
+      'MiniMax-M2.5',
+    ],
+    protocol: 'openai',
+  },
+  {
+    key: 'qwen-plan-intl',
+    label: 'Qwen 订阅（国际）',
+    baseUrl: 'https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1',
+    models: [
+      'qwen3.8-max',
+      'qwen3.8-flash',
+      'qwen3.7-max',
+      'qwen3.7-plus',
+      'qwen3.6-plus',
+      'kimi-k2.6',
+      'glm-5.2',
+      'deepseek-v4-pro',
+      'MiniMax-M2.5',
+    ],
+    protocol: 'openai',
+  },
+  {
     key: 'zhipu',
     label: '智谱 GLM',
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
@@ -150,6 +184,8 @@ export function profileLabel(p: { key: string; base_url: string }): string {
 
 export type ModelViewMode = 'import' | 'manage'
 
+export type ModelSettings = components['schemas']['ModelSettings']
+
 export const modelStore = reactive({
   loaded: false,
   loading: false,
@@ -157,6 +193,34 @@ export const modelStore = reactive({
   /** 档案列表与默认项 */
   profiles: [] as ProfileSummary[],
   defaultKey: null as string | null,
+  /** 全局运行设置（并行调用数） */
+  settings: null as ModelSettings | null,
+  settingsSaving: false,
+
+  async loadSettings() {
+    try {
+      this.settings = await apiFetch<ModelSettings>('/api/v1/model/settings')
+    } catch {
+      // 设置拉取失败不阻断配置流程
+    }
+  },
+
+  async saveSettings(maxConcurrency: number) {
+    this.settingsSaving = true
+    this.error = ''
+    try {
+      this.settings = await apiFetch<ModelSettings>('/api/v1/model/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ max_concurrency: maxConcurrency }),
+      })
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : String(e)
+    } finally {
+      this.settingsSaving = false
+    }
+  },
+
   /** 当前分区视图 */
   view: 'import' as ModelViewMode,
   /** 注册表单态 */
@@ -164,6 +228,8 @@ export const modelStore = reactive({
   baseUrl: '',
   model: '',
   protocol: 'openai' as 'openai' | 'anthropic',
+  /** 思考强度：'' 不启用（不发参数）；low/medium/high */
+  thinking: '',
   modelOptions: [] as string[],
   apiKey: '',
   showKey: false,
@@ -200,6 +266,7 @@ export const modelStore = reactive({
   /** 表单供应商切换：端点/协议回预设，模型取清单首项 */
   selectProvider(key: string) {
     this.provider = key
+    this.thinking = ''
     const preset = PROVIDERS.find((p) => p.key === key)
     this.modelOptions = preset?.models ?? []
     if (preset) {
@@ -213,6 +280,7 @@ export const modelStore = reactive({
   openManage() {
     this.view = 'manage'
     void this.load()
+    void this.loadSettings()
   },
 
   /** 从管理列表点「编辑」：档案回填进注册表单（Key 不回填，改则输入新值） */
@@ -223,6 +291,7 @@ export const modelStore = reactive({
     this.baseUrl = p.base_url
     this.model = p.model
     this.protocol = p.protocol === 'anthropic' ? 'anthropic' : 'openai'
+    this.thinking = p.thinking ?? ''
     this.modelOptions = preset?.models ?? []
     this.apiKey = ''
   },
@@ -246,6 +315,7 @@ export const modelStore = reactive({
           base_url: this.baseUrl.trim(),
           model: this.model.trim(),
           protocol: this.protocol,
+          thinking: this.thinking || undefined,
           api_key: this.apiKey.trim() || undefined,
         }),
       })
@@ -259,6 +329,29 @@ export const modelStore = reactive({
       this.error = e instanceof Error ? e.message : String(e)
     } finally {
       this.saving = false
+    }
+  },
+
+  /** 连接测试结果（按档案 key） */
+  testing: {} as Record<string, 'run' | null>,
+  testResults: {} as Record<string, { ok: boolean; message: string } | undefined>,
+
+  async testProfile(key: string) {
+    this.testing[key] = 'run'
+    this.testResults[key] = undefined
+    try {
+      const res = await apiFetch<components['schemas']['ProfileTestResponse']>(
+        `/api/v1/model/profiles/${encodeURIComponent(key)}/test`,
+        { method: 'POST' },
+      )
+      this.testResults[key] = { ok: res.ok, message: res.message }
+    } catch (e) {
+      this.testResults[key] = {
+        ok: false,
+        message: e instanceof Error ? e.message : String(e),
+      }
+    } finally {
+      this.testing[key] = null
     }
   },
 

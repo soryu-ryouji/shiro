@@ -99,6 +99,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/db/deconstruct/tasks/{id}/abort": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 中止运行中的任务（LLM 流式请求随之断开；可从断点重试） */
+        post: operations["abort_task"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/db/deconstruct/tasks/{id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 调用日志列表（轻量摘要；全文走详情端点） */
+        get: operations["list_task_logs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/db/deconstruct/tasks/{id}/logs/{seq}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 单条调用日志全文（请求 + 响应/错误） */
+        get: operations["get_task_log"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/db/deconstruct/tasks/{id}/rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 任务改名 */
+        post: operations["rename_task"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/db/deconstruct/tasks/{id}/retry": {
         parameters: {
             query?: never;
@@ -214,6 +282,41 @@ export interface paths {
         post?: never;
         /** 删除档案；删除默认档案时默认项回退到剩余第一个 */
         delete: operations["delete_profile"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/model/profiles/{key}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 测试档案连接（发一个最小真实调用 ping；验证端点 + 密钥 + 模型 + 协议） */
+        post: operations["test_profile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/model/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 读取全局运行设置 */
+        get: operations["get_model_settings"];
+        /** 保存全局运行设置（调节即生效，无需重启——并发闸门每次获取时现读） */
+        put: operations["save_model_settings"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -472,6 +575,55 @@ export interface components {
              */
             modified: number;
         };
+        LogListResponse: {
+            logs: components["schemas"]["LogSummary"][];
+        };
+        /** @description 日志摘要（列表用；请求/响应全文只给长度，正文走详情接口） */
+        LogSummary: {
+            /** @description 已放弃：任务中止/中断/失败时在飞的调用，结果永远不会回写 */
+            abandoned?: boolean;
+            /**
+             * Format: int64
+             * @description 调用发起时间（epoch 秒；pending 条目前端据此秒表自增）
+             */
+            at: number;
+            /** @description 尝试次数（重试追加在同一日志内） */
+            attempt_count: number;
+            /**
+             * Format: int32
+             * @description 缓存命中率（%）
+             */
+            cache_hit_rate?: number | null;
+            /** Format: int64 */
+            cache_read?: number | null;
+            detail: string;
+            /** Format: int64 */
+            elapsed_ms: number;
+            error?: string | null;
+            /** @description 是否有思考过程内容 */
+            has_thinking?: boolean;
+            /**
+             * Format: int64
+             * @description token 用量汇总（各次尝试求和；无 usage 数据时为 null）
+             */
+            input_tokens?: number | null;
+            node: string;
+            ok?: boolean | null;
+            /** Format: int64 */
+            output_tokens?: number | null;
+            request_chars: number;
+            response_chars: number;
+            segment?: number | null;
+            /** Format: int32 */
+            seq: number;
+        };
+        ModelSettings: {
+            /**
+             * Format: int32
+             * @description 全局 LLM 并行调用上限（1-8）
+             */
+            max_concurrency: number;
+        };
         ProfileListResponse: {
             /** @description 默认档案 key（无档案时为 null） */
             default_key?: string | null;
@@ -487,19 +639,36 @@ export interface components {
             model: string;
             /** @description 协议：openai | anthropic */
             protocol: string;
+            /** @description 思考强度（未启用为 null） */
+            thinking?: string | null;
+        };
+        ProfileTestResponse: {
+            /**
+             * Format: int64
+             * @description 测试耗时（毫秒，成功时返回）
+             */
+            latency_ms?: number | null;
+            message: string;
+            ok: boolean;
         };
         Progress: {
-            /** @description 生成中的当前文件（不带扩展名） */
-            current_file?: string | null;
+            /** @description 生成中的当前文件（并行波次可能多个；不带扩展名） */
+            current_files?: string[];
             error?: string | null;
             files_done?: string[];
             /** Format: int64 */
             finished_at?: number | null;
             /** @description 素材形态（script/prose；探测后回填） */
             form?: string | null;
+            /** @description 中止/失败时所在的管线阶段（流程图定位红格用） */
+            last_stage?: string | null;
+            /** @description 正在生成笔记的段序号（并行时在飞多段；流程图呼吸态） */
+            notes_active?: number[];
             notes_done?: number;
             /** @description 解析失败的段序号（降级，不阻断） */
             notes_failed?: number[];
+            /** @description 已完成笔记的段序号（流程图逐格标绿用） */
+            notes_finished?: number[];
             saved_character_id?: string | null;
             segment_count?: number;
             /** @description 用户选中的段序号（选择闸门回填；空 = 尚未选择） */
@@ -537,6 +706,10 @@ export interface components {
             /** @description 项目当前绝对路径 */
             path: string;
         };
+        RenameTaskRequest: {
+            /** @description 新显示名；空串 = 清除自定义名（回退角色名显示） */
+            title: string;
+        };
         SaveCharacterRequest: {
             /** @description 完整文件内容（含 frontmatter） */
             content: string;
@@ -546,6 +719,10 @@ export interface components {
             parse_error?: string | null;
             /** @description 保存后能否仍解析为角色卡（false = frontmatter 缺失/损坏/未标记类型，该卡不进列表） */
             parsed: boolean;
+        };
+        SaveSettingsRequest: {
+            /** Format: int32 */
+            max_concurrency: number;
         };
         SaveTaskResponse: {
             /** @description 保存后的人物库角色 id（db/人物/<id>/） */
@@ -594,6 +771,8 @@ export interface components {
             /** @description 段清单（切块完成后、待选择阶段提供） */
             segments?: components["schemas"]["SegmentInfoDto"][];
             source_name: string;
+            /** @description 显示名（用户自定义；None = 前端用角色名兜底） */
+            title?: string | null;
         };
         TaskListResponse: {
             tasks: components["schemas"]["TaskSummary"][];
@@ -618,6 +797,8 @@ export interface components {
             segment_count: number;
             source_name: string;
             stage: string;
+            /** @description 显示名（用户自定义；None = 前端用角色名兜底） */
+            title?: string | null;
         };
         TreeNode: {
             /** @description 子节点（仅 dir） */
@@ -645,6 +826,8 @@ export interface components {
             key: string;
             model: string;
             protocol?: string | null;
+            /** @description 思考强度：缺省/空 = 不启用；low / medium / high */
+            thinking?: string | null;
         };
         VerifyReport: {
             /** @description 回查通过的引文数 */
@@ -1041,6 +1224,159 @@ export interface operations {
             };
         };
     };
+    abort_task: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 任务 id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已中止 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskSummary"];
+                };
+            };
+            /** @description 任务不在运行中 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_task_logs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 任务 id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 调用日志列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogListResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_task_log: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 任务 id */
+                id: string;
+                /** @description 日志序号 */
+                seq: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 日志全文 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 日志不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    rename_task: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 任务 id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description 已改名 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskSummary"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 任务不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     retry_task: {
         parameters: {
             query?: never;
@@ -1389,6 +1725,121 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
+            };
+            /** @description 写入失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    test_profile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 档案 key */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 测试结果（ok 标识连通与否，message 说明） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileTestResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 档案不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_model_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 运行设置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelSettings"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    save_model_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description 已保存 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelSettings"];
+                };
+            };
+            /** @description 超出 1-8 范围 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description 写入失败 */
             500: {

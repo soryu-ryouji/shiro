@@ -9,6 +9,8 @@ import { FILE_LABELS, STAGE_LABELS } from '../stores/deconstruct'
 type Progress = components['schemas']['Progress']
 
 const props = defineProps<{ progress: Progress }>()
+/** 格子点击：打开对应调用日志（父级处理） */
+const emit = defineEmits<{ 'pick-segment': [index: number]; 'pick-file': [name: string] }>()
 
 /** 管线阶段顺序（纵向链） */
 const STAGES = [
@@ -27,9 +29,17 @@ function stateOf(stage: string): NodeState {
   const p = props.progress
   const order = STAGES.indexOf(stage as (typeof STAGES)[number])
   if (p.stage === 'done') return 'done'
-  if (p.stage === 'failed') {
-    const cur = STAGES.indexOf(p.stage as (typeof STAGES)[number])
-    // 失败阶段可能不在链上（如 pending 时配置缺失）——链上已有节点按序推定
+  if (p.stage === 'interrupted') {
+    // 重启中断：停点用等待色（琥珀），等用户点继续
+    const cur = STAGES.indexOf((p.last_stage ?? '') as (typeof STAGES)[number])
+    if (cur === -1) return order === 0 ? 'waiting' : 'pending'
+    if (order < cur) return 'done'
+    if (order === cur) return 'waiting'
+    return 'pending'
+  }
+  if (p.stage === 'failed' || p.stage === 'aborted') {
+    // 失败/中止：以 last_stage（中断时所在阶段）定位红格；缺失时全灰
+    const cur = STAGES.indexOf((p.last_stage ?? '') as (typeof STAGES)[number])
     if (cur === -1) return order === 0 ? 'failed' : 'pending'
     if (order < cur) return 'done'
     if (order === cur) return 'failed'
@@ -55,23 +65,26 @@ const nodes = computed(() =>
   })),
 )
 
-/** 切片格子：选择闸门后按选中数；笔记阶段逐片点亮，失败片段恒红 */
+/** 切片格子：按段的真实在飞/完成状态着色（并行时在飞多段，呼吸蓝） */
 const segmentCells = computed(() => {
   const p = props.progress
   const selectedCount = p.selected?.length ?? p.segment_count ?? 0
   if (!selectedCount) return []
   const notesStage = stateOf('notes')
   const failedSet = new Set(p.notes_failed ?? [])
+  const activeSet = new Set(p.notes_active ?? [])
+  const finishedSet = new Set(p.notes_finished ?? [])
   return Array.from({ length: selectedCount }, (_, i) => {
+    const orig = p.selected?.[i] ?? i
     if (notesStage === 'done') {
       // 失败片段保持红色（进度事实不因阶段推进而消失）
-      const orig = p.selected?.[i] ?? i
       return failedSet.has(orig) ? ('failed' as NodeState) : ('done' as NodeState)
     }
     if (notesStage === 'running') {
-      const orig = p.selected?.[i] ?? i
       if (failedSet.has(orig)) return 'failed' as NodeState
-      return i < (p.notes_done ?? 0) ? ('done' as NodeState) : ('pending' as NodeState)
+      if (finishedSet.has(orig)) return 'done' as NodeState
+      if (activeSet.has(orig)) return 'running' as NodeState
+      return 'pending' as NodeState
     }
     return 'pending' as NodeState
   })
@@ -97,7 +110,7 @@ const genCells = computed(() =>
       if (st === 'done') return 'done' as NodeState
       if (st === 'running') {
         if (props.progress.files_done?.includes(f)) return 'done' as NodeState
-        if (props.progress.current_file === f) return 'running' as NodeState
+        if (props.progress.current_files?.includes(f)) return 'running' as NodeState
         return 'pending' as NodeState
       }
       return 'pending' as NodeState
@@ -259,7 +272,7 @@ const stateColor: Record<NodeState, string> = {
         />
       </g>
 
-      <!-- notes 节点下：切片格子 -->
+      <!-- notes 节点下：切片格子（可点开该段的调用日志） -->
       <rect
         v-for="(c, i) in segCellRects"
         :key="i"
@@ -268,15 +281,21 @@ const stateColor: Record<NodeState, string> = {
         :width="c.w"
         :height="c.w"
         rx="2"
-        class="cell"
+        class="cell clickable"
         :class="c.state"
+        @click="emit('pick-segment', progress.selected?.[i] ?? i)"
       />
       <text v-if="segmentCells.length" :x="CX" :y="segLabelY + 10" class="cell-label" text-anchor="middle">
         {{ segLabel }}
       </text>
 
-      <!-- generating 节点下：7 文件格 -->
-      <g v-for="c in genCellRects" :key="c.key">
+      <!-- generating 节点下：7 文件格（可点开该文件的调用日志） -->
+      <g
+        v-for="c in genCellRects"
+        :key="c.key"
+        class="clickable"
+        @click="emit('pick-file', c.key)"
+      >
         <rect :x="c.x" :y="c.y" :width="c.w" :height="c.h" rx="5" class="file-cell" :class="c.state" />
         <text :x="c.x + c.w / 2" :y="c.y + 16" class="file-label" :class="c.state">{{ c.label }}</text>
       </g>
@@ -369,12 +388,39 @@ const stateColor: Record<NodeState, string> = {
   fill: var(--border);
 }
 
+.clickable {
+  cursor: pointer;
+}
+
+.clickable:hover .cell,
+.clickable:hover.cell,
+.clickable:hover .file-cell {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
 .cell.done {
   fill: #3a9a50;
 }
 
 .cell.failed {
   fill: #c05050;
+}
+
+/* 在飞的段：呼吸蓝（透明度脉动） */
+.cell.running {
+  fill: var(--accent);
+  animation: breathe 1.4s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 
 .cell-label {
@@ -391,6 +437,7 @@ const stateColor: Record<NodeState, string> = {
 .file-cell.running {
   stroke: var(--accent);
   fill: var(--accent-soft);
+  animation: breathe 1.4s ease-in-out infinite;
 }
 
 .file-cell.done {

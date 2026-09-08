@@ -50,8 +50,7 @@ async fn main() {
         return;
     }
 
-    // 启动恢复：非终态拆解任务从断点续跑（产物逐阶段落盘，跳过已完成阶段）
-    deconstruct::engine::resume_pending(&state.deconstruct);
+    // 启动时不自动续跑：重启前运行中的任务标记为「已中断」，等用户点「继续」（不经确认不烧 token）
 
     let addr = format!("{}:{}", cli.host, cli.port);
     let listener = tokio::net::TcpListener::bind(&addr)

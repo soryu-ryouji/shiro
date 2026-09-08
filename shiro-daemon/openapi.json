@@ -454,6 +454,215 @@
         ]
       }
     },
+    "/api/v1/db/deconstruct/tasks/{id}/abort": {
+      "post": {
+        "tags": [
+          "deconstruct"
+        ],
+        "summary": "中止运行中的任务（LLM 流式请求随之断开；可从断点重试）",
+        "operationId": "abort_task",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "任务 id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "已中止",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "任务不在运行中",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/db/deconstruct/tasks/{id}/logs": {
+      "get": {
+        "tags": [
+          "deconstruct"
+        ],
+        "summary": "调用日志列表（轻量摘要；全文走详情端点）",
+        "operationId": "list_task_logs",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "任务 id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "调用日志列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/db/deconstruct/tasks/{id}/logs/{seq}": {
+      "get": {
+        "tags": [
+          "deconstruct"
+        ],
+        "summary": "单条调用日志全文（请求 + 响应/错误）",
+        "operationId": "get_task_log",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "任务 id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "seq",
+            "in": "path",
+            "description": "日志序号",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "日志全文",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "日志不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/db/deconstruct/tasks/{id}/rename": {
+      "post": {
+        "tags": [
+          "deconstruct"
+        ],
+        "summary": "任务改名",
+        "operationId": "rename_task",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "任务 id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "已改名",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "任务不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
     "/api/v1/db/deconstruct/tasks/{id}/retry": {
       "post": {
         "tags": [
@@ -880,6 +1089,142 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "写入失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/model/profiles/{key}/test": {
+      "post": {
+        "tags": [
+          "model"
+        ],
+        "summary": "测试档案连接（发一个最小真实调用 ping；验证端点 + 密钥 + 模型 + 协议）",
+        "operationId": "test_profile",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "description": "档案 key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "测试结果（ok 标识连通与否，message 说明）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileTestResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "404": {
+            "description": "档案不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
+    "/api/v1/model/settings": {
+      "get": {
+        "tags": [
+          "model"
+        ],
+        "summary": "读取全局运行设置",
+        "operationId": "get_model_settings",
+        "responses": {
+          "200": {
+            "description": "运行设置",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "model"
+        ],
+        "summary": "保存全局运行设置（调节即生效，无需重启——并发闸门每次获取时现读）",
+        "operationId": "save_model_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "已保存",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "超出 1-8 范围",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
           },
           "500": {
             "description": "写入失败",
@@ -1961,6 +2306,146 @@
           }
         }
       },
+      "LogListResponse": {
+        "type": "object",
+        "required": [
+          "logs"
+        ],
+        "properties": {
+          "logs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogSummary"
+            }
+          }
+        }
+      },
+      "LogSummary": {
+        "type": "object",
+        "description": "日志摘要（列表用；请求/响应全文只给长度，正文走详情接口）",
+        "required": [
+          "seq",
+          "node",
+          "detail",
+          "at",
+          "elapsed_ms",
+          "request_chars",
+          "response_chars",
+          "attempt_count"
+        ],
+        "properties": {
+          "abandoned": {
+            "type": "boolean",
+            "description": "已放弃：任务中止/中断/失败时在飞的调用，结果永远不会回写"
+          },
+          "at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "调用发起时间（epoch 秒；pending 条目前端据此秒表自增）",
+            "minimum": 0
+          },
+          "attempt_count": {
+            "type": "integer",
+            "description": "尝试次数（重试追加在同一日志内）",
+            "minimum": 0
+          },
+          "cache_hit_rate": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "缓存命中率（%）",
+            "minimum": 0
+          },
+          "cache_read": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "detail": {
+            "type": "string"
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "has_thinking": {
+            "type": "boolean",
+            "description": "是否有思考过程内容"
+          },
+          "input_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "token 用量汇总（各次尝试求和；无 usage 数据时为 null）",
+            "minimum": 0
+          },
+          "node": {
+            "type": "string"
+          },
+          "ok": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "output_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "request_chars": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "response_chars": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "segment": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "seq": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "ModelSettings": {
+        "type": "object",
+        "required": [
+          "max_concurrency"
+        ],
+        "properties": {
+          "max_concurrency": {
+            "type": "integer",
+            "format": "int32",
+            "description": "全局 LLM 并行调用上限（1-8）",
+            "minimum": 0
+          }
+        }
+      },
       "ProfileListResponse": {
         "type": "object",
         "required": [
@@ -2015,6 +2500,37 @@
           "protocol": {
             "type": "string",
             "description": "协议：openai | anthropic"
+          },
+          "thinking": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "思考强度（未启用为 null）"
+          }
+        }
+      },
+      "ProfileTestResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "message"
+        ],
+        "properties": {
+          "latency_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "测试耗时（毫秒，成功时返回）",
+            "minimum": 0
+          },
+          "message": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
           }
         }
       },
@@ -2024,12 +2540,12 @@
           "stage"
         ],
         "properties": {
-          "current_file": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "生成中的当前文件（不带扩展名）"
+          "current_files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "生成中的当前文件（并行波次可能多个；不带扩展名）"
           },
           "error": {
             "type": [
@@ -2058,6 +2574,21 @@
             ],
             "description": "素材形态（script/prose；探测后回填）"
           },
+          "last_stage": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "中止/失败时所在的管线阶段（流程图定位红格用）"
+          },
+          "notes_active": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "正在生成笔记的段序号（并行时在飞多段；流程图呼吸态）"
+          },
           "notes_done": {
             "type": "integer",
             "minimum": 0
@@ -2069,6 +2600,14 @@
               "minimum": 0
             },
             "description": "解析失败的段序号（降级，不阻断）"
+          },
+          "notes_finished": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "已完成笔记的段序号（流程图逐格标绿用）"
           },
           "saved_character_id": {
             "type": [
@@ -2200,6 +2739,18 @@
           }
         }
       },
+      "RenameTaskRequest": {
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "新显示名；空串 = 清除自定义名（回退角色名显示）"
+          }
+        }
+      },
       "SaveCharacterRequest": {
         "type": "object",
         "required": [
@@ -2238,6 +2789,19 @@
           "parsed": {
             "type": "boolean",
             "description": "保存后能否仍解析为角色卡（false = frontmatter 缺失/损坏/未标记类型，该卡不进列表）"
+          }
+        }
+      },
+      "SaveSettingsRequest": {
+        "type": "object",
+        "required": [
+          "max_concurrency"
+        ],
+        "properties": {
+          "max_concurrency": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           }
         }
       },
@@ -2399,6 +2963,13 @@
           },
           "source_name": {
             "type": "string"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "显示名（用户自定义；None = 前端用角色名兜底）"
           }
         }
       },
@@ -2499,6 +3070,13 @@
           },
           "stage": {
             "type": "string"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "显示名（用户自定义；None = 前端用角色名兜底）"
           }
         }
       },
@@ -2587,6 +3165,13 @@
               "string",
               "null"
             ]
+          },
+          "thinking": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "思考强度：缺省/空 = 不启用；low / medium / high"
           }
         }
       },

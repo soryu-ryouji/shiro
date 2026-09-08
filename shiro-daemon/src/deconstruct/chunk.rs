@@ -226,13 +226,11 @@ fn finalize(segs: Vec<SourceSegment>) -> Vec<SourceSegment> {
                 .map(|(i, _)| i)
                 .unwrap_or(rest.len());
             let mut cut = limit;
-            if cut < rest.len() {
-                if let Some(nl) = rest[..limit].rfind('\n') {
-                    if nl >= RESPLIT_MIN_CUT_CHARS {
+            if cut < rest.len()
+                && let Some(nl) = rest[..limit].rfind('\n')
+                    && nl >= RESPLIT_MIN_CUT_CHARS {
                         cut = nl;
                     }
-                }
-            }
             let (chunk, remainder) = rest.split_at(cut);
             let label = if part == 1 {
                 seg.label.clone()
@@ -282,11 +280,10 @@ fn split_plain(content: &str) -> (Vec<SourceSegment>, usize, usize) {
                 }
                 j -= 1;
             }
-            if let Some(c) = candidate {
-                if c > start + MIN_SEGMENT_CHARS {
+            if let Some(c) = candidate
+                && c > start + MIN_SEGMENT_CHARS {
                     boundary = c;
                 }
-            }
         }
         let chunk: String = chars[start..boundary].iter().collect();
         let trimmed = chunk.trim();

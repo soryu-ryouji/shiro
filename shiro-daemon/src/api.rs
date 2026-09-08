@@ -1145,11 +1145,18 @@ pub fn build_router(
         .routes(routes!(crate::deconstruct::api::get_task_source))
         .routes(routes!(crate::deconstruct::api::select_segments))
         .routes(routes!(crate::deconstruct::api::retry_task))
+        .routes(routes!(crate::deconstruct::api::abort_task))
+        .routes(routes!(crate::deconstruct::api::rename_task))
+        .routes(routes!(crate::deconstruct::api::list_task_logs))
+        .routes(routes!(crate::deconstruct::api::get_task_log))
         .routes(routes!(crate::deconstruct::api::delete_task))
         .routes(routes!(crate::model_api::list_profiles))
         .routes(routes!(crate::model_api::upsert_profile))
         .routes(routes!(crate::model_api::set_default_profile))
         .routes(routes!(crate::model_api::delete_profile))
+        .routes(routes!(crate::model_api::test_profile))
+        .routes(routes!(crate::model_api::get_model_settings))
+        .routes(routes!(crate::model_api::save_model_settings))
         .split_for_parts();
     SecurityAddon.modify(&mut doc);
     apply_info(&mut doc);
@@ -1163,12 +1170,11 @@ pub fn build_router(
         .layer(tower_http::cors::CorsLayer::permissive());
 
     // 局域网访问形态：daemon 直接 serve 前端静态资源，SPA 回退到 index.html
-    if let Some(dir) = serve_dir {
-        if dir.is_dir() {
+    if let Some(dir) = serve_dir
+        && dir.is_dir() {
             let index = ServeFile::new(dir.join("index.html"));
             router = router.fallback_service(ServeDir::new(dir).not_found_service(index));
         }
-    }
 
     (router, doc)
 }

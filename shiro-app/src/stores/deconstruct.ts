@@ -7,6 +7,7 @@ import type { components } from '../api-types'
 export type TaskSummary = components['schemas']['TaskSummary']
 export type TaskDetail = components['schemas']['TaskDetail']
 export type Progress = components['schemas']['Progress']
+export type LogSummary = components['schemas']['LogSummary']
 
 /** 运行中的阶段（轮询继续；其余为终态或未开始） */
 const RUNNING_STAGES = new Set([
@@ -45,6 +46,8 @@ export const STAGE_LABELS: Record<string, string> = {
   verifying: '引文回查',
   done: '完成',
   failed: '失败',
+  aborted: '已中止',
+  interrupted: '已中断',
 }
 
 export const deconstructStore = reactive({
@@ -109,6 +112,10 @@ export const deconstructStore = reactive({
     await this.refreshTasks()
     if (this.selectedId && isRunning(this.detail?.progress.stage)) {
       await this.loadDetail(this.selectedId)
+      void this.fetchLogs(this.selectedId)
+      if (this.logDetailTask && this.logDetailSeq !== null) {
+        void this.openLog(this.logDetailTask, this.logDetailSeq)
+      }
     } else {
       this.ensurePolling()
     }
@@ -119,6 +126,7 @@ export const deconstructStore = reactive({
     this.creating = false
     this.selectedId = id
     await this.loadDetail(id)
+    void this.fetchLogs(id)
     this.ensurePolling()
   },
 
@@ -284,6 +292,77 @@ export const deconstructStore = reactive({
         aliases: res.aliases ?? [],
         content: res.content,
       })
+      // 粘贴即消费：复制标记与提示清除（要再粘就重新复制）
+      this.copiedTaskId = null
+      this.copiedTip = ''
+      if (this.copyTipTimer) clearTimeout(this.copyTipTimer)
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : String(e)
+    }
+  },
+
+  /** 调用日志（选中任务的；含 pending 条目） */
+  logs: [] as LogSummary[],
+  logDetail: null as Record<string, unknown> | null,
+  /** 打开中的日志定位（任务轮询时持续刷新，pending 响应实时增长） */
+  logDetailTask: null as string | null,
+  logDetailSeq: null as number | null,
+
+  async fetchLogs(id: string) {
+    try {
+      const res = await apiFetch<components['schemas']['LogListResponse']>(
+        `/api/v1/db/deconstruct/tasks/${encodeURIComponent(id)}/logs`,
+      )
+      this.logs = res.logs ?? []
+    } catch {
+      // 日志拉取失败不打扰主流程
+    }
+  },
+
+  async openLog(id: string, seq: number) {
+    this.logDetailTask = id
+    this.logDetailSeq = seq
+    try {
+      this.logDetail = await apiFetch<Record<string, unknown>>(
+        `/api/v1/db/deconstruct/tasks/${encodeURIComponent(id)}/logs/${seq}`,
+      )
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : String(e)
+    }
+  },
+
+  closeLog() {
+    this.logDetail = null
+    this.logDetailTask = null
+    this.logDetailSeq = null
+  },
+
+  /** 中止运行中的任务 */
+  async abortTask(id: string) {
+    this.error = ''
+    try {
+      await apiFetch(`/api/v1/db/deconstruct/tasks/${encodeURIComponent(id)}/abort`, {
+        method: 'POST',
+      })
+      await this.refreshTasks()
+      if (this.selectedId === id) await this.loadDetail(id)
+      this.ensurePolling()
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : String(e)
+    }
+  },
+
+  /** 改名（空串清除自定义名） */
+  async renameTask(id: string, title: string) {
+    this.error = ''
+    try {
+      await apiFetch(`/api/v1/db/deconstruct/tasks/${encodeURIComponent(id)}/rename`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      })
+      await this.refreshTasks()
+      if (this.selectedId === id) await this.loadDetail(id)
     } catch (e) {
       this.error = e instanceof Error ? e.message : String(e)
     }

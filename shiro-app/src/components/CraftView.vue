@@ -1,13 +1,14 @@
 <script setup lang="ts">
 // 角色制作视图（数据库 → 制作 → 角色制作）：左列制作记录 + 新建按钮，右列新建表单或任务详情（流程图）。
 // 任务状态与轮询见 stores/deconstruct.ts；管线阶段定义见 daemon/src/deconstruct/engine.rs
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   FILE_LABELS,
   STAGE_LABELS,
   deconstructStore,
   isRunning,
 } from '../stores/deconstruct'
+import type { LogSummary } from '../stores/deconstruct'
 import { dbStore } from '../stores/database'
 import { renderMarkdown } from '../utils/mdRender'
 import { editorParaMode } from '../utils/font'
@@ -15,16 +16,23 @@ import Icon from '../components/Icon.vue'
 import PipelineFlow from './PipelineFlow.vue'
 import SegmentPicker from './SegmentPicker.vue'
 import ContextMenu, { type MenuItem } from './ContextMenu.vue'
+import LogDialog from './LogDialog.vue'
+import PromptDialog from './PromptDialog.vue'
 
 // ---- 新建表单（草稿由 store 持有：复制任务时同步写入，无 watch 时序面） ----
 const form = computed(() => deconstructStore.formDraft)
 const aliasInput = ref('')
 const fileError = ref('')
 
-function addAlias() {
-  const v = aliasInput.value.trim()
-  if (v && !form.value.aliases.includes(v) && v !== form.value.character.trim()) {
-    form.value.aliases.push(v)
+function commitAliases() {
+  const raw = aliasInput.value
+  if (!raw.trim()) return
+  // 逗号/顿号/分号/换行分隔批量识别（粘贴一串也成多条）
+  for (const part of raw.split(/[\n,，、;；]/)) {
+    const v = part.trim()
+    if (v && !form.value.aliases.includes(v) && v !== form.value.character.trim()) {
+      form.value.aliases.push(v)
+    }
   }
   aliasInput.value = ''
 }
@@ -64,6 +72,7 @@ const canSubmit = computed(
 )
 
 async function submit() {
+  commitAliases() // 输入框里还挂着文本时先落盘
   if (!canSubmit.value) return
   const ok = await deconstructStore.createTask({
     sourceName: form.value.sourceName.trim() || form.value.fileName,
@@ -127,6 +136,24 @@ function stageText(stage: string | undefined): string {
   return STAGE_LABELS[stage] ?? stage
 }
 
+// ---- 日志秒表：进行中条目的耗时自增（pending 日志的 elapsed_ms 落盘为 0，前端按 at 自增） ----
+const nowTick = ref(Date.now())
+let tickTimer: ReturnType<typeof setInterval> | null = null
+onMounted(() => {
+  tickTimer = setInterval(() => (nowTick.value = Date.now()), 500)
+})
+onUnmounted(() => {
+  if (tickTimer) clearInterval(tickTimer)
+})
+
+/** 日志耗时显示：已完成/失败用落盘值；进行中用「现在 - 发起时间」自增；放弃显示 — */
+function logElapsed(l: LogSummary): string {
+  if (l.abandoned) return '—'
+  if (l.ok !== null && l.ok !== undefined) return fmtMs(l.elapsed_ms)
+  const ms = Math.max(0, nowTick.value - (l.at ?? 0) * 1000)
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
 // ---- 选择闸门弹窗：进入待选择状态时自动弹一次（按任务去重），可手动再打开 ----
 const pickerOpen = ref(false)
 const autoOpenedFor = ref<string | null>(null)
@@ -148,9 +175,69 @@ const namedCount = computed(
   () => (deconstructStore.detail?.segments ?? []).filter((s) => s.has_name).length,
 )
 
+// ---- 调用日志 ----
+const NODE_LABELS: Record<string, string> = {
+  notes: '逐段笔记',
+  generating: '档案生成',
+  verifying: '引文回查',
+}
+
+/** 点流程图的格子：打开对应节点的最新一次调用日志 */
+function openLogFor(node: string, match: (l: LogSummary) => boolean) {
+  const hit = [...deconstructStore.logs]
+    .reverse()
+    .find((l) => l.node === node && match(l))
+  if (hit && task.value) void deconstructStore.openLog(task.value.id, hit.seq)
+}
+
+function pickSegment(i: number) {
+  openLogFor('notes', (l) => l.segment === i)
+}
+
+function pickFile(name: string) {
+  // 文件格子对应生成或回查修复的调用（取最新一条）
+  openLogFor('', (l) => l.detail === name)
+}
+
+/** 错误摘要：取首行并截断，行内展示完整见详情弹窗 */
+function shortErr(e: string): string {
+  const first = e.split('\n')[0]
+  return first.length > 60 ? first.slice(0, 60) + '…' : first
+}
+
+/** token 数字缩写（≥1000 显 k） */
+function fmtTokens(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
+}
+
+function fmtMs(ms: number): string {
+  return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`
+}
+
 // ---- 复制为新制作 ----
 function duplicateTask() {
   if (task.value) void deconstructStore.duplicateForCreate(task.value.id)
+}
+
+// ---- 重命名 ----
+const showRename = ref(false)
+const renameTarget = ref('')
+const renameText = ref('')
+
+function submitRename(v: string) {
+  if (renameTarget.value) void deconstructStore.renameTask(renameTarget.value, v)
+  showRename.value = false
+}
+
+// ---- 中止 ----
+function abortTask() {
+  if (task.value) void deconstructStore.abortTask(task.value.id)
+}
+
+function openRename(id: string, title: string | null | undefined) {
+  renameTarget.value = id
+  renameText.value = title ?? ''
+  showRename.value = true
 }
 
 // ---- 次边栏记录右键菜单（复制 / 删除） ----
@@ -182,6 +269,12 @@ const ctxItems = computed<MenuItem[]>(() => {
         }
       },
     },
+    {
+      label: '重命名…',
+      action: () => {
+        if (t) openRename(id, t.title)
+      },
+    },
     { divider: true },
     {
       label: running ? '删除（运行中不可用）' : '删除',
@@ -209,7 +302,7 @@ function onKeydown(e: KeyboardEvent) {
   } else if (key === 'v') {
     const id = deconstructStore.copiedTaskId
     if (!id) return
-    // 表单已打开且有内容时不覆盖用户输入
+    // 粘贴 = 打开预填的信息填写界面，用户点「开始制作」才跑
     if (deconstructStore.creating && form.value.content.trim()) return
     e.preventDefault()
     void deconstructStore.duplicateForCreate(id)
@@ -222,9 +315,14 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 function taskBadgeClass(stage: string | undefined): string {
   if (stage === 'done') return 'ok'
   if (stage === 'failed') return 'err'
-  if (stage === 'selecting') return 'warn'
+  if (['selecting', 'aborted', 'interrupted'].includes(stage ?? '')) return 'warn'
   if (isRunning(stage)) return 'run'
   return ''
+}
+
+/** 任务显示名：自定义 title 优先，回退角色名 */
+function taskTitle(t: { title?: string | null; character: string }): string {
+  return t.title?.trim() || t.character
 }
 
 function fmtTime(sec: number | undefined | null): string {
@@ -265,7 +363,7 @@ function fmtTime(sec: number | undefined | null): string {
           @contextmenu.prevent="onRecordContext($event, t.id)"
         >
           <span class="row1">
-            <span class="name">{{ t.character }}</span>
+            <span class="name">{{ taskTitle(t) }}</span>
             <span class="badge" :class="taskBadgeClass(t.stage)">{{
               isRunning(t.stage) ? '运行中' : stageText(t.stage)
             }}</span>
@@ -332,8 +430,9 @@ function fmtTime(sec: number | undefined | null): string {
             <input
               v-model="aliasInput"
               type="text"
-              placeholder="角色在剧本中的其他写法，回车添加（如：マキマ）"
-              @keydown.enter.prevent="addAlias"
+              placeholder="多个别名用逗号分隔，如：マキマ, 支配恶魔"
+              @keydown.enter.prevent="commitAliases"
+              @blur="commitAliases"
             />
           </div>
           <p class="hint tip">补充别名可避免台词与事件归属遗漏（例：全名、译名、昵称）。</p>
@@ -353,11 +452,25 @@ function fmtTime(sec: number | undefined | null): string {
         <div v-else-if="task" class="detail">
           <header class="detail-head">
             <div class="title-row">
-              <h1>{{ task.character }}</h1>
+              <h1>{{ taskTitle(task) }}</h1>
+              <button
+                class="icon-btn"
+                title="重命名任务"
+                @click="openRename(task.id, task.title)"
+              >
+                <Icon name="edit" :size="14" />
+              </button>
               <span class="badge" :class="taskBadgeClass(task.progress.stage)">
                 {{ isRunning(task.progress.stage) ? '运行中' : stageText(task.progress.stage) }}
               </span>
               <span class="spacer" />
+              <button
+                v-if="isRunning(task.progress.stage)"
+                class="btn danger"
+                @click="abortTask"
+              >
+                中止
+              </button>
               <button
                 v-if="task.progress.stage === 'selecting'"
                 class="btn primary"
@@ -366,11 +479,11 @@ function fmtTime(sec: number | undefined | null): string {
                 选择切片
               </button>
               <button
-                v-if="task.progress.stage === 'failed'"
-                class="btn"
+                v-if="['failed', 'aborted', 'interrupted'].includes(task.progress.stage)"
+                class="btn primary"
                 @click="deconstructStore.retryTask(task.id)"
               >
-                从断点重试
+                {{ task.progress.stage === 'interrupted' ? '继续' : '从断点重试' }}
               </button>
               <button
                 v-if="!isRunning(task.progress.stage)"
@@ -407,8 +520,13 @@ function fmtTime(sec: number | undefined | null): string {
             <p v-if="task.progress.error" class="hint error">{{ task.progress.error }}</p>
           </header>
 
-          <!-- 流程图 -->
-          <PipelineFlow :progress="task.progress" />
+          <!-- 流程图（切片/文件格子可点开对应调用日志） -->
+          <PipelineFlow
+            :progress="task.progress"
+            @pick-segment="pickSegment"
+            @pick-file="pickFile"
+          />
+
 
           <!-- 待选择横幅：切块完成，引导打开选择弹窗 -->
           <div
@@ -422,6 +540,50 @@ function fmtTime(sec: number | undefined | null): string {
             <button class="btn primary" @click="pickerOpen = true">选择切片</button>
           </div>
 
+          <!-- 调用日志：每次 AI 调用的发出/收到全文 -->
+          <div v-if="deconstructStore.logs.length" class="logs">
+            <h3>调用日志</h3>
+            <button
+              v-for="l in deconstructStore.logs"
+              :key="l.seq"
+              class="log-row"
+              @click="deconstructStore.openLog(task.id, l.seq)"
+            >
+              <span class="seq">#{{ l.seq }}</span>
+              <span class="lnode">{{ NODE_LABELS[l.node] ?? l.node }}</span>
+              <span class="ldetail">
+                {{ l.detail }}
+                <span v-if="(l.attempt_count ?? 1) > 1" class="lretry">{{ l.attempt_count }} 次尝试</span>
+                <span v-if="l.error" class="lerr" :title="l.error">{{ shortErr(l.error) }}</span>
+              </span>
+              <span class="lms">
+                <template v-if="l.input_tokens">
+                  ↑{{ fmtTokens(l.input_tokens) }} ↓{{ fmtTokens(l.output_tokens ?? 0) }}<template v-if="l.cache_hit_rate != null"> · 命中{{ l.cache_hit_rate }}%</template>
+                </template>
+                {{ logElapsed(l) }}
+              </span>
+              <span
+                class="lok"
+                :class="{
+                  ok: l.ok === true,
+                  err: l.ok === false,
+                  off: !!l.abandoned,
+                  run: l.ok === null && !l.abandoned,
+                }"
+              >
+                {{
+                  l.abandoned
+                    ? '放弃'
+                    : l.ok === true
+                      ? '已完成'
+                      : l.ok === false
+                        ? '失败'
+                        : '进行中'
+                }}
+              </span>
+            </button>
+          </div>
+
           <!-- 选择闸门弹窗 -->
           <SegmentPicker
             v-if="pickerOpen && task.progress.stage === 'selecting' && task.segments?.length"
@@ -429,6 +591,23 @@ function fmtTime(sec: number | undefined | null): string {
             :character="task.character"
             @submit="deconstructStore.selectSegments(task.id, $event)"
             @close="pickerOpen = false"
+          />
+
+          <!-- 日志详情弹窗 -->
+          <LogDialog
+            v-if="deconstructStore.logDetail"
+            :log="deconstructStore.logDetail"
+            @close="deconstructStore.closeLog()"
+          />
+
+          <!-- 重命名弹窗 -->
+          <PromptDialog
+            v-if="showRename"
+            title="重命名任务"
+            :initial="renameText"
+            placeholder="留空则回退为角色名显示"
+            @close="showRename = false"
+            @submit="submitRename"
           />
 
           <!-- 回查报告 -->
@@ -810,113 +989,101 @@ h1 {
   font-size: calc(13px * var(--font-scale-ui));
 }
 
-.saved-note a {
-  cursor: pointer;
-  text-decoration: underline;
-}
-
-.icon-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: none;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--text-dim);
-  cursor: pointer;
-}
-
-@media (hover: hover) {
-  .icon-btn:hover {
-    background: var(--border);
-    color: var(--text);
-  }
-}
-
-.verify-report {
-  margin: 14px 0;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg);
-}
-
-.verify-report h3 {
-  margin: 0 0 6px;
-  font-size: calc(13px * var(--font-scale-ui));
-}
-
-.verify-report p {
-  margin: 0;
-  font-size: calc(12px * var(--font-scale-ui));
-}
-
-.warn {
-  color: #b08030;
-}
-
-.removed {
-  margin: 6px 0 0;
-  padding-left: 18px;
-  color: var(--text-dim);
-  font-size: calc(12px * var(--font-scale-ui));
-}
-
-/* ---- 产物预览 ---- */
-.preview {
+/* ---- 调用日志列表 ---- */
+.logs {
   margin-top: 14px;
 }
 
-.preview-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-bottom: 10px;
-}
-
-.tab {
-  padding: 3px 12px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg);
+.logs h3 {
+  margin: 0 0 8px;
+  font-size: calc(13px * var(--font-scale-ui));
   color: var(--text-dim);
+}
+
+.log-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
   font-size: calc(12px * var(--font-scale-ui));
+  text-align: left;
   cursor: pointer;
+  margin-bottom: 4px;
 }
 
-.tab.active {
-  border-color: var(--accent);
+@media (hover: hover) {
+  .log-row:hover {
+    border-color: var(--accent);
+  }
+}
+
+.seq {
+  color: var(--text-dim);
+  width: 34px;
+  flex: none;
+}
+
+.lnode {
+  color: var(--text);
+  flex: none;
+}
+
+.ldetail {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lok {
+  flex: none;
+  min-width: 44px;
+  text-align: right;
+  font-size: calc(11px * var(--font-scale-ui));
+}
+
+.lerr {
+  margin-left: 8px;
+  color: #c05050;
+  font-size: calc(11px * var(--font-scale-ui));
+}
+
+.lretry {
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--bg-soft);
+  color: var(--text-dim);
+  font-size: calc(10px * var(--font-scale-ui));
+}
+
+.lok.off {
+  color: var(--text-dim);
+}
+
+.lok.ok {
+  color: #3a9a50;
+}
+
+.lok.err {
+  color: #c05050;
+}
+
+.lok.run {
   color: var(--accent);
-  background: var(--accent-soft);
+  animation: breathe 1.4s ease-in-out infinite;
 }
 
-.md {
-  font-size: calc(14px * var(--font-scale-ui));
-  line-height: 1.7;
-}
-
-.md :deep(h2) {
-  margin: 20px 0 8px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--border);
-  font-size: calc(15px * var(--font-scale-ui));
-}
-
-.md :deep(h3) {
-  margin: 16px 0 6px;
-  font-size: calc(14px * var(--font-scale-ui));
-}
-
-.md :deep(p) {
-  margin: 0 0 10px;
-}
-
-.md :deep(ul),
-.md :deep(ol) {
-  margin: 0 0 10px;
-  padding-left: 20px;
+.lms {
+  flex: none;
+  color: var(--text-dim);
+  font-size: calc(11px * var(--font-scale-ui));
 }
 
 .hint {

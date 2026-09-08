@@ -1,5 +1,5 @@
-// 拆解任务 API（角色制作）：创建/列表/详情/保存/删除。
-// 进度推送 V1 用轮询（任务粒度低）；鉴权与其他 API 一致走 Bearer。
+// 拆解任务 API（角色制作）：创建/列表/详情/保存/删除/事件流。
+// 进度推送用轮询（任务粒度低）；节点输出用 SSE 实时推送（鉴权走 ?key=，EventSource 无法自定义 header）。
 
 use crate::api::{ApiError, ErrorResponse, bad_request};
 use crate::deconstruct::engine;
@@ -25,6 +25,9 @@ pub struct CreateTaskRequest {
 #[derive(Serialize, ToSchema)]
 pub struct TaskSummary {
     pub id: String,
+    /// 显示名（用户自定义；None = 前端用角色名兜底）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     pub source_name: String,
     pub character: String,
     pub stage: String,
@@ -43,6 +46,7 @@ impl TaskSummary {
     fn from_record(r: &engine::TaskRecord) -> Self {
         Self {
             id: r.meta.id.clone(),
+            title: r.meta.title.clone(),
             source_name: r.meta.source_name.clone(),
             character: r.meta.character.clone(),
             stage: r.progress.stage.clone(),
@@ -86,6 +90,9 @@ pub struct SegmentInfoDto {
 #[derive(Serialize, ToSchema)]
 pub struct TaskDetail {
     pub id: String,
+    /// 显示名（用户自定义；None = 前端用角色名兜底）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     pub source_name: String,
     pub character: String,
     pub aliases: Vec<String>,
@@ -128,6 +135,7 @@ pub(crate) async fn create_task(
         content: req.content,
         character: req.character,
         aliases: req.aliases,
+        selected: None,
     })
     .map_err(|e| bad_request(&e))?;
     Ok((StatusCode::CREATED, Json(TaskSummary::from_record(&record))))
@@ -200,6 +208,7 @@ pub(crate) async fn get_task(
         .collect();
     Ok(Json(TaskDetail {
         id: rec.meta.id.clone(),
+        title: rec.meta.title.clone(),
         source_name: rec.meta.source_name.clone(),
         character: rec.meta.character.clone(),
         aliases: rec.meta.aliases.clone(),
@@ -299,6 +308,107 @@ pub struct TaskSourceResponse {
     pub aliases: Vec<String>,
     /// 剧本原文（复制任务时回填）
     pub content: String,
+}
+
+/// 调用日志列表（轻量摘要；全文走详情端点）
+#[utoipa::path(
+    get,
+    path = "/api/v1/db/deconstruct/tasks/{id}/logs",
+    tag = "deconstruct",
+    params(("id" = String, Path, description = "任务 id")),
+    responses(
+        (status = 200, description = "调用日志列表", body = LogListResponse),
+        (status = 401, description = "未鉴权")
+    ),
+    security(("bearer_token" = []))
+)]
+pub(crate) async fn list_task_logs(
+    State(state): State<crate::api::AppState>,
+    Path(id): Path<String>,
+) -> Json<LogListResponse> {
+    let _ = state;
+    Json(LogListResponse {
+        logs: engine::read_logs(&id),
+    })
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct LogListResponse {
+    pub logs: Vec<engine::LogSummary>,
+}
+
+/// 单条调用日志全文（请求 + 响应/错误）
+#[utoipa::path(
+    get,
+    path = "/api/v1/db/deconstruct/tasks/{id}/logs/{seq}",
+    tag = "deconstruct",
+    params(
+        ("id" = String, Path, description = "任务 id"),
+        ("seq" = u32, Path, description = "日志序号")
+    ),
+    responses(
+        (status = 200, description = "日志全文", body = serde_json::Value),
+        (status = 404, description = "日志不存在", body = ErrorResponse),
+        (status = 401, description = "未鉴权")
+    ),
+    security(("bearer_token" = []))
+)]
+pub(crate) async fn get_task_log(
+    State(state): State<crate::api::AppState>,
+    Path((id, seq)): Path<(String, u32)>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let _ = state;
+    let log = engine::read_log(&id, seq).ok_or_else(not_found)?;
+    Ok(Json(log))
+}
+
+/// 中止运行中的任务（LLM 流式请求随之断开；可从断点重试）
+#[utoipa::path(
+    post,
+    path = "/api/v1/db/deconstruct/tasks/{id}/abort",
+    tag = "deconstruct",
+    params(("id" = String, Path, description = "任务 id")),
+    responses(
+        (status = 200, description = "已中止", body = TaskSummary),
+        (status = 400, description = "任务不在运行中", body = ErrorResponse),
+        (status = 401, description = "未鉴权")
+    ),
+    security(("bearer_token" = []))
+)]
+pub(crate) async fn abort_task(
+    State(state): State<crate::api::AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<TaskSummary>, ApiError> {
+    let record = engine::abort_task(&state.deconstruct, &id).map_err(|e| bad_request(&e))?;
+    Ok(Json(TaskSummary::from_record(&record)))
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct RenameTaskRequest {
+    /// 新显示名；空串 = 清除自定义名（回退角色名显示）
+    pub title: String,
+}
+
+/// 任务改名
+#[utoipa::path(
+    post,
+    path = "/api/v1/db/deconstruct/tasks/{id}/rename",
+    tag = "deconstruct",
+    params(("id" = String, Path, description = "任务 id")),
+    request_body = RenameTaskRequest,
+    responses(
+        (status = 200, description = "已改名", body = TaskSummary),
+        (status = 404, description = "任务不存在", body = ErrorResponse),
+        (status = 401, description = "未鉴权")
+    ),
+    security(("bearer_token" = []))
+)]
+pub(crate) async fn rename_task(
+    Path(id): Path<String>,
+    Json(req): Json<RenameTaskRequest>,
+) -> Result<Json<TaskSummary>, ApiError> {
+    let record = engine::rename_task(&id, &req.title).map_err(|e| bad_request(&e))?;
+    Ok(Json(TaskSummary::from_record(&record)))
 }
 
 /// 失败/中断任务从断点重试（跳过已有产物的阶段）

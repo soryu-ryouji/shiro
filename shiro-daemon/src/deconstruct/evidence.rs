@@ -147,21 +147,19 @@ pub fn build_pack(
             let lines: Vec<&str> = seg.content.lines().collect();
             let mut spoken_at: Vec<usize> = Vec::new();
             for (i, line) in lines.iter().enumerate() {
-                if let Some((speaker, speech)) = probe::parse_dialogue_line(line) {
-                    if name_matches(name, aliases, &speaker) && !speech.trim().is_empty() {
+                if let Some((speaker, speech)) = probe::parse_dialogue_line(line)
+                    && name_matches(name, aliases, &speaker) && !speech.trim().is_empty() {
                         pack.dialogues.push(Dialogue {
                             scene: probe::scene_at(&seg.content, &seg.label, i),
                             line: speech,
                         });
                         spoken_at.push(i);
                     }
-                }
             }
             // 动作行：该角色台词行 ±2 行内的非台词行（含括号舞台指示或含角色名）
-            let mut i = 0usize;
-            for line in &lines {
+            for (i, line) in lines.iter().enumerate() {
                 if !spoken_at.is_empty()
-                    && !probe::parse_dialogue_line(line).is_some()
+                    && probe::parse_dialogue_line(line).is_none()
                     && !crate::deconstruct::chunk::is_scene_heading(line)
                     && !line.trim().is_empty()
                 {
@@ -174,7 +172,6 @@ pub fn build_pack(
                         });
                     }
                 }
-                i += 1;
             }
         }
     }

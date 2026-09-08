@@ -60,6 +60,13 @@ const keyPlaceholder = computed(() => {
   return '粘贴 API Key'
 })
 
+/** 思考强度选项（'' 不启用） */
+const THINKING_OPTIONS = [
+  { value: 'low', label: '低' },
+  { value: 'medium', label: '中' },
+  { value: 'high', label: '高' },
+]
+
 const sortedProfiles = computed(() => {
   // 默认档案排在最前
   const list = [...modelStore.profiles]
@@ -123,6 +130,25 @@ const sortedProfiles = computed(() => {
           </div>
         </div>
 
+        <!-- 思考强度（可选；仅对支持推理参数的模型生效） -->
+        <div class="field">
+          <span class="field-label">
+            思考强度（可选）
+            <span class="dim">· 仅对支持推理参数的模型生效，启用后建议先「测试」验证</span>
+          </span>
+          <div class="thinking-pills">
+            <button
+              v-for="opt in THINKING_OPTIONS"
+              :key="opt.value"
+              class="pill"
+              :class="{ on: modelStore.thinking === opt.value }"
+              @click="modelStore.thinking = modelStore.thinking === opt.value ? '' : opt.value"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
+
         <div class="actions">
           <span v-if="modelStore.savedOk" class="saved-tip">已保存 ✓</span>
           <button
@@ -164,11 +190,19 @@ const sortedProfiles = computed(() => {
             </div>
             <div class="line2">
               <span class="model">{{ p.model }}</span>
+              <span v-if="p.thinking" class="think-badge">思考·{{ p.thinking }}</span>
               <span class="dim">·</span>
               <span class="dim">{{ p.api_key_set ? `Key ${p.api_key_preview}` : '未配置 Key' }}</span>
             </div>
           </div>
           <div class="ops">
+            <button
+              class="btn slim"
+              :disabled="modelStore.testing[p.key] === 'run'"
+              @click="modelStore.testProfile(p.key)"
+            >
+              {{ modelStore.testing[p.key] === 'run' ? '测试中…' : '测试' }}
+            </button>
             <button
               v-if="p.key !== modelStore.defaultKey"
               class="btn slim"
@@ -181,6 +215,43 @@ const sortedProfiles = computed(() => {
             </button>
             <button class="icon-btn danger" title="删除档案" @click="modelStore.remove(p.key)">
               <Icon name="trash" :size="14" />
+            </button>
+          </div>
+          <p
+            v-if="modelStore.testResults[p.key]"
+            class="test-result"
+            :class="{ ok: modelStore.testResults[p.key]?.ok, err: !modelStore.testResults[p.key]?.ok }"
+          >
+            {{ modelStore.testResults[p.key]?.message }}
+          </p>
+        </div>
+      </div>
+
+      <!-- 全局运行参数 -->
+      <div class="global-settings">
+        <h3>全局</h3>
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-name">并行调用数</span>
+            <span class="setting-desc">
+              拆解任务中 AI 调用的并发上限（笔记与档案生成共用）。上游频繁限流时调低。
+            </span>
+          </div>
+          <div class="stepper">
+            <button
+              class="step-btn"
+              :disabled="modelStore.settingsSaving || (modelStore.settings?.max_concurrency ?? 4) <= 1"
+              @click="modelStore.saveSettings((modelStore.settings?.max_concurrency ?? 4) - 1)"
+            >
+              −
+            </button>
+            <span class="step-val">{{ modelStore.settings?.max_concurrency ?? '—' }}</span>
+            <button
+              class="step-btn"
+              :disabled="modelStore.settingsSaving || (modelStore.settings?.max_concurrency ?? 4) >= 8"
+              @click="modelStore.saveSettings((modelStore.settings?.max_concurrency ?? 4) + 1)"
+            >
+              ＋
             </button>
           </div>
         </div>
@@ -272,6 +343,27 @@ const sortedProfiles = computed(() => {
   cursor: pointer;
 }
 
+.thinking-pills {
+  display: flex;
+  gap: 6px;
+}
+
+.thinking-pills .pill {
+  padding: 4px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-dim);
+  font-size: calc(12px * var(--font-scale-ui));
+  cursor: pointer;
+}
+
+.thinking-pills .pill.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .actions {
   display: flex;
   justify-content: flex-end;
@@ -320,6 +412,91 @@ const sortedProfiles = computed(() => {
 
 .hint.error {
   color: #d05050;
+}
+
+.test-result {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: calc(12px * var(--font-scale-ui));
+}
+
+.test-result.ok {
+  color: #3a9a50;
+}
+
+.test-result.err {
+  color: #c05050;
+}
+
+/* ---- 全局运行参数 ---- */
+.global-settings {
+  margin-top: 20px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.global-settings h3 {
+  margin: 0 0 10px;
+  font-size: calc(13px * var(--font-scale-ui));
+  color: var(--text-dim);
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.setting-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.setting-name {
+  font-size: calc(13px * var(--font-scale-ui));
+  font-weight: 600;
+}
+
+.setting-desc {
+  font-size: calc(12px * var(--font-scale-ui));
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.stepper {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.step-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.step-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.step-val {
+  min-width: 20px;
+  text-align: center;
+  font-weight: 600;
 }
 
 .hint.empty {
@@ -384,6 +561,15 @@ const sortedProfiles = computed(() => {
 
 .model {
   color: var(--text);
+}
+
+.think-badge {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: calc(10px * var(--font-scale-ui));
 }
 
 .dim {

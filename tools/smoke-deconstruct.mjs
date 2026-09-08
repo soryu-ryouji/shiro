@@ -86,13 +86,61 @@ function mockContent(body) {
   return GEN_MD
 }
 
+let llmCallCount = 0
 const llm = http.createServer((req, res) => {
   let body = ''
   req.on('data', (c) => (body += c))
   req.on('end', () => {
+    llmCallCount++
+    // 前两次调用返回垃圾 body（流式 + 兜底双失败，触发段内真重试）：验证重试日志追加
+    if (llmCallCount <= 2 && req.method === 'POST') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end('<html>网关错误页（非 JSON，模拟截断响应）</html>')
+      return
+    }
     const content = mockContent(body)
-    // Anthropic Messages 协议（Kimi Code 路径）：响应为 content 块数组
-    if (req.url?.includes('/v1/messages')) {
+    let payload = {}
+    try {
+      payload = JSON.parse(body)
+    } catch {}
+    const isAnthropic = req.url?.includes('/v1/messages')
+    // 流式（引擎全走 stream:true）：按协议发 SSE 分块，60ms/块模拟流式
+    if (payload.stream) {
+      res.writeHead(200, { 'content-type': 'text/event-stream' })
+      const third = Math.ceil(content.length / 3)
+      const chunks = [content.slice(0, third), content.slice(third, third * 2), content.slice(third * 2)]
+      let i = 0
+      const tick = () => {
+        if (i < chunks.length) {
+          if (isAnthropic) {
+            if (i === 0) {
+              res.write(`data: ${JSON.stringify({ type: 'message_start', message: { usage: { input_tokens: 1200, cache_read_input_tokens: 400, cache_creation_input_tokens: 800 } } })}\n\n`)
+            }
+            res.write(`data: ${JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: chunks[i] } })}\n\n`)
+            if (i === chunks.length - 1) {
+              res.write(`data: ${JSON.stringify({ type: 'message_delta', usage: { output_tokens: 320 } })}\n\n`)
+            }
+          } else {
+            if (i === 0) {
+              res.write(`data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: '先分析场景与角色…' } }] })}\n\n`)
+            }
+            res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: chunks[i] } }] })}\n\n`)
+            if (i === chunks.length - 1) {
+              res.write(`data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 1200, completion_tokens: 320, prompt_cache_hit_tokens: 400, prompt_cache_miss_tokens: 800 } })}\n\n`)
+            }
+          }
+          i++
+          setTimeout(tick, 200)
+        } else {
+          res.write(isAnthropic ? `data: ${JSON.stringify({ type: 'message_stop' })}\n\n` : 'data: [DONE]\n\n')
+          res.end()
+        }
+      }
+      tick()
+      return
+    }
+    // 非流式兜底（理论上不走）
+    if (isAnthropic) {
       res.end(JSON.stringify({ content: [{ type: 'text', text: content }] }))
       return
     }
@@ -109,12 +157,26 @@ writeFileSync(
   `[llm]\nbase_url = "http://127.0.0.1:9911/v1"\napi_key = "test"\nmodel = "mock"\ntimeout_secs = 10\n`,
 )
 
-const daemon = spawn(DAEMON, ['--port', '27599'], {
-  env: { ...process.env, HOME: home, SHIRO_TOKEN: 'smoke-token' },
-  stdio: ['ignore', 'pipe', 'pipe'],
-})
-daemon.stdout.on('data', () => {})
-daemon.stderr.on('data', (d) => process.stderr.write(`[daemon] ${d}`))
+let daemon = null
+function startDaemon() {
+  daemon = spawn(DAEMON, ['--port', '27599'], {
+    env: { ...process.env, HOME: home, SHIRO_TOKEN: 'smoke-token' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  daemon.stdout.on('data', () => {})
+  daemon.stderr.on('data', (d) => process.stderr.write(`[daemon] ${d}`))
+}
+async function waitReady() {
+  for (let i = 0; i < 50; i++) {
+    try {
+      await api('/api/v1/app/startup')
+      return
+    } catch {
+      await new Promise((r) => setTimeout(r, 100))
+    }
+  }
+}
+startDaemon()
 
 const api = async (path, init) => {
   const res = await fetch(`http://127.0.0.1:27599${path}`, {
@@ -127,14 +189,7 @@ const api = async (path, init) => {
 }
 
 // 等待就绪
-for (let i = 0; i < 50; i++) {
-  try {
-    await api('/api/v1/app/startup')
-    break
-  } catch {
-    await new Promise((r) => setTimeout(r, 100))
-  }
-}
+await waitReady()
 
 const failures = []
 const check = (cond, msg) => {
@@ -199,9 +254,84 @@ try {
   )
   check(detail.files.length === 7, `产物 7 个文件（实际 ${detail.files.length}）`)
 
+  // 2.8 实时回复写入 pending 日志：运行中某时刻应有「进行中 + 已有部分响应」的条目
+  // （前面提交选择后任务已完成过快，故单独建一个任务边跑边抓）
+  const tLive = await api('/api/v1/db/deconstruct/tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source_name: '实时回复验证', content: SCRIPT, character: '玛奇玛', aliases: [] }),
+  })
+  let liveCaught = false
+  for (let i = 0; i < 100 && !liveCaught; i++) {
+    const dLive = await api(`/api/v1/db/deconstruct/tasks/${tLive.id}`)
+    if (dLive.progress.stage === 'selecting') {
+      await api(`/api/v1/db/deconstruct/tasks/${tLive.id}/select`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ selected: dLive.segments.map((x) => x.index) }),
+      })
+      continue
+    }
+    const logsLive = await api(`/api/v1/db/deconstruct/tasks/${tLive.id}/logs`)
+    liveCaught = logsLive.logs.some((l) => l.ok === null && l.response_chars > 0)
+    if (['done', 'failed'].includes(dLive.progress.stage)) break
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  check(liveCaught, '运行中 pending 日志携带增长中的响应（实时回复）')
+  // 等该任务完成后删除
+  for (let i = 0; i < 120; i++) {
+    const dLive = await api(`/api/v1/db/deconstruct/tasks/${tLive.id}`)
+    if (['done', 'failed'].includes(dLive.progress.stage)) break
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  await api(`/api/v1/db/deconstruct/tasks/${tLive.id}`, { method: 'DELETE' })
+
   // 3. 回查：好引文通过 + 坏引文被移除（修复打回后 mock 会产出干净版本，removed 可能为 0）
   const verified = detail.progress.verified
   check(!!verified, `回查报告存在（passed=${verified?.passed} removed=${verified?.removed?.length}）`)
+
+  // 3.5 调用日志：每次 AI 调用有持久化记录（pending → 结果回写）
+  const logs = await api(`/api/v1/db/deconstruct/tasks/${created.id}/logs`)
+  check(logs.logs.length >= 8, `调用日志条数（${logs.logs.length}：笔记+生成+回查修复）`)
+  // 重试不吞错误：垃圾响应（空内容→非流式兜底）的错误链路在日志中可辨识
+  const noteFails = logs.logs.filter((l) => l.node === 'notes' && l.ok === false)
+  const noteOkCount = logs.logs.filter((l) => l.node === 'notes' && l.ok === true).length
+  const noteEntries = logs.logs.filter((l) => l.node === 'notes').length
+  check(
+    noteEntries === noteOkCount + noteFails.length && noteOkCount >= 1,
+    `垃圾响应路径完整记录（成功 ${noteOkCount} / 失败 ${noteFails.length}）`,
+  )
+
+  const noteLog = logs.logs.find((l) => l.node === 'notes' && l.ok === true)
+  check(!!noteLog && noteLog.request_chars > 0, '笔记日志摘要完整')
+  // 重试追加：前两次垃圾（流式+兜底双失败）后段内重试成功——同一条日志内含失败历史
+  check(
+    (noteLog.attempt_count ?? 1) > 1,
+    `重试追加到同一条日志（${noteLog.attempt_count} 次尝试）`,
+  )
+  const noteDetail = await api(
+    `/api/v1/db/deconstruct/tasks/${created.id}/logs/${noteLog.seq}`,
+  )
+  const attempts = noteDetail.attempts ?? []
+  check(
+    attempts.some((a) => a.ok === false) && attempts.some((a) => a.ok === true),
+    `多尝试含失败历史与成功（${attempts.map((a) => a.ok).join(',')}）`,
+  )
+  // token 用量与思考：流式正常路径（生成类日志）
+  const genLog = logs.logs.find((l) => l.node === 'generating' && l.ok === true)
+  check(
+    genLog && genLog.input_tokens > 0 && genLog.output_tokens > 0 && genLog.cache_read > 0,
+    `token 用量与缓存（↑${genLog?.input_tokens} ↓${genLog?.output_tokens} 读缓存 ${genLog?.cache_read}）`,
+  )
+  check(genLog?.cache_hit_rate > 0, `缓存命中率（${genLog?.cache_hit_rate}%）`)
+  check(genLog?.has_thinking === true, '思考过程已捕获')
+  const logDetail = await api(
+    `/api/v1/db/deconstruct/tasks/${created.id}/logs/${noteLog.seq}`,
+  )
+  check(
+    !!logDetail.request?.user && (logDetail.attempts ?? []).some((a) => !!a.response) && logDetail.ok === true,
+    '日志详情含请求与响应全文',
+  )
 
   // 4. 保存入人物库
   const saved = await api(`/api/v1/db/deconstruct/tasks/${created.id}/save`, { method: 'POST' })
@@ -243,7 +373,148 @@ try {
   }
   check(rejected, '已完成任务拒绝重试')
 
-  // 8. 清理任务
+  // 9. 中止：运行中中止 → aborted 终态 → 断点重试 → done
+  const t3 = await api('/api/v1/db/deconstruct/tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source_name: '中止验证', content: SCRIPT, character: '电次', aliases: [] }),
+  })
+  let d3 = null
+  for (let i = 0; i < 120; i++) {
+    d3 = await api(`/api/v1/db/deconstruct/tasks/${t3.id}`)
+    if (d3.progress.stage === 'selecting') break
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  await api(`/api/v1/db/deconstruct/tasks/${t3.id}/select`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ selected: d3.segments.map((x) => x.index) }),
+  })
+  // 等进入运行态再中止
+  let aborted = null
+  for (let i = 0; i < 120; i++) {
+    d3 = await api(`/api/v1/db/deconstruct/tasks/${t3.id}`)
+    if (['notes', 'generating', 'verifying'].includes(d3.progress.stage)) {
+      aborted = await api(`/api/v1/db/deconstruct/tasks/${t3.id}/abort`, { method: 'POST' })
+      break
+    }
+    if (['done', 'failed'].includes(d3.progress.stage)) break
+    await new Promise((r) => setTimeout(r, 50))
+  }
+  check(aborted?.stage === 'aborted', `中止生效（${aborted?.stage}）`)
+  const d3ab = await api(`/api/v1/db/deconstruct/tasks/${t3.id}`)
+  check(
+    !!d3ab.progress.last_stage,
+    `记录中止阶段（${d3ab.progress.last_stage}）`,
+  )
+  // 中止时在飞的 pending 日志被标记为已放弃（不再是「…」悬挂）
+  const logsAb = await api(`/api/v1/db/deconstruct/tasks/${t3.id}/logs`)
+  const pendingAb = logsAb.logs.filter((l) => l.ok === null && !l.abandoned)
+  const abandonedAb = logsAb.logs.filter((l) => l.abandoned)
+  check(pendingAb.length === 0, `无悬挂 pending 日志（剩 ${pendingAb.length}）`)
+  check(abandonedAb.length >= 1, `在飞日志标记放弃（${abandonedAb.length} 条）`)
+  await api(`/api/v1/db/deconstruct/tasks/${t3.id}/retry`, { method: 'POST' })
+  for (let i = 0; i < 120; i++) {
+    d3 = await api(`/api/v1/db/deconstruct/tasks/${t3.id}`)
+    if (['done', 'failed'].includes(d3.progress.stage)) break
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  check(d3.progress.stage === 'done', `中止后断点重试完成（${d3.progress.stage}）`)
+
+  // 9.3 并行设置：读写 + 多段任务并发笔记
+  const put = await api('/api/v1/model/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ max_concurrency: 3 }),
+  })
+  check(put.max_concurrency === 3, `并行数写入（${put.max_concurrency}）`)
+  const got = await api('/api/v1/model/settings')
+  check(got.max_concurrency === 3, `并行数读回（${got.max_concurrency}）`)
+
+  // 多段素材（无场次/章节标题 → plain 滑窗路径，约 3 段）
+  const para = '电次：这段台词用于凑长度。\n玛奇玛：嗯。\n（两人沉默地走着）\n' + '这是一个没有标题的段落，用于测试滑窗切块。'.repeat(40) + '\n\n'
+  const PLAIN = para.repeat(55)
+  const t5 = await api('/api/v1/db/deconstruct/tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source_name: '并行验证', content: PLAIN, character: '玛奇玛', aliases: [] }),
+  })
+  let d5 = null
+  for (let i = 0; i < 120; i++) {
+    d5 = await api(`/api/v1/db/deconstruct/tasks/${t5.id}`)
+    if (d5.progress.stage === 'selecting') break
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  check(d5.progress.segment_count >= 2, `多段切块（${d5.progress.segment_count} 段）`)
+  await api(`/api/v1/db/deconstruct/tasks/${t5.id}/select`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ selected: d5.segments.map((x) => x.index) }),
+  })
+  for (let i = 0; i < 120; i++) {
+    d5 = await api(`/api/v1/db/deconstruct/tasks/${t5.id}`)
+    if (['done', 'failed'].includes(d5.progress.stage)) break
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  check(d5.progress.stage === 'done', `多段并行任务完成（${d5.progress.stage}${d5.progress.error ? ' ' + d5.progress.error : ''}）`)
+  const logs5 = await api(`/api/v1/db/deconstruct/tasks/${t5.id}/logs`)
+  const noteLogs5 = logs5.logs.filter((l) => l.node === 'notes')
+  check(
+    noteLogs5.length === d5.progress.segment_count && noteLogs5.every((l) => l.ok === true),
+    `每段一条笔记日志且全部成功（${noteLogs5.length}/${d5.progress.segment_count}）`,
+  )
+  await api(`/api/v1/db/deconstruct/tasks/${t5.id}`, { method: 'DELETE' })
+
+  // 9.5 重启不自动续跑：杀掉 daemon（模拟退出应用）→ 重启 → 任务标「已中断」且未自己跑 → 点继续才完成
+  const t4 = await api('/api/v1/db/deconstruct/tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source_name: '重启验证', content: SCRIPT, character: '电次', aliases: [] }),
+  })
+  let d4 = null
+  for (let i = 0; i < 120; i++) {
+    d4 = await api(`/api/v1/db/deconstruct/tasks/${t4.id}`)
+    if (d4.progress.stage === 'selecting') break
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  await api(`/api/v1/db/deconstruct/tasks/${t4.id}/select`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ selected: d4.segments.map((x) => x.index) }),
+  })
+  // 等进入运行态
+  for (let i = 0; i < 120; i++) {
+    d4 = await api(`/api/v1/db/deconstruct/tasks/${t4.id}`)
+    if (['notes', 'generating', 'verifying'].includes(d4.progress.stage)) break
+    await new Promise((r) => setTimeout(r, 50))
+  }
+  daemon.kill()
+  await new Promise((r) => setTimeout(r, 300))
+  startDaemon()
+  await waitReady()
+  d4 = await api(`/api/v1/db/deconstruct/tasks/${t4.id}`)
+  check(d4.progress.stage === 'interrupted', `重启后任务已中断而非自动续跑（${d4.progress.stage}）`)
+  await api(`/api/v1/db/deconstruct/tasks/${t4.id}/retry`, { method: 'POST' })
+  for (let i = 0; i < 120; i++) {
+    d4 = await api(`/api/v1/db/deconstruct/tasks/${t4.id}`)
+    if (['done', 'failed'].includes(d4.progress.stage)) break
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  check(d4.progress.stage === 'done', `点继续后从断点完成（${d4.progress.stage}）`)
+  await api(`/api/v1/db/deconstruct/tasks/${t4.id}`, { method: 'DELETE' })
+
+  // 10. 改名
+  await api(`/api/v1/db/deconstruct/tasks/${t3.id}/rename`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: '电次卡-重跑' }),
+  })
+  const list2 = await api('/api/v1/db/deconstruct/tasks')
+  const renamed = list2.tasks.find((x) => x.id === t3.id)
+  check(renamed?.title === '电次卡-重跑', `任务改名（${renamed?.title}）`)
+  await api(`/api/v1/db/deconstruct/tasks/${t3.id}`, { method: 'DELETE' })
+
+  // 11. 清理任务
   await api(`/api/v1/db/deconstruct/tasks/${created.id}`, { method: 'DELETE' })
   const tasks = await api('/api/v1/db/deconstruct/tasks')
   check(!tasks.tasks.some((t) => t.id === created.id), '任务删除')
@@ -269,6 +540,14 @@ try {
   check(def.default_key === 'kimi-code', `默认档案设为 kimi-code（${def.default_key}）`)
   const kimi = def.profiles.find((p) => p.key === 'kimi-code')
   check(kimi?.protocol === 'anthropic' && kimi?.api_key_set && !!kimi?.api_key_preview, 'Key 掩码回显')
+
+  // 档案连接测试：对 mock 上游发 ping
+  const test = await api('/api/v1/model/profiles/kimi-code/test', { method: 'POST' })
+  check(test.ok === true && test.latency_ms != null, `连接测试（${test.ok} ${test.message}）`)
+  const test404 = await api('/api/v1/model/profiles/not-exist/test', { method: 'POST' }).catch(
+    (e) => String(e.message),
+  )
+  check(String(test404).includes('400'), '不存在档案测试被拒')
   const t2 = await api('/api/v1/db/deconstruct/tasks', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
