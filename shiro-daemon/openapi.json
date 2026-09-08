@@ -505,7 +505,7 @@
         "tags": [
           "db"
         ],
-        "summary": "保存角色卡：临时文件 + rename 原子覆盖（同文稿保存）。\n宽容策略：解析失败也保存（用户手改中途不丢内容），但返回 parse_error 提示该卡会从列表消失。",
+        "summary": "保存角色卡：原子覆盖（同文稿保存）。\n宽容策略：解析失败也保存（用户手改中途不丢内容），但返回 parse_error 提示该卡会从列表消失。",
         "operationId": "save_character",
         "requestBody": {
           "content": {

@@ -1,12 +1,9 @@
-mod api;
 mod app;
-mod assets;
 mod auth;
-mod chat;
 mod error;
+mod features;
 mod infra;
 mod llm;
-mod model_api;
 mod state;
 mod watch;
 

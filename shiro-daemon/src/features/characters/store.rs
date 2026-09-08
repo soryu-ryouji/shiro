@@ -1,23 +1,30 @@
-// 内容库资产 API（全局 db，格式见 docs/asset-format.md）：
-// 角色卡存 ~/.config/shiro/db/人物/<id>.md，明文 markdown + YAML frontmatter。
-// 宽容解析：frontmatter 缺失/损坏/未标记 shiro_asset 类型的文件不进列表，按普通文档对待，不报错。
+//! 角色库（全局人物库）：~/.config/shiro/db/人物/ 下的角色卡读写与解析。
+//! 格式见 docs/asset-format.md；宽容解析：未标记 shiro_asset: character 或 frontmatter 损坏的文件不进列表。
 
-use crate::error::{ApiError, ErrorResponse, bad_request, internal_error, not_found};
+use crate::error::{ApiError, bad_request, internal_error, not_found};
 use crate::infra::fs::{atomic_write, file_mtime};
+use crate::infra::now_secs;
 use crate::infra::paths::config_folder;
 use crate::infra::text::excerpt_from_content;
-use crate::infra::now_secs;
-use axum::Json;
-use axum::http::StatusCode;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::path::{Path, PathBuf};
 use utoipa::ToSchema;
 
 /// 预览正文字数（与项目文稿预览同量级）
 const EXCERPT_CHARS: usize = 160;
 
+/// 深卡子文件固定顺序（soul → … → limit），缺文件跳过；格式见 docs/asset-format.md 深卡章节
+const DEEP_CARD_FILES: [&str; 6] = [
+    "soul",
+    "speech_patterns",
+    "behavior_guide",
+    "relationship_dynamics",
+    "key_life_events",
+    "limit",
+];
+
 #[derive(Serialize, ToSchema)]
-pub struct CharacterSummary {
+pub(crate) struct CharacterSummary {
     /// 角色 id（单文件：db/人物/ 下文件名去掉 .md；深卡：目录名）
     pub id: String,
     /// 显示名（frontmatter 的 name；缺失回退文件名）
@@ -42,12 +49,12 @@ pub struct CharacterSummary {
 }
 
 #[derive(Serialize, ToSchema)]
-pub struct CharacterListResponse {
+pub(crate) struct CharacterListResponse {
     pub characters: Vec<CharacterSummary>,
 }
 
 #[derive(Serialize, ToSchema)]
-pub struct CardFile {
+pub(crate) struct CardFile {
     /// 子文件名（不带扩展名）：soul / speech_patterns / … / limit
     pub name: String,
     /// 子文件内容（markdown）
@@ -55,7 +62,7 @@ pub struct CardFile {
 }
 
 #[derive(Serialize, ToSchema)]
-pub struct CharacterDetail {
+pub(crate) struct CharacterDetail {
     pub id: String,
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -75,8 +82,19 @@ pub struct CharacterDetail {
     pub raw: String,
 }
 
+#[derive(Serialize, ToSchema)]
+pub(crate) struct SaveCharacterResponse {
+    /// 保存后能否仍解析为角色卡（false = frontmatter 缺失/损坏/未标记类型，该卡不进列表）
+    pub parsed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parse_error: Option<String>,
+    /// 保存后重新解析出的摘要（parsed 为 false 时为空）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub character: Option<CharacterSummary>,
+}
+
 /// 全局人物库目录：~/.config/shiro/db/人物/
-pub(crate) fn characters_folder() -> PathBuf {
+fn characters_folder() -> PathBuf {
     config_folder().join("db").join("人物")
 }
 
@@ -214,33 +232,6 @@ fn valid_asset_id(id: &str) -> bool {
     !id.is_empty() && !id.starts_with('.') && !id.contains(['/', '\\'])
 }
 
-/// 全局人物库角色列表
-#[utoipa::path(
-    post,
-    path = "/api/v1/db/characters/list",
-    tag = "db",
-    responses(
-        (status = 200, description = "角色列表（按显示名排序）", body = CharacterListResponse),
-        (status = 401, description = "未鉴权")
-    ),
-    security(("bearer_token" = []))
-)]
-pub(crate) async fn list_characters() -> Json<CharacterListResponse> {
-    Json(CharacterListResponse {
-        characters: scan_characters(&characters_folder()),
-    })
-}
-
-/// 深卡子文件固定顺序（soul → … → limit），缺文件跳过；格式见 docs/asset-format.md 深卡章节
-const DEEP_CARD_FILES: [&str; 6] = [
-    "soul",
-    "speech_patterns",
-    "behavior_guide",
-    "relationship_dynamics",
-    "key_life_events",
-    "limit",
-];
-
 /// 深卡子文件读取：固定顺序（soul → … → limit），缺文件跳过
 fn read_deep_files(folder: &Path) -> Vec<CardFile> {
     DEEP_CARD_FILES
@@ -255,45 +246,28 @@ fn read_deep_files(folder: &Path) -> Vec<CardFile> {
         .collect()
 }
 
-#[derive(Deserialize, ToSchema)]
-pub struct GetCharacterRequest {
-    /// 角色 id（单文件卡去 .md 的文件名；深卡为目录名）
-    pub id: String,
+/// 角色列表（按显示名排序）
+pub(crate) fn list() -> Vec<CharacterSummary> {
+    scan_characters(&characters_folder())
 }
 
 /// 角色详情（单文件简卡：frontmatter 字段 + 正文；目录深卡：index.md + 子文件列表）
-#[utoipa::path(
-    post,
-    path = "/api/v1/db/characters/get",
-    tag = "db",
-    request_body = GetCharacterRequest,
-    responses(
-        (status = 200, description = "角色详情", body = CharacterDetail),
-        (status = 400, description = "非法 id", body = ErrorResponse),
-        (status = 404, description = "角色不存在", body = ErrorResponse),
-        (status = 401, description = "未鉴权")
-    ),
-    security(("bearer_token" = []))
-)]
-pub(crate) async fn get_character(
-    Json(req): Json<GetCharacterRequest>,
-) -> Result<Json<CharacterDetail>, ApiError> {
-    let id = req.id;
-    if !valid_asset_id(&id) {
+pub(crate) fn get(id: &str) -> Result<CharacterDetail, ApiError> {
+    if !valid_asset_id(id) {
         return Err(bad_request("非法的角色 id"));
     }
     // 单文件简卡优先，其次目录深卡（index.md）
     let file_path = characters_folder().join(format!("{id}.md"));
-    let folder_path = characters_folder().join(&id);
+    let folder_path = characters_folder().join(id);
     if file_path.is_file() {
         let content = std::fs::read_to_string(&file_path).map_err(|_| not_found("角色不存在"))?;
         let Some((fm, body)) = split_frontmatter(&content) else {
             return Err(not_found("角色不存在"));
         };
-        let Some(c) = parse_character(&fm, &body, &id) else {
+        let Some(c) = parse_character(&fm, &body, id) else {
             return Err(not_found("角色不存在"));
         };
-        return Ok(Json(CharacterDetail {
+        return Ok(CharacterDetail {
             id: c.id,
             name: c.name,
             role: c.role,
@@ -304,7 +278,7 @@ pub(crate) async fn get_character(
             files: Vec::new(),
             body,
             raw: content,
-        }));
+        });
     }
     let index = folder_path.join("index.md");
     if index.is_file() {
@@ -312,10 +286,10 @@ pub(crate) async fn get_character(
         let Some((fm, body)) = split_frontmatter(&content) else {
             return Err(not_found("角色不存在"));
         };
-        let Some(c) = parse_character(&fm, &body, &id) else {
+        let Some(c) = parse_character(&fm, &body, id) else {
             return Err(not_found("角色不存在"));
         };
-        return Ok(Json(CharacterDetail {
+        return Ok(CharacterDetail {
             id: c.id,
             name: c.name,
             role: c.role,
@@ -326,56 +300,20 @@ pub(crate) async fn get_character(
             files: read_deep_files(&folder_path),
             body,
             raw: content,
-        }));
+        });
     }
     Err(not_found("角色不存在"))
 }
 
-#[derive(Deserialize, ToSchema)]
-pub struct SaveCharacterRequest {
-    /// 角色 id（单文件卡去 .md 的文件名；深卡为目录名）
-    pub id: String,
-    /// 完整文件内容（含 frontmatter）
-    pub content: String,
-}
-
-#[derive(Serialize, ToSchema)]
-pub struct SaveCharacterResponse {
-    /// 保存后能否仍解析为角色卡（false = frontmatter 缺失/损坏/未标记类型，该卡不进列表）
-    pub parsed: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub parse_error: Option<String>,
-    /// 保存后重新解析出的摘要（parsed 为 false 时为空）
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub character: Option<CharacterSummary>,
-}
-
-/// 保存角色卡：临时文件 + rename 原子覆盖（同文稿保存）。
+/// 保存角色卡：原子覆盖（同文稿保存）。
 /// 宽容策略：解析失败也保存（用户手改中途不丢内容），但返回 parse_error 提示该卡会从列表消失。
-#[utoipa::path(
-    post,
-    path = "/api/v1/db/characters/save",
-    tag = "db",
-    request_body = SaveCharacterRequest,
-    responses(
-        (status = 200, description = "已保存（含解析反馈）", body = SaveCharacterResponse),
-        (status = 400, description = "非法 id", body = ErrorResponse),
-        (status = 404, description = "角色不存在", body = ErrorResponse),
-        (status = 401, description = "未鉴权"),
-        (status = 500, description = "写入失败", body = ErrorResponse)
-    ),
-    security(("bearer_token" = []))
-)]
-pub(crate) async fn save_character(
-    Json(req): Json<SaveCharacterRequest>,
-) -> Result<Json<SaveCharacterResponse>, ApiError> {
-    let id = req.id;
-    if !valid_asset_id(&id) {
+pub(crate) fn save(id: &str, content: &str) -> Result<SaveCharacterResponse, ApiError> {
+    if !valid_asset_id(id) {
         return Err(bad_request("非法的角色 id"));
     }
     // 单文件简卡优先；其次目录深卡（编辑对象是 index.md，写回原位）
     let single = characters_folder().join(format!("{id}.md"));
-    let deep = characters_folder().join(&id).join("index.md");
+    let deep = characters_folder().join(id).join("index.md");
     let path = if single.is_file() {
         single
     } else if deep.is_file() {
@@ -383,15 +321,15 @@ pub(crate) async fn save_character(
     } else {
         return Err(not_found("角色不存在"));
     };
-    atomic_write(&path, &req.content).map_err(internal_error)?;
+    atomic_write(&path, content).map_err(internal_error)?;
 
-    let parsed = split_frontmatter(&req.content).and_then(|(fm, body)| {
-        parse_character(&fm, &body, &id).map(|mut c| {
+    let parsed = split_frontmatter(content).and_then(|(fm, body)| {
+        parse_character(&fm, &body, id).map(|mut c| {
             c.modified = file_mtime(&path);
             c
         })
     });
-    Ok(Json(match parsed {
+    Ok(match parsed {
         Some(c) => SaveCharacterResponse {
             parsed: true,
             parse_error: None,
@@ -405,17 +343,11 @@ pub(crate) async fn save_character(
             ),
             character: None,
         },
-    }))
-}
-
-#[derive(Deserialize, ToSchema)]
-pub struct CreateCharacterRequest {
-    /// 角色显示名（写入 frontmatter 的 name）
-    pub name: String,
+    })
 }
 
 /// 由显示名生成 id：仅保留 ASCII 字母数字与连字符；为空（如纯中文名）时用 character-<时间戳>
-pub(crate) fn slug_for(name: &str) -> String {
+fn slug_for(name: &str) -> String {
     let slug: String = name
         .to_lowercase()
         .chars()
@@ -451,23 +383,8 @@ fn skeleton_content(name: &str) -> String {
 }
 
 /// 新建角色卡（骨架）：同名自动追加 -2/-3 序号；返回可直接进入编辑的详情
-#[utoipa::path(
-    post,
-    path = "/api/v1/db/characters/create",
-    tag = "db",
-    request_body = CreateCharacterRequest,
-    responses(
-        (status = 201, description = "已创建", body = CharacterDetail),
-        (status = 400, description = "名称为空", body = ErrorResponse),
-        (status = 401, description = "未鉴权"),
-        (status = 500, description = "写入失败", body = ErrorResponse)
-    ),
-    security(("bearer_token" = []))
-)]
-pub(crate) async fn create_character(
-    Json(req): Json<CreateCharacterRequest>,
-) -> Result<(StatusCode, Json<CharacterDetail>), ApiError> {
-    let name = req.name.trim();
+pub(crate) fn create(name: &str) -> Result<CharacterDetail, ApiError> {
+    let name = name.trim();
     if name.is_empty() {
         return Err(bad_request("名称不能为空"));
     }
@@ -486,21 +403,18 @@ pub(crate) async fn create_character(
     let body = split_frontmatter(&content)
         .map(|(_, body)| body)
         .unwrap_or_default();
-    Ok((
-        StatusCode::CREATED,
-        Json(CharacterDetail {
-            id,
-            name: name.to_string(),
-            role: None,
-            archetype: vec![],
-            tags: vec![],
-            source: None,
-            depth: None,
-            files: Vec::new(),
-            body,
-            raw: content,
-        }),
-    ))
+    Ok(CharacterDetail {
+        id,
+        name: name.to_string(),
+        role: None,
+        archetype: vec![],
+        tags: vec![],
+        source: None,
+        depth: None,
+        files: Vec::new(),
+        body,
+        raw: content,
+    })
 }
 
 #[cfg(test)]
@@ -537,7 +451,11 @@ mod tests {
             "---\nshiro_asset: character\nname: [未闭合\n---\n正文",
         )
         .unwrap();
-        std::fs::write(folder.join("noname.md"), "---\nshiro_asset: character\n---\n\n无名字段，回退文件名").unwrap();
+        std::fs::write(
+            folder.join("noname.md"),
+            "---\nshiro_asset: character\n---\n\n无名字段，回退文件名",
+        )
+        .unwrap();
         std::fs::write(folder.join("notes.txt"), "非 md 不收").unwrap();
 
         let list = scan_characters(&folder);
@@ -576,11 +494,7 @@ mod tests {
             "---\nshiro_asset: character\ndepth: full\nname: 玛奇玛\nsource_work:\n  title: 链锯人\n---\n\n## 一句话\n\n温柔的支配者。\n",
         )
         .unwrap();
-        std::fs::write(
-            card_dir.join("soul.md"),
-            "## 核心驱动力\n\n链锯人。\n",
-        )
-        .unwrap();
+        std::fs::write(card_dir.join("soul.md"), "## 核心驱动力\n\n链锯人。\n").unwrap();
         // 无 index.md 的目录不收
         std::fs::create_dir_all(folder.join("empty-folder")).unwrap();
 
@@ -599,7 +513,10 @@ mod tests {
     #[test]
     fn slug_rules() {
         assert_eq!(slug_for("Feng Pi Mei Ren"), "feng-pi-mei-ren");
-        assert!(slug_for("沈青梧").starts_with("character-"), "纯中文名回退时间戳 id");
+        assert!(
+            slug_for("沈青梧").starts_with("character-"),
+            "纯中文名回退时间戳 id"
+        );
     }
 
     #[test]

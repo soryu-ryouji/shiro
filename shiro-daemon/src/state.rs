@@ -8,5 +8,5 @@ pub struct AppState {
     pub token: String,
     pub watch_hub: watch::WatchHub,
     /// Chat 生成守卫（同一会话并发限制）
-    pub chat: std::sync::Arc<crate::chat::Hub>,
+    pub chat: std::sync::Arc<crate::features::chat::Hub>,
 }

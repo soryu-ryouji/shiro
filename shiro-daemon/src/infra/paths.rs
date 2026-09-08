@@ -40,3 +40,16 @@ pub(crate) fn same_path(a: &str, b: &Path) -> bool {
     }
     std::fs::canonicalize(pa).map(|ca| ca == b).unwrap_or(false)
 }
+
+/// 名称合法性校验（文件/目录名共用）：非空、非 . ..、不含路径分隔符与 Windows 保留字符
+pub(crate) fn validate_name(name: &str) -> Result<&str, ApiError> {
+    const INVALID: [char; 9] = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
+    let name = name.trim();
+    if name.is_empty() || name == "." || name == ".." || name.chars().any(|c| INVALID.contains(&c))
+    {
+        return Err(bad_request(
+            "名称不能为空，且不能包含 \\ / : * ? \" < > | 字符",
+        ));
+    }
+    Ok(name)
+}

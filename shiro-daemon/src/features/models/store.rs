@@ -1,17 +1,14 @@
-// 模型档案 API（Model 视图）：多档案 CRUD + 默认档案指定（config.toml 的 [llm] 段，
-// [[llm.profiles]] 数组 + default key）。设计见 docs/backend/model-access.md；
-// Key 不回传明文，只回掩码预览。
+//! 模型档案（config.toml 的 [llm] 段：[[llm.profiles]] + default key）。
+//! 设计见 docs/backend/model-access.md；Key 不回传明文，只回掩码预览。
 
-use crate::error::{ApiError, ErrorResponse, bad_request, internal_error};
+use crate::error::{ApiError, bad_request, internal_error, not_found};
 use crate::infra::paths::config_folder;
 use crate::llm::{self, Profile};
-use axum::Json;
-use axum::http::StatusCode;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use utoipa::ToSchema;
 
 #[derive(Serialize, ToSchema)]
-pub struct ProfileSummary {
+pub(crate) struct ProfileSummary {
     /// 档案 key（供应商 preset key）
     pub key: String,
     pub base_url: String,
@@ -28,10 +25,29 @@ pub struct ProfileSummary {
 }
 
 #[derive(Serialize, ToSchema)]
-pub struct ProfileListResponse {
+pub(crate) struct ProfileListResponse {
     pub profiles: Vec<ProfileSummary>,
     /// 默认档案 key（无档案时为 null）
     pub default_key: Option<String>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub(crate) struct ProfileTestResponse {
+    pub ok: bool,
+    pub message: String,
+    /// 测试耗时（毫秒，成功时返回）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latency_ms: Option<u64>,
+}
+
+/// 注册/更新档案的输入（由 HTTP 层转换，领域层不依赖请求 DTO）
+pub(crate) struct ProfileInput {
+    pub key: String,
+    pub base_url: String,
+    pub model: String,
+    pub protocol: Option<String>,
+    pub thinking: Option<String>,
+    pub api_key: Option<String>,
 }
 
 fn summary(p: &Profile) -> ProfileSummary {
@@ -55,56 +71,15 @@ fn list_response() -> ProfileListResponse {
 }
 
 /// 档案列表（含默认档案指定）
-#[utoipa::path(
-    post,
-    path = "/api/v1/model/profiles/list",
-    tag = "model",
-    responses(
-        (status = 200, description = "档案列表", body = ProfileListResponse),
-        (status = 401, description = "未鉴权")
-    ),
-    security(("bearer_token" = []))
-)]
-pub(crate) async fn list_profiles() -> Json<ProfileListResponse> {
-    Json(list_response())
-}
-
-#[derive(Deserialize, ToSchema)]
-pub struct UpsertProfileRequest {
-    /// 档案 key（供应商 preset key；同 key 覆盖更新）
-    pub key: String,
-    pub base_url: String,
-    pub model: String,
-    #[serde(default)]
-    pub protocol: Option<String>,
-    /// 思考强度：缺省/空 = 不启用；low / medium / high
-    #[serde(default)]
-    pub thinking: Option<String>,
-    /// 新密钥；缺省或空字符串 = 保留原值（新建档案必填）
-    #[serde(default)]
-    pub api_key: Option<String>,
+pub(crate) fn list() -> ProfileListResponse {
+    list_response()
 }
 
 /// 注册/更新档案（同 key 覆盖；首个档案自动成为默认）
-#[utoipa::path(
-    post,
-    path = "/api/v1/model/profiles/save",
-    tag = "model",
-    request_body = UpsertProfileRequest,
-    responses(
-        (status = 200, description = "已保存（含更新后列表）", body = ProfileListResponse),
-        (status = 400, description = "参数错误", body = ErrorResponse),
-        (status = 401, description = "未鉴权"),
-        (status = 500, description = "写入失败", body = ErrorResponse)
-    ),
-    security(("bearer_token" = []))
-)]
-pub(crate) async fn upsert_profile(
-    Json(req): Json<UpsertProfileRequest>,
-) -> Result<Json<ProfileListResponse>, ApiError> {
-    let key = req.key.trim();
-    let base = req.base_url.trim();
-    let model = req.model.trim();
+pub(crate) fn save(input: &ProfileInput) -> Result<ProfileListResponse, ApiError> {
+    let key = input.key.trim();
+    let base = input.base_url.trim();
+    let model = input.model.trim();
     if key.is_empty() || key.contains(['/', '\\', ' ']) {
         return Err(bad_request("档案 key 非法"));
     }
@@ -114,7 +89,7 @@ pub(crate) async fn upsert_profile(
     if model.is_empty() {
         return Err(bad_request("模型名不能为空"));
     }
-    let protocol = req
+    let protocol = input
         .protocol
         .as_deref()
         .map(str::trim)
@@ -123,19 +98,19 @@ pub(crate) async fn upsert_profile(
     if protocol != "openai" && protocol != "anthropic" {
         return Err(bad_request("协议仅支持 openai / anthropic"));
     }
-    let thinking = req
+    let thinking = input
         .thinking
         .as_deref()
         .map(str::trim)
         .filter(|t| !t.is_empty());
-    if let Some(t) = thinking {
-        if !["low", "medium", "high"].contains(&t) {
-            return Err(bad_request("思考强度仅支持 low / medium / high（或不填不启用）"));
-        }
+    if let Some(t) = thinking
+        && !["low", "medium", "high"].contains(&t)
+    {
+        return Err(bad_request("思考强度仅支持 low / medium / high（或不填不启用）"));
     }
 
     let (mut profiles, mut default) = llm::read_profiles(&config_folder());
-    let new_key_provided = req
+    let new_key_provided = input
         .api_key
         .as_deref()
         .map(str::trim)
@@ -170,43 +145,12 @@ pub(crate) async fn upsert_profile(
             }
         }
     }
-    llm::write_profiles(&config_folder(), &profiles, default.as_deref())
-        .map_err(internal_error)?;
-    Ok(Json(list_response()))
-}
-
-#[derive(Serialize, ToSchema)]
-pub struct ProfileTestResponse {
-    pub ok: bool,
-    pub message: String,
-    /// 测试耗时（毫秒，成功时返回）
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub latency_ms: Option<u64>,
-}
-
-#[derive(Deserialize, ToSchema)]
-pub struct ProfileKeyRequest {
-    /// 档案 key
-    pub key: String,
+    llm::write_profiles(&config_folder(), &profiles, default.as_deref()).map_err(internal_error)?;
+    Ok(list_response())
 }
 
 /// 测试档案连接（发一个最小真实调用 ping；验证端点 + 密钥 + 模型 + 协议）
-#[utoipa::path(
-    post,
-    path = "/api/v1/model/profiles/test",
-    tag = "model",
-    request_body = ProfileKeyRequest,
-    responses(
-        (status = 200, description = "测试结果（ok 标识连通与否，message 说明）", body = ProfileTestResponse),
-        (status = 404, description = "档案不存在", body = ErrorResponse),
-        (status = 401, description = "未鉴权")
-    ),
-    security(("bearer_token" = []))
-)]
-pub(crate) async fn test_profile(
-    Json(req): Json<ProfileKeyRequest>,
-) -> Result<Json<ProfileTestResponse>, ApiError> {
-    let key = req.key;
+pub(crate) async fn test(key: &str) -> Result<ProfileTestResponse, ApiError> {
     let (profiles, _) = llm::read_profiles(&config_folder());
     let p = profiles
         .iter()
@@ -221,52 +165,31 @@ pub(crate) async fn test_profile(
         timeout_secs: 20,
         max_attempts: 1,
     };
-    match llm::test_connection(&cfg).await {
-        Ok(ms) => Ok(Json(ProfileTestResponse {
+    Ok(match llm::test_connection(&cfg).await {
+        Ok(ms) => ProfileTestResponse {
             ok: true,
             message: format!("连接正常（{ms}ms）"),
             latency_ms: Some(ms),
-        })),
-        Err(e) => Ok(Json(ProfileTestResponse {
+        },
+        Err(e) => ProfileTestResponse {
             ok: false,
             message: e.message,
             latency_ms: None,
-        })),
-    }
+        },
+    })
 }
 
 /// 删除档案；删除默认档案时默认项回退到剩余第一个
-#[utoipa::path(
-    post,
-    path = "/api/v1/model/profiles/delete",
-    tag = "model",
-    request_body = ProfileKeyRequest,
-    responses(
-        (status = 200, description = "已删除（含更新后列表）", body = ProfileListResponse),
-        (status = 404, description = "档案不存在", body = ErrorResponse),
-        (status = 401, description = "未鉴权"),
-        (status = 500, description = "写入失败", body = ErrorResponse)
-    ),
-    security(("bearer_token" = []))
-)]
-pub(crate) async fn delete_profile(
-    Json(req): Json<ProfileKeyRequest>,
-) -> Result<Json<ProfileListResponse>, ApiError> {
-    let key = req.key;
+pub(crate) fn delete(key: &str) -> Result<ProfileListResponse, ApiError> {
     let (mut profiles, default) = llm::read_profiles(&config_folder());
     let before = profiles.len();
     profiles.retain(|p| p.key != key);
     if profiles.len() == before {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                message: "档案不存在".into(),
-            }),
-        ));
+        return Err(not_found("档案不存在"));
     }
     let new_default = default.filter(|d| profiles.iter().any(|p| &p.key == d));
     let new_default = new_default.or_else(|| profiles.first().map(|p| p.key.clone()));
     llm::write_profiles(&config_folder(), &profiles, new_default.as_deref())
         .map_err(internal_error)?;
-    Ok(Json(list_response()))
+    Ok(list_response())
 }

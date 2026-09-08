@@ -193,7 +193,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 保存角色卡：临时文件 + rename 原子覆盖（同文稿保存）。
+         * 保存角色卡：原子覆盖（同文稿保存）。
          *     宽容策略：解析失败也保存（用户手改中途不丢内容），但返回 parse_error 提示该卡会从列表消失。
          */
         post: operations["save_character"];
