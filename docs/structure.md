@@ -9,13 +9,21 @@
 shiro/
 ├── shiro-daemon/                  ← Rust 后端（axum + tokio，独立二进制）
 │   ├── src/
-│   │   ├── main.rs                CLI 入口（--port/--host/--serve-folder/--dump-openapi）+ AppState 组装
-│   │   ├── api.rs                 项目/文件路由 + 鉴权中间件 + 静态资源 serve + 共享工具
-│   │   ├── assets.rs              内容库资产 API（全局人物库角色卡）
-│   │   ├── model_api.rs           模型档案 API（CRUD + 默认档案 + 连接测试）
-│   │   ├── chat/                  Chat 会话：mod.rs 存储/上下文/提案，api.rs HTTP 端点
-│   │   ├── llm.rs                 LLM provider 层（OpenAI 兼容 + Anthropic，流式/重试/用量）
+│   │   ├── main.rs                CLI 入口与启动（薄壳）
+│   │   ├── lib.rs                 模块声明（集成测试可 import）
+│   │   ├── app.rs                 路由组装 + startup/health + OpenAPI 契约测试
+│   │   ├── state.rs               AppState（token / WatchHub / Chat Hub）
+│   │   ├── error.rs               统一错误类型与构造（ApiError / ErrorResponse）
+│   │   ├── auth.rs                鉴权中间件
+│   │   ├── infra/                 基础设施：paths / fs（原子写）/ text
+│   │   ├── features/              业务域（api + 领域逻辑 + 存储）
+│   │   │   ├── projects/          登记（history.toml）+ 目录树/预览/文稿/目录
+│   │   │   ├── characters/        全局人物库角色卡（扫描/解析/保存）
+│   │   │   ├── models/            模型档案（config.toml [llm]）
+│   │   │   └── chat/              会话 + 上下文 + 提案 + SSE 端点
+│   │   ├── llm/                   provider 层：config / protocol / json
 │   │   └── watch.rs               项目目录文件监听（notify + 防抖 + 广播 Hub）
+│   ├── tests/api.rs               路由/鉴权集成测试
 │   └── openapi.json               固化契约（契约测试校验与代码同步）
 │
 ├── shiro-app/                     ← Electron 壳 + Vue 3 前端
@@ -49,12 +57,10 @@ shiro/
                                      │ HTTP：POST + JSON（SSE 流式）· Bearer token
 ┌────────────────────────────────────▼──────────────────────────────────────┐
 │                        shiro-daemon（Rust，独立进程）                       │
-│  入口层   main.rs            CLI、AppState、监听                               │
-│  HTTP 层  api.rs · assets.rs · model_api.rs · chat/api.rs                  │
-│           路由 / 鉴权 / 参数校验 / 静态资源                                   │
-│  领域层   chat/mod.rs · watch.rs · llm.rs                                  │
-│           会话与提案 / 文件监听 / provider 调用                               │
-│  存储层   项目文件夹（正文 + .shiro/）· ~/.config/shiro/（config.toml 等）    │
+│  入口      main.rs / lib.rs / app.rs（组装）· state.rs · auth.rs · error.rs  │
+│  业务      features/：projects · characters · models · chat                 │
+│  基础      infra/（paths/fs/text）· llm/（provider）· watch.rs              │
+│  存储      项目文件夹（正文 + .shiro/）· ~/.config/shiro/（config.toml 等）    │
 └────────────────────────────────────────────────────────────────────────────┘
         ▲
         │ IPC 仅壳功能（窗口控制/目录选择/文件管理器），业务数据一律走 HTTP
@@ -67,30 +73,31 @@ shiro/
 
 ### 3.1 模块职责
 
-| 层 | 模块 | 职责 | 依赖 |
-| -- | ---- | ---- | ---- |
-| 入口 | `main.rs` | CLI 解析、AppState（token / WatchHub / Chat Hub）组装、监听 | api、chat、watch |
-| HTTP | `api.rs` | app/projects 路由、鉴权中间件、静态资源 SPA 回退；**共享工具**：`config_folder` / `resolve_inside` / `ApiError` / `is_sheet_file` / `excerpt_from_content` 等 | assets、model_api、chat、watch |
-| HTTP | `assets.rs` | 全局人物库：角色卡列表/详情/新建/保存（简卡单文件 + 深卡目录） | api（工具） |
-| HTTP | `model_api.rs` | 模型档案：列表/注册/删除/连接测试，key 只回掩码 | api、llm |
-| HTTP | `chat/api.rs` | 会话 CRUD、消息 SSE 流式生成、提案应用 | chat/mod、llm、api |
-| 领域 | `chat/mod.rs` | 会话持久化（`<项目>/.shiro/chat/`）、上下文组装（目录树 + 历史 + 引用文件）、`shiro-edit` 提案解析、运行互斥 | api（工具）、llm |
-| 领域 | `watch.rs` | notify 递归监听 + 300ms 防抖，按项目广播变更集；订阅引用计数 | 独立 |
-| 领域 | `llm.rs` | provider 抽象：档案配置读写、OpenAI 兼容 / Anthropic 双协议、流式回调、重试、用量归一 | api（config_folder） |
-| 存储 | 文件系统 | 项目文件夹是唯一权威数据源；全局配置与内容库在 `~/.config/shiro/` | — |
+| 层 | 模块 | 职责 |
+| -- | ---- | ---- |
+| 入口 | `main.rs` / `lib.rs` | CLI 解析与启动；lib 声明模块（集成测试可 import） |
+| 组装 | `app.rs` | 合并各 feature 的 `router()`，挂鉴权/CORS/TraceLayer/静态资源，startup/health，OpenAPI 契约测试 |
+| 状态 | `state.rs` | `AppState`（token / WatchHub / Chat Hub），features 依赖它而非入口 |
+| 横切 | `error.rs` / `auth.rs` | 统一错误类型与构造；Bearer 鉴权中间件 |
+| 基础 | `infra/` | `paths`（config 目录/路径安全/名称校验）、`fs`（原子写/回收站/文稿判定）、`text`（预览提取） |
+| 业务 | `features/projects/` | `api`（handler/DTO）+ `files`（树/预览/文稿/目录）+ `store`（登记与 history.toml） |
+| 业务 | `features/characters/` | `api` + `store`（角色卡扫描/解析/保存，简卡单文件 + 深卡目录） |
+| 业务 | `features/models/` | `api` + `store`（档案校验/保存/连接测试，key 只回掩码） |
+| 业务 | `features/chat/` | `mod`（会话持久化/上下文组装/提案解析/运行互斥）+ `api`（CRUD + SSE） |
+| 基础 | `llm/` | `config`（档案读写/并发上限/掩码）、`protocol`（双协议请求与流式解析/退避）、`json`（容错解析） |
+| 基础 | `watch.rs` | notify 递归监听 + 300ms 防抖，按项目广播变更集；订阅引用计数 |
 
 ### 3.2 依赖方向
 
 ```text
-main.rs
-  └─→ api.rs（路由注册 + AppState）
-        ├─→ assets.rs ──┐
-        ├─→ model_api.rs ├─→ api.rs 共享工具（config_folder / ApiError / resolve_inside …）
-        ├─→ chat/api.rs ──→ chat/mod.rs ──→ llm.rs
-        └─→ watch.rs
+main.rs / tests
+  └─→ app.rs（唯一组装点）
+        └─→ features/*/api ─→ features/*/{store,files,mod} ─→ infra/*
+                                     │                        └─→ error.rs
+                                     └─→ llm/ · watch.rs
 ```
 
-约定：HTTP handler 只做参数校验与响应组装，领域逻辑放各自 `mod.rs`；`api.rs` 兼作共享工具模块（路径安全、错误类型、配置目录）。
+约定：依赖单向指向内部——`features` 可以依赖 `infra` / `llm` / `error`，反向不允许；HTTP handler 只做参数解析与响应组装，领域逻辑在 feature 的 `store`/`files`/`mod` 中；共享状态经 `state.rs` 注入，不依赖入口模块。
 
 ## 4. 前端分层（shiro-app）
 

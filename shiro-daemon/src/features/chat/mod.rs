@@ -116,7 +116,6 @@ fn session_path(root: &Path, id: &str) -> Option<PathBuf> {
     valid_session_id(id).then(|| chat_folder(root).join(format!("{id}.json")))
 }
 
-/// 原子写（临时文件 + rename），与项目文稿保存同一套路
 // ---- 会话 CRUD ----
 
 pub fn list_sessions(root: &Path) -> Vec<SessionSummary> {

@@ -37,7 +37,7 @@
 
 V1 无 token 预算制，靠上述截断上限控制；预算制与摘要链见 [AI写作工具制作思考](../AI写作工具制作思考.md) 的 push 上下文设计。
 
-## API（tag `chat`，见 `shiro-daemon/src/chat/api.rs`）
+## API（tag `chat`，见 `shiro-daemon/src/features/chat/api.rs`）
 
 全部为 `POST` + JSON body（约定见 [项目结构总览](../structure.md#6-api统一-post)）：
 

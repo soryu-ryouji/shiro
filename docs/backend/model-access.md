@@ -40,7 +40,7 @@ provider 配置与 API key 存 `~/.config/shiro/config.toml`（见[存储设计]
 
 ## 当前实现（V1）
 
-已落地（`shiro-daemon/src/llm.rs` + `src/model_api.rs`）：
+已落地（`shiro-daemon/src/llm/` + `src/features/models/`）：
 
 - **多档案**：config.toml 的 `[llm]` 段存默认档案 key + `[[llm.profiles]]` 档案数组（key / base_url / api_key / model / protocol）。旧单字段 `[llm]` 配置读取时自动迁移合成单档案（key 由端点反查预设），下次写盘即新结构。引擎（Chat 等任务）使用默认档案，Model 面板可切换，改动即生效无需重启
 - **配置界面**：Model 面板按功能分层——注册分区「模型导入」（供应商 + 模型可检索下拉 + API Key 三行表单，保存即注册/覆盖同 key 档案）；管理分区「模型管理」（已注册档案列表：供应商 · 当前模型 · Key 掩码状态，可编辑 / 删除 / **测试连接**（`POST /api/v1/model/profiles/test`：发最小真实调用 ping，验证端点 + 密钥 + 模型 + 协议；429 视为配置有效）。默认档案（Chat 等任务实际使用的档案）在本面板切换。供应商预设含完整内置模型清单（学 pi 内置目录随版本固化，来源 pi providers/data），端点与协议是预设内部实现，不暴露给用户。预设一览：DeepSeek / Kimi 国内·国际 / Kimi Code / Qwen 订阅国内·国际（token-plan 网关，多厂商：qwen3.8-max 等）/ 智谱 / 通义 / 硅基流动 / OpenAI / OpenRouter

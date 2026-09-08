@@ -87,24 +87,24 @@ pub(super) fn parse_openai_line(line: &str) -> Option<StreamChunk> {
     }
     let v: serde_json::Value = serde_json::from_str(data).ok()?;
     // usage 帧（stream_options.include_usage）：choices 为空、usage 在场
-    if let Some(u) = v.get("usage") {
-        if u.is_object() {
-            return Some(StreamChunk::Usage(Usage {
-                input: u64_at(u, &["prompt_tokens"]),
-                output: u64_at(u, &["completion_tokens"]),
-                // DeepSeek 的缓存命中/未命中命名
-                cache_read: u64_at(u, &["prompt_cache_hit_tokens"])
-                    .max(u64_at(u, &["cache_read_input_tokens"])),
-                cache_write: u64_at(u, &["prompt_cache_miss_tokens"])
-                    .max(u64_at(u, &["cache_creation_input_tokens"])),
-            }));
-        }
+    if let Some(u) = v.get("usage")
+        && u.is_object()
+    {
+        return Some(StreamChunk::Usage(Usage {
+            input: u64_at(u, &["prompt_tokens"]),
+            output: u64_at(u, &["completion_tokens"]),
+            // DeepSeek 的缓存命中/未命中命名
+            cache_read: u64_at(u, &["prompt_cache_hit_tokens"])
+                .max(u64_at(u, &["cache_read_input_tokens"])),
+            cache_write: u64_at(u, &["prompt_cache_miss_tokens"])
+                .max(u64_at(u, &["cache_creation_input_tokens"])),
+        }));
     }
     let delta = v.get("choices")?.as_array()?.first()?.get("delta")?;
-    if let Some(t) = delta.get("reasoning_content").and_then(|c| c.as_str()) {
-        if !t.is_empty() {
-            return Some(StreamChunk::Thinking(t.to_string()));
-        }
+    if let Some(t) = delta.get("reasoning_content").and_then(|c| c.as_str())
+        && !t.is_empty()
+    {
+        return Some(StreamChunk::Thinking(t.to_string()));
     }
     let text = delta.get("content").and_then(|c| c.as_str())?;
     if text.is_empty() {
