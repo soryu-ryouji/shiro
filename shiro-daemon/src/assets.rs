@@ -3,7 +3,7 @@
 // 宽容解析：frontmatter 缺失/损坏/未标记 shiro_asset 类型的文件不进列表，按普通文档对待，不报错。
 
 use crate::api::{
-    ApiError, ErrorResponse, bad_request, config_dir, excerpt_from_content, file_mtime,
+    ApiError, ErrorResponse, bad_request, config_folder, excerpt_from_content, file_mtime,
     internal_error, now_secs,
 };
 use axum::Json;
@@ -75,8 +75,8 @@ pub struct CharacterDetail {
 }
 
 /// 全局人物库目录：~/.config/shiro/db/人物/
-pub(crate) fn characters_dir() -> PathBuf {
-    config_dir().join("db").join("人物")
+pub(crate) fn characters_folder() -> PathBuf {
+    config_folder().join("db").join("人物")
 }
 
 /// 拆分 frontmatter 与正文：首行 `---` 到下一个整行 `---` 之间为 YAML；未闭合视为无 frontmatter
@@ -159,8 +159,8 @@ fn parse_character(fm: &str, body: &str, id: &str) -> Option<CharacterSummary> {
 }
 
 /// 扫描目录下的角色卡：单文件 <id>.md 与目录深卡 <id>/index.md 并收，按显示名排序
-fn scan_characters(dir: &Path) -> Vec<CharacterSummary> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
+fn scan_characters(folder: &Path) -> Vec<CharacterSummary> {
+    let Ok(entries) = std::fs::read_dir(folder) else {
         return Vec::new();
     };
     let mut out = Vec::new();
@@ -235,7 +235,7 @@ fn not_found(message: &str) -> ApiError {
 )]
 pub(crate) async fn list_characters() -> Json<CharacterListResponse> {
     Json(CharacterListResponse {
-        characters: scan_characters(&characters_dir()),
+        characters: scan_characters(&characters_folder()),
     })
 }
 
@@ -250,11 +250,11 @@ const DEEP_CARD_FILES: [&str; 6] = [
 ];
 
 /// 深卡子文件读取：固定顺序（soul → … → limit），缺文件跳过
-fn read_deep_files(dir: &Path) -> Vec<CardFile> {
+fn read_deep_files(folder: &Path) -> Vec<CardFile> {
     DEEP_CARD_FILES
         .iter()
         .filter_map(|name| {
-            let body = std::fs::read_to_string(dir.join(format!("{name}.md"))).ok()?;
+            let body = std::fs::read_to_string(folder.join(format!("{name}.md"))).ok()?;
             Some(CardFile {
                 name: (*name).to_string(),
                 body,
@@ -291,8 +291,8 @@ pub(crate) async fn get_character(
         return Err(bad_request("非法的角色 id"));
     }
     // 单文件简卡优先，其次目录深卡（index.md）
-    let file_path = characters_dir().join(format!("{id}.md"));
-    let dir_path = characters_dir().join(&id);
+    let file_path = characters_folder().join(format!("{id}.md"));
+    let folder_path = characters_folder().join(&id);
     if file_path.is_file() {
         let content = std::fs::read_to_string(&file_path).map_err(|_| not_found("角色不存在"))?;
         let Some((fm, body)) = split_frontmatter(&content) else {
@@ -314,7 +314,7 @@ pub(crate) async fn get_character(
             raw: content,
         }));
     }
-    let index = dir_path.join("index.md");
+    let index = folder_path.join("index.md");
     if index.is_file() {
         let content = std::fs::read_to_string(&index).map_err(|_| not_found("角色不存在"))?;
         let Some((fm, body)) = split_frontmatter(&content) else {
@@ -331,7 +331,7 @@ pub(crate) async fn get_character(
             tags: c.tags,
             source: c.source,
             depth: c.depth,
-            files: read_deep_files(&dir_path),
+            files: read_deep_files(&folder_path),
             body,
             raw: content,
         }));
@@ -382,8 +382,8 @@ pub(crate) async fn save_character(
         return Err(bad_request("非法的角色 id"));
     }
     // 单文件简卡优先；其次目录深卡（编辑对象是 index.md，写回原位）
-    let single = characters_dir().join(format!("{id}.md"));
-    let deep = characters_dir().join(&id).join("index.md");
+    let single = characters_folder().join(format!("{id}.md"));
+    let deep = characters_folder().join(&id).join("index.md");
     let path = if single.is_file() {
         single
     } else if deep.is_file() {
@@ -481,17 +481,17 @@ pub(crate) async fn create_character(
     if name.is_empty() {
         return Err(bad_request("名称不能为空"));
     }
-    let dir = characters_dir();
-    std::fs::create_dir_all(&dir).map_err(internal_error)?;
+    let folder = characters_folder();
+    std::fs::create_dir_all(&folder).map_err(internal_error)?;
     let base = slug_for(name);
     let mut id = base.clone();
     let mut n = 2;
-    while dir.join(format!("{id}.md")).exists() {
+    while folder.join(format!("{id}.md")).exists() {
         id = format!("{base}-{n}");
         n += 1;
     }
     let content = skeleton_content(name);
-    let path = dir.join(format!("{id}.md"));
+    let path = folder.join(format!("{id}.md"));
     std::fs::write(&path, &content).map_err(internal_error)?;
     let body = split_frontmatter(&content)
         .map(|(_, body)| body)
@@ -517,7 +517,7 @@ pub(crate) async fn create_character(
 mod tests {
     use super::*;
 
-    fn tmp_dir(tag: &str) -> PathBuf {
+    fn tmp_folder(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("shiro-assets-test-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
@@ -535,22 +535,22 @@ mod tests {
 
     #[test]
     fn scan_filters_and_falls_back() {
-        let dir = tmp_dir("scan");
+        let folder = tmp_folder("scan");
         std::fs::write(
-            dir.join("valid.md"),
+            folder.join("valid.md"),
             "---\nshiro_asset: character\nname: 沈青梧\narchetype: [疯批美人, 高门弃女]\nrole: 对手\ntags: [女二]\nsource: db://characters/x\n---\n\n## 可迁移\n\n掌控欲强，以退为进。\n",
         )
         .unwrap();
-        std::fs::write(dir.join("plain.md"), "---\ntitle: 随笔\n---\n\n普通文档").unwrap();
+        std::fs::write(folder.join("plain.md"), "---\ntitle: 随笔\n---\n\n普通文档").unwrap();
         std::fs::write(
-            dir.join("broken.md"),
+            folder.join("broken.md"),
             "---\nshiro_asset: character\nname: [未闭合\n---\n正文",
         )
         .unwrap();
-        std::fs::write(dir.join("noname.md"), "---\nshiro_asset: character\n---\n\n无名字段，回退文件名").unwrap();
-        std::fs::write(dir.join("notes.txt"), "非 md 不收").unwrap();
+        std::fs::write(folder.join("noname.md"), "---\nshiro_asset: character\n---\n\n无名字段，回退文件名").unwrap();
+        std::fs::write(folder.join("notes.txt"), "非 md 不收").unwrap();
 
-        let list = scan_characters(&dir);
+        let list = scan_characters(&folder);
         assert_eq!(list.len(), 2, "只收标记为 character 的合法 md");
 
         let valid = list.iter().find(|c| c.id == "valid").unwrap();
@@ -564,7 +564,7 @@ mod tests {
         assert_eq!(noname.name, "noname", "缺 name 回退文件名");
         assert!(noname.modified > 0);
 
-        std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::remove_dir_all(&folder).unwrap();
     }
 
     #[test]
@@ -577,9 +577,9 @@ mod tests {
     }
 
     #[test]
-    fn scan_deep_card_dir() {
-        let dir = tmp_dir("deep");
-        let card_dir = dir.join("makima");
+    fn scan_deep_card_folder() {
+        let folder = tmp_folder("deep");
+        let card_dir = folder.join("makima");
         std::fs::create_dir_all(card_dir.join("sub")).unwrap();
         std::fs::write(
             card_dir.join("index.md"),
@@ -592,9 +592,9 @@ mod tests {
         )
         .unwrap();
         // 无 index.md 的目录不收
-        std::fs::create_dir_all(dir.join("empty-dir")).unwrap();
+        std::fs::create_dir_all(folder.join("empty-folder")).unwrap();
 
-        let list = scan_characters(&dir);
+        let list = scan_characters(&folder);
         assert_eq!(list.len(), 1);
         let c = &list[0];
         assert_eq!(c.id, "makima");
@@ -603,7 +603,7 @@ mod tests {
         assert!(c.excerpt.contains("温柔的支配者"));
         assert!(c.modified > 0);
 
-        std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::remove_dir_all(&folder).unwrap();
     }
 
     #[test]

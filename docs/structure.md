@@ -9,7 +9,7 @@
 shiro/
 ├── shiro-daemon/                  ← Rust 后端（axum + tokio，独立二进制）
 │   ├── src/
-│   │   ├── main.rs                CLI 入口（--port/--host/--serve-dir/--dump-openapi）+ AppState 组装
+│   │   ├── main.rs                CLI 入口（--port/--host/--serve-folder/--dump-openapi）+ AppState 组装
 │   │   ├── api.rs                 项目/文件路由 + 鉴权中间件 + 静态资源 serve + 共享工具
 │   │   ├── assets.rs              内容库资产 API（全局人物库角色卡）
 │   │   ├── model_api.rs           模型档案 API（CRUD + 默认档案 + 连接测试）
@@ -70,13 +70,13 @@ shiro/
 | 层 | 模块 | 职责 | 依赖 |
 | -- | ---- | ---- | ---- |
 | 入口 | `main.rs` | CLI 解析、AppState（token / WatchHub / Chat Hub）组装、监听 | api、chat、watch |
-| HTTP | `api.rs` | app/projects 路由、鉴权中间件、静态资源 SPA 回退；**共享工具**：`config_dir` / `resolve_inside` / `ApiError` / `is_sheet_file` / `excerpt_from_content` 等 | assets、model_api、chat、watch |
+| HTTP | `api.rs` | app/projects 路由、鉴权中间件、静态资源 SPA 回退；**共享工具**：`config_folder` / `resolve_inside` / `ApiError` / `is_sheet_file` / `excerpt_from_content` 等 | assets、model_api、chat、watch |
 | HTTP | `assets.rs` | 全局人物库：角色卡列表/详情/新建/保存（简卡单文件 + 深卡目录） | api（工具） |
 | HTTP | `model_api.rs` | 模型档案：列表/注册/删除/连接测试，key 只回掩码 | api、llm |
 | HTTP | `chat/api.rs` | 会话 CRUD、消息 SSE 流式生成、提案应用 | chat/mod、llm、api |
 | 领域 | `chat/mod.rs` | 会话持久化（`<项目>/.shiro/chat/`）、上下文组装（目录树 + 历史 + 引用文件）、`shiro-edit` 提案解析、运行互斥 | api（工具）、llm |
 | 领域 | `watch.rs` | notify 递归监听 + 300ms 防抖，按项目广播变更集；订阅引用计数 | 独立 |
-| 领域 | `llm.rs` | provider 抽象：档案配置读写、OpenAI 兼容 / Anthropic 双协议、流式回调、重试、用量归一 | api（config_dir） |
+| 领域 | `llm.rs` | provider 抽象：档案配置读写、OpenAI 兼容 / Anthropic 双协议、流式回调、重试、用量归一 | api（config_folder） |
 | 存储 | 文件系统 | 项目文件夹是唯一权威数据源；全局配置与内容库在 `~/.config/shiro/` | — |
 
 ### 3.2 依赖方向
@@ -85,7 +85,7 @@ shiro/
 main.rs
   └─→ api.rs（路由注册 + AppState）
         ├─→ assets.rs ──┐
-        ├─→ model_api.rs ├─→ api.rs 共享工具（config_dir / ApiError / resolve_inside …）
+        ├─→ model_api.rs ├─→ api.rs 共享工具（config_folder / ApiError / resolve_inside …）
         ├─→ chat/api.rs ──→ chat/mod.rs ──→ llm.rs
         └─→ watch.rs
 ```
@@ -215,7 +215,7 @@ shiro-app/src/api-types.d.ts（TS 类型，不手改）
 | 路径 | 说明 |
 | ---- | ---- |
 | `GET /health` | 存活探测（无鉴权） |
-| `GET /{任意路径}` | `--serve-dir` 存在时挂载前端静态资源，SPA 回退 `index.html`（无鉴权） |
+| `GET /{任意路径}` | `--serve-folder` 存在时挂载前端静态资源，SPA 回退 `index.html`（无鉴权） |
 
 冒烟：`./tools/smoke-api.sh`（临时 HOME 隔离，逐端点校验，不触发真实 LLM 调用）。
 

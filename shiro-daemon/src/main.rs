@@ -22,7 +22,7 @@ struct Cli {
 
     /// 前端静态资源目录（存在则挂载，SPA 回退 index.html）
     #[arg(long)]
-    serve_dir: Option<PathBuf>,
+    serve_folder: Option<PathBuf>,
 
     /// 输出 OpenAPI schema 到 stdout 并退出
     #[arg(long)]
@@ -43,7 +43,7 @@ async fn main() {
         chat: Default::default(),
     };
 
-    let (router, doc) = api::build_router(state.clone(), cli.serve_dir);
+    let (router, doc) = api::build_router(state.clone(), cli.serve_folder);
 
     if cli.dump_openapi {
         println!("{}", serde_json::to_string_pretty(&doc).unwrap());

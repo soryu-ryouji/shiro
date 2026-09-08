@@ -3,7 +3,7 @@
 // 协议形状参考 pi-ai 的 openai-completions 实现（compat 经验：字段级差异用 Option，不硬编码官方形状）。
 // 错误分类参考 pi-ai：可重试（429/408/5xx/网络/超时）走指数退避，其余 4xx 直接失败。
 
-use crate::api::config_dir;
+use crate::api::config_folder;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::time::Duration;
@@ -66,7 +66,7 @@ impl LlmConfig {
 /// 多路并行管线（拆书/剧本类）的并发闸门，暂无调用方，为后续管线保留。
 #[allow(dead_code)]
 pub fn max_concurrency() -> u32 {
-    std::fs::read_to_string(config_dir().join("config.toml"))
+    std::fs::read_to_string(config_folder().join("config.toml"))
         .ok()
         .and_then(|t| t.parse::<toml::Table>().ok())
         .and_then(|doc| doc.get("llm").cloned())
@@ -78,9 +78,9 @@ pub fn max_concurrency() -> u32 {
 
 /// 写入全局并行上限（保留其他段落与字段）；暂无调用方，为后续管线保留
 #[allow(dead_code)]
-pub(crate) fn write_max_concurrency(dir: &Path, value: u32) -> Result<(), std::io::Error> {
-    std::fs::create_dir_all(dir)?;
-    let path = dir.join("config.toml");
+pub(crate) fn write_max_concurrency(folder: &Path, value: u32) -> Result<(), std::io::Error> {
+    std::fs::create_dir_all(folder)?;
+    let path = folder.join("config.toml");
     let mut doc: toml::Table = std::fs::read_to_string(&path)
         .ok()
         .and_then(|t| t.parse().ok())
@@ -98,7 +98,7 @@ pub(crate) fn write_max_concurrency(dir: &Path, value: u32) -> Result<(), std::i
 
 /// 读取默认档案（引擎使用）；未配置或默认项缺失返回 None
 pub fn load_llm_config() -> Option<LlmConfig> {
-    let (profiles, default_key) = read_profiles(&config_dir());
+    let (profiles, default_key) = read_profiles(&config_folder());
     let p = profiles.iter().find(|p| Some(&p.key) == default_key.as_ref())?;
     let usable = !p.base_url.trim().is_empty()
         && !p.api_key.trim().is_empty()
@@ -147,8 +147,8 @@ struct LlmSection {
 }
 
 /// 读取档案列表与默认项（含旧格式迁移合成）
-pub(crate) fn read_profiles(dir: &Path) -> (Vec<Profile>, Option<String>) {
-    let Some(sec) = std::fs::read_to_string(dir.join("config.toml"))
+pub(crate) fn read_profiles(folder: &Path) -> (Vec<Profile>, Option<String>) {
+    let Some(sec) = std::fs::read_to_string(folder.join("config.toml"))
         .ok()
         .and_then(|t| t.parse::<toml::Table>().ok())
         .and_then(|doc| doc.get("llm").cloned())
@@ -204,12 +204,12 @@ const PRESET_ENDPOINTS: [(&str, &str); 9] = [
 
 /// 写档案列表与默认项（整体替换 [llm] 段，保留其他段落；旧格式字段随之消失）
 pub(crate) fn write_profiles(
-    dir: &Path,
+    folder: &Path,
     profiles: &[Profile],
     default: Option<&str>,
 ) -> Result<(), std::io::Error> {
-    std::fs::create_dir_all(dir)?;
-    let path = dir.join("config.toml");
+    std::fs::create_dir_all(folder)?;
+    let path = folder.join("config.toml");
     let mut doc: toml::Table = std::fs::read_to_string(&path)
         .ok()
         .and_then(|t| t.parse().ok())
@@ -976,19 +976,19 @@ mod tests {
 
     #[test]
     fn profiles_roundtrip_and_migration() {
-        let dir = std::env::temp_dir().join(format!("shiro-llm-prof-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+        let folder = std::env::temp_dir().join(format!("shiro-llm-prof-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).unwrap();
         std::fs::write(
-            dir.join("config.toml"),
+            folder.join("config.toml"),
             "[lan]\naccess_key = \"keep-me\"\n",
         )
         .unwrap();
 
         // 旧格式：顶层字段直接写 [llm] 段 → 读取时迁移合成为单档案
         let legacy = "[lan]\naccess_key = \"keep-me\"\n\n[llm]\nbase_url = \"https://api.deepseek.com/v1\"\napi_key = \"sk-legacy\"\nmodel = \"deepseek-chat\"\n";
-        std::fs::write(dir.join("config.toml"), legacy).unwrap();
-        let (profiles, default) = read_profiles(&dir);
+        std::fs::write(folder.join("config.toml"), legacy).unwrap();
+        let (profiles, default) = read_profiles(&folder);
         assert_eq!(profiles.len(), 1);
         assert_eq!(profiles[0].key, "deepseek", "端点反查预设 key");
         assert_eq!(profiles[0].api_key, "sk-legacy");
@@ -1013,27 +1013,27 @@ mod tests {
                 thinking: Some("medium".into()),
             },
         ];
-        write_profiles(&dir, &ps, Some("kimi-code")).unwrap();
-        let (read_back, default) = read_profiles(&dir);
+        write_profiles(&folder, &ps, Some("kimi-code")).unwrap();
+        let (read_back, default) = read_profiles(&folder);
         assert_eq!(read_back.len(), 2);
         assert_eq!(default.as_deref(), Some("kimi-code"));
         let kimi = read_back.iter().find(|p| p.key == "kimi-code").unwrap();
         assert_eq!(kimi.protocol, "anthropic");
         assert_eq!(kimi.thinking.as_deref(), Some("medium"), "thinking 字段往返");
-        let text2 = std::fs::read_to_string(dir.join("config.toml")).unwrap();
+        let text2 = std::fs::read_to_string(folder.join("config.toml")).unwrap();
         assert!(text2.contains("thinking = \"medium\""));
-        let text = std::fs::read_to_string(dir.join("config.toml")).unwrap();
+        let text = std::fs::read_to_string(folder.join("config.toml")).unwrap();
         assert!(text.contains("[[llm.profiles]]"));
         assert!(text.contains("default = \"kimi-code\""));
         assert!(text.contains("keep-me"), "其他段落保留");
         assert!(!text.contains("sk-legacy"), "旧字段不再写出");
 
         // 默认项缺失时回退第一个档案
-        write_profiles(&dir, &ps, None).unwrap();
-        let (_, default) = read_profiles(&dir);
+        write_profiles(&folder, &ps, None).unwrap();
+        let (_, default) = read_profiles(&folder);
         assert_eq!(default.as_deref(), Some("deepseek"));
 
-        std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::remove_dir_all(&folder).unwrap();
     }
 
     #[test]
@@ -1046,12 +1046,12 @@ mod tests {
 
     #[test]
     fn empty_profiles() {
-        let dir = std::env::temp_dir().join(format!("shiro-llm-empty-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let (profiles, default) = read_profiles(&dir);
+        let folder = std::env::temp_dir().join(format!("shiro-llm-empty-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).unwrap();
+        let (profiles, default) = read_profiles(&folder);
         assert!(profiles.is_empty());
         assert_eq!(default, None);
-        std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::remove_dir_all(&folder).unwrap();
     }
 }

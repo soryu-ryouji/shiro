@@ -102,7 +102,7 @@ impl Session {
 
 // ---- 存储路径 ----
 
-fn chat_dir(root: &Path) -> PathBuf {
+fn chat_folder(root: &Path) -> PathBuf {
     root.join(".shiro").join("chat")
 }
 
@@ -111,7 +111,7 @@ fn valid_session_id(id: &str) -> bool {
 }
 
 fn session_path(root: &Path, id: &str) -> Option<PathBuf> {
-    valid_session_id(id).then(|| chat_dir(root).join(format!("{id}.json")))
+    valid_session_id(id).then(|| chat_folder(root).join(format!("{id}.json")))
 }
 
 /// 原子写（临时文件 + rename），与项目文稿保存同一套路
@@ -128,7 +128,7 @@ fn atomic_write(path: &Path, content: &str) -> std::io::Result<()> {
 
 pub fn list_sessions(root: &Path) -> Vec<SessionSummary> {
     let mut out = Vec::new();
-    let Ok(entries) = std::fs::read_dir(chat_dir(root)) else {
+    let Ok(entries) = std::fs::read_dir(chat_folder(root)) else {
         return out;
     };
     for entry in entries.flatten() {
@@ -251,11 +251,11 @@ impl Drop for RunningGuard {
 
 /// 项目目录树文本（缩进两格；只含目录与文稿；排除 . 开头项）
 fn build_tree_text(root: &Path) -> String {
-    fn walk(dir: &Path, prefix: &str, out: &mut Vec<String>) {
+    fn walk(folder: &Path, prefix: &str, out: &mut Vec<String>) {
         if out.len() >= TREE_MAX_LINES {
             return;
         }
-        let Ok(entries) = std::fs::read_dir(dir) else {
+        let Ok(entries) = std::fs::read_dir(folder) else {
             return;
         };
         let mut items: Vec<_> = entries.flatten().collect();
@@ -316,7 +316,7 @@ fn system_prompt(root: &Path) -> String {
          - 提案不会直接生效，用户确认后才写入文件\n\
          - 不涉及文件修改时正常回答，不要输出 shiro-edit 块\n\
          - 回复使用中文",
-        crate::api::dir_name(&root.to_string_lossy()),
+        crate::api::folder_name(&root.to_string_lossy()),
         build_tree_text(root),
     )
 }
@@ -457,9 +457,9 @@ mod tests {
         assert_eq!(session.next_proposal_seq, 2);
 
         // 会话持久化后应用：写盘 + 标记
-        let dir = std::env::temp_dir().join(format!("shiro-chat-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+        let folder = std::env::temp_dir().join(format!("shiro-chat-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).unwrap();
         let mut s = Session { id: "t".into(), ..session.clone() };
         s.messages.push(ChatMessage {
             role: "assistant".into(),
@@ -468,14 +468,14 @@ mod tests {
             attachments: vec![],
             proposals: ps,
         });
-        save_session(&dir, &s).unwrap();
-        let mut loaded = read_session(&dir, "t").unwrap();
-        let applied = apply_proposal(&dir, &mut loaded, "p1").unwrap();
+        save_session(&folder, &s).unwrap();
+        let mut loaded = read_session(&folder, "t").unwrap();
+        let applied = apply_proposal(&folder, &mut loaded, "p1").unwrap();
         assert!(applied.applied);
-        let written = std::fs::read_to_string(dir.join("正文/001.md")).unwrap();
+        let written = std::fs::read_to_string(folder.join("正文/001.md")).unwrap();
         assert_eq!(written, "新内容");
         // 重复应用报错
-        assert!(apply_proposal(&dir, &mut loaded, "p1").is_err());
-        let _ = std::fs::remove_dir_all(&dir);
+        assert!(apply_proposal(&folder, &mut loaded, "p1").is_err());
+        let _ = std::fs::remove_dir_all(&folder);
     }
 }

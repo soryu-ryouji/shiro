@@ -2,7 +2,7 @@
 // [[llm.profiles]] 数组 + default key）。设计见 docs/backend/model-access.md；
 // Key 不回传明文，只回掩码预览。
 
-use crate::api::{ApiError, ErrorResponse, bad_request, config_dir, internal_error};
+use crate::api::{ApiError, ErrorResponse, bad_request, config_folder, internal_error};
 use crate::llm::{self, Profile};
 use axum::Json;
 use axum::http::StatusCode;
@@ -46,7 +46,7 @@ fn summary(p: &Profile) -> ProfileSummary {
 }
 
 fn list_response() -> ProfileListResponse {
-    let (profiles, default) = llm::read_profiles(&config_dir());
+    let (profiles, default) = llm::read_profiles(&config_folder());
     ProfileListResponse {
         profiles: profiles.iter().map(summary).collect(),
         default_key: default,
@@ -133,7 +133,7 @@ pub(crate) async fn upsert_profile(
         }
     }
 
-    let (mut profiles, mut default) = llm::read_profiles(&config_dir());
+    let (mut profiles, mut default) = llm::read_profiles(&config_folder());
     let new_key_provided = req
         .api_key
         .as_deref()
@@ -169,7 +169,7 @@ pub(crate) async fn upsert_profile(
             }
         }
     }
-    llm::write_profiles(&config_dir(), &profiles, default.as_deref())
+    llm::write_profiles(&config_folder(), &profiles, default.as_deref())
         .map_err(internal_error)?;
     Ok(Json(list_response()))
 }
@@ -206,7 +206,7 @@ pub(crate) async fn test_profile(
     Json(req): Json<ProfileKeyRequest>,
 ) -> Result<Json<ProfileTestResponse>, ApiError> {
     let key = req.key;
-    let (profiles, _) = llm::read_profiles(&config_dir());
+    let (profiles, _) = llm::read_profiles(&config_folder());
     let p = profiles
         .iter()
         .find(|p| p.key == key)
@@ -252,7 +252,7 @@ pub(crate) async fn delete_profile(
     Json(req): Json<ProfileKeyRequest>,
 ) -> Result<Json<ProfileListResponse>, ApiError> {
     let key = req.key;
-    let (mut profiles, default) = llm::read_profiles(&config_dir());
+    let (mut profiles, default) = llm::read_profiles(&config_folder());
     let before = profiles.len();
     profiles.retain(|p| p.key != key);
     if profiles.len() == before {
@@ -265,7 +265,7 @@ pub(crate) async fn delete_profile(
     }
     let new_default = default.filter(|d| profiles.iter().any(|p| &p.key == d));
     let new_default = new_default.or_else(|| profiles.first().map(|p| p.key.clone()));
-    llm::write_profiles(&config_dir(), &profiles, new_default.as_deref())
+    llm::write_profiles(&config_folder(), &profiles, new_default.as_deref())
         .map_err(internal_error)?;
     Ok(Json(list_response()))
 }

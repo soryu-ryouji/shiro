@@ -76,7 +76,7 @@ struct HistoryEntry {
     opened_at: u64,
 }
 
-pub(crate) fn config_dir() -> PathBuf {
+pub(crate) fn config_folder() -> PathBuf {
     std::env::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".config")
@@ -86,16 +86,16 @@ pub(crate) fn config_dir() -> PathBuf {
 
 
 fn load_history() -> History {
-    let Ok(text) = std::fs::read_to_string(config_dir().join("history.toml")) else {
+    let Ok(text) = std::fs::read_to_string(config_folder().join("history.toml")) else {
         return History::default();
     };
     toml::from_str(&text).unwrap_or_default()
 }
 
 fn save_history(history: &History) -> std::io::Result<()> {
-    std::fs::create_dir_all(config_dir())?;
+    std::fs::create_dir_all(config_folder())?;
     let text = toml::to_string_pretty(history).map_err(std::io::Error::other)?;
-    std::fs::write(config_dir().join("history.toml"), text)
+    std::fs::write(config_folder().join("history.toml"), text)
 }
 
 pub(crate) fn now_secs() -> u64 {
@@ -130,7 +130,7 @@ fn move_to_trash(root: &Path, target: &Path) -> Result<(), ApiError> {
 }
 
 /// 路径显示名：目录 basename（容忍尾部斜杠）
-pub(crate) fn dir_name(path: &str) -> String {
+pub(crate) fn folder_name(path: &str) -> String {
     let trimmed = path.trim_end_matches(['/', '\\']);
     Path::new(trimmed)
         .file_name()
@@ -220,7 +220,7 @@ fn project_display_name(path: &str) -> String {
         .and_then(|s| s.parse::<toml::Table>().ok())
         .and_then(|t| t.get("name").and_then(|n| n.as_str()).map(String::from))
         .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| dir_name(path))
+        .unwrap_or_else(|| folder_name(path))
 }
 
 /// 写项目显示名到 .shiro/project.toml（解析保留其他字段；文件不存在或损坏则新建）
@@ -282,7 +282,7 @@ fn register_project(target: &Path, display_name: Option<&str>) -> Result<String,
         None => {
             let project_toml = target.join(".shiro").join("project.toml");
             if !project_toml.exists() {
-                let name = dir_name(&target.to_string_lossy());
+                let name = folder_name(&target.to_string_lossy());
                 std::fs::write(&project_toml, format!("name = {:?}\n", name))
                     .map_err(internal_error)?;
             }
@@ -391,7 +391,7 @@ pub struct TreeNode {
     /// 文件修改时间（epoch 秒，仅 file）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub modified: Option<u64>,
-    /// 子节点（仅 dir）
+    /// 子节点（仅 folder）
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(no_recursion)]
     pub children: Option<Vec<TreeNode>>,
@@ -404,11 +404,11 @@ pub(crate) fn is_sheet_file(name: &str) -> bool {
 }
 
 /// 递归构建目录树：只含目录与文稿文件（.md/.markdown/.txt）；排除 . 开头项（.shiro 等）；目录在前，按名称排序
-fn build_tree(dir: &Path, root: &Path) -> Vec<TreeNode> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
+fn build_tree(folder: &Path, root: &Path) -> Vec<TreeNode> {
+    let Ok(entries) = std::fs::read_dir(folder) else {
         return Vec::new();
     };
-    let mut dirs = Vec::new();
+    let mut folders = Vec::new();
     let mut files = Vec::new();
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
@@ -421,7 +421,7 @@ fn build_tree(dir: &Path, root: &Path) -> Vec<TreeNode> {
             .map(|p| p.to_string_lossy().replace('\\', "/"))
             .unwrap_or_default();
         if path.is_dir() {
-            dirs.push(TreeNode {
+            folders.push(TreeNode {
                 name,
                 path: rel,
                 kind: "folder".into(),
@@ -444,10 +444,10 @@ fn build_tree(dir: &Path, root: &Path) -> Vec<TreeNode> {
             });
         }
     }
-    dirs.sort_by(|a, b| a.name.cmp(&b.name));
+    folders.sort_by(|a, b| a.name.cmp(&b.name));
     files.sort_by(|a, b| a.name.cmp(&b.name));
-    dirs.extend(files);
-    dirs
+    folders.extend(files);
+    folders
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -633,7 +633,7 @@ async fn project_excerpts(
     const HEAD_BYTES: usize = 4096;
     const MAX_CHARS: usize = 160;
     let root = ensure_registered(&req.path)?;
-    let dir = if req.folder.is_empty() {
+    let folder = if req.folder.is_empty() {
         root.clone()
     } else {
         let d = resolve_inside(&root, &req.folder)?;
@@ -643,7 +643,7 @@ async fn project_excerpts(
         d
     };
     let mut excerpts = Vec::new();
-    let Ok(entries) = std::fs::read_dir(&dir) else {
+    let Ok(entries) = std::fs::read_dir(&folder) else {
         return Ok(Json(ExcerptsResponse { excerpts }));
     };
     for entry in entries.flatten() {
@@ -1136,7 +1136,7 @@ fn apply_info(doc: &mut utoipa::openapi::OpenApi) {
 /// 构建 API 路由与 OpenAPI 文档（同一来源：路由即文档，契约测试校验 openapi.json 同步）。
 pub fn build_router(
     state: AppState,
-    serve_dir: Option<PathBuf>,
+    serve_folder: Option<PathBuf>,
 ) -> (Router, utoipa::openapi::OpenApi) {
     let (api_router, mut doc) = OpenApiRouter::new()
         .routes(routes!(startup))
@@ -1176,10 +1176,10 @@ pub fn build_router(
         .layer(tower_http::cors::CorsLayer::permissive());
 
     // 局域网访问形态：daemon 直接 serve 前端静态资源，SPA 回退到 index.html
-    if let Some(dir) = serve_dir
-        && dir.is_dir() {
-            let index = ServeFile::new(dir.join("index.html"));
-            router = router.fallback_service(ServeDir::new(dir).not_found_service(index));
+    if let Some(folder) = serve_folder
+        && folder.is_dir() {
+            let index = ServeFile::new(folder.join("index.html"));
+            router = router.fallback_service(ServeDir::new(folder).not_found_service(index));
         }
 
     (router, doc)

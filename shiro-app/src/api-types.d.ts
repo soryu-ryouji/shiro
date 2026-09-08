@@ -797,7 +797,7 @@ export interface components {
         /** @enum {string} */
         StartupStatus: "starting" | "ready" | "error";
         TreeNode: {
-            /** @description 子节点（仅 dir） */
+            /** @description 子节点（仅 folder） */
             children?: components["schemas"]["TreeNode"][] | null;
             /** @description 节点类型：folder / file */
             kind: string;
