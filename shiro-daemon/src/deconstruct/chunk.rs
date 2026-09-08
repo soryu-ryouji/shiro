@@ -15,9 +15,13 @@ const MAX_HEADING_LINE_CHARS: usize = 80;
 const MIN_HEADING_COUNT: usize = 3;
 const MIN_CHAPTER_BODY_CHARS: usize = 120;
 const TARGET_SEGMENT_COUNT: usize = 12;
-const TARGET_SEGMENT_CHARS: usize = 10_000;
-const MIN_SEGMENT_CHARS: usize = 6_000;
-const MAX_SEGMENT_CHARS: usize = 16_000;
+/// 切片长度默认值与允许范围（角色制作设置面板可调；config.toml [deconstruct] segment_chars）
+pub const DEFAULT_SEGMENT_CHARS: usize = 10_000;
+pub const MIN_SEGMENT_CHARS: usize = 3_000;
+pub const MAX_SEGMENT_CHARS: usize = 30_000;
+/// 滑窗回退边界：目标处向后找换行，边界需大于 start + target*3/5 才采用（比例与规范 §6 一致）
+const BOUNDARY_MIN_RATIO: usize = 3;
+const BOUNDARY_MAX_RATIO: usize = 8;
 const CHUNK_OVERLAP_CHARS: usize = 400;
 const MAX_MERGED_SEGMENT_CHARS: usize = 48_000;
 /// 二次切分的换行边界最小位置：避免切在标题行自身的换行上产生「仅标题」碎段
@@ -64,7 +68,10 @@ pub struct ChunkResult {
 
 // ---- 总流程（规范 §4） ----
 
-pub fn build_chunks(content: &str) -> ChunkResult {
+/// `target_chars` 为目标切片长度（字，缺省 10k，见 DEFAULT_SEGMENT_CHARS）；
+/// 无章节结构时按滑窗切块，章节路径不受影响（按标题切，仅受合并上限约束）。
+pub fn build_chunks(content: &str, target_chars: usize) -> ChunkResult {
+    let target = target_chars.clamp(MIN_SEGMENT_CHARS, MAX_SEGMENT_CHARS);
     // 1. 统一换行符
     let content = if content.contains('\r') {
         content.replace("\r\n", "\n").replace('\r', "\n")
@@ -85,11 +92,11 @@ pub fn build_chunks(content: &str) -> ChunkResult {
             (merge_segments(segs), Stats::chapter(total, discarded))
         } else {
             // 过滤后不足 3 段：章节路径整体放弃，过滤统计保留（规范 §5.2）
-            let (plain, _, _) = split_plain(&content);
+            let (plain, _, _) = split_plain(&content, target);
             (plain, Stats::plain(total, discarded))
         }
     } else {
-        let (plain, _, _) = split_plain(&content);
+        let (plain, _, _) = split_plain(&content, target);
         (plain, Stats::plain(total, (0, 0)))
     };
 
@@ -259,18 +266,20 @@ fn finalize(segs: Vec<SourceSegment>) -> Vec<SourceSegment> {
 
 // ---- 字符切块路径（规范 §6 滑窗） ----
 
-fn split_plain(content: &str) -> (Vec<SourceSegment>, usize, usize) {
+fn split_plain(content: &str, target: usize) -> (Vec<SourceSegment>, usize, usize) {
+    let min_chars = target * BOUNDARY_MIN_RATIO / 5;
+    let max_chars = target * BOUNDARY_MAX_RATIO / 5;
     let chars: Vec<char> = content.chars().collect();
     let total = chars.len();
     let mut segs = Vec::new();
     let mut start = 0usize;
     let mut order = 1;
     while start < total {
-        let target_end = std::cmp::min(start + TARGET_SEGMENT_CHARS, total);
+        let target_end = std::cmp::min(start + target, total);
         let mut boundary = target_end;
         if target_end < total {
-            // 在 min(start+16k, 文末) 处向前找最后一个换行；candidate > start+6k 才采用
-            let search_limit = std::cmp::min(start + MAX_SEGMENT_CHARS, total);
+            // 在 min(start+1.6·target, 文末) 处向前找最后一个换行；candidate > start+0.6·target 才采用
+            let search_limit = std::cmp::min(start + max_chars, total);
             let mut candidate = None;
             let mut j = search_limit;
             while j > start {
@@ -281,7 +290,7 @@ fn split_plain(content: &str) -> (Vec<SourceSegment>, usize, usize) {
                 j -= 1;
             }
             if let Some(c) = candidate
-                && c > start + MIN_SEGMENT_CHARS {
+                && c > start + min_chars {
                     boundary = c;
                 }
         }
@@ -318,7 +327,7 @@ mod tests {
         for i in 1..=24 {
             text.push_str(&heading(&format!("第{i}章 测试"), 200));
         }
-        let r = build_chunks(&text);
+        let r = build_chunks(&text, DEFAULT_SEGMENT_CHARS);
         assert_eq!(r.stats.strategy, "chapter");
         assert_eq!(r.segments.len(), 12);
         assert!(r.segments[0].label.contains('~'));
@@ -330,7 +339,7 @@ mod tests {
         for i in 1..=5 {
             text.push_str(&heading(&format!("第{i}章"), 200));
         }
-        let r = build_chunks(&text);
+        let r = build_chunks(&text, DEFAULT_SEGMENT_CHARS);
         assert_eq!(r.segments.len(), 5);
         assert_eq!(r.segments[0].label, "第1章");
     }
@@ -342,7 +351,7 @@ mod tests {
         text.push_str(&heading("第2章", 50)); // 过短，过滤但计入统计
         text.push_str(&heading("第3章", 200));
         text.push_str(&heading("第4章", 200));
-        let r = build_chunks(&text);
+        let r = build_chunks(&text, DEFAULT_SEGMENT_CHARS);
         assert_eq!(r.stats.discarded_chapter_count, 1);
         assert!(r.segments.iter().all(|s| s.label != "第2章"));
     }
@@ -353,7 +362,7 @@ mod tests {
         for i in 1..=6 {
             text.push_str(&heading(&format!("第{i}场"), 300));
         }
-        let r = build_chunks(&text);
+        let r = build_chunks(&text, DEFAULT_SEGMENT_CHARS);
         assert_eq!(r.stats.strategy, "chapter");
         assert_eq!(r.segments.len(), 6);
 
@@ -361,7 +370,7 @@ mod tests {
         for i in 1..=6 {
             text2.push_str(&heading(&format!("INT. 房间 {i}"), 300));
         }
-        let r2 = build_chunks(&text2);
+        let r2 = build_chunks(&text2, DEFAULT_SEGMENT_CHARS);
         assert_eq!(r2.stats.strategy, "chapter");
         assert_eq!(r2.segments.len(), 6);
     }
@@ -373,7 +382,7 @@ mod tests {
         for i in 1..=30 {
             text.push_str(&format!("段落{i}开始\n{para}\n\n"));
         }
-        let r = build_chunks(&text);
+        let r = build_chunks(&text, DEFAULT_SEGMENT_CHARS);
         assert_eq!(r.stats.strategy, "plain");
         assert!(r.segments.len() >= 2, "约 3 万字应切成多段");
         assert_eq!(r.segments[0].label, "片段 1");
@@ -386,11 +395,11 @@ mod tests {
         let b = "乙".repeat(200);
         let c = "丙".repeat(6000);
         let text = format!("{a}\n{b}\n{c}");
-        let r = build_chunks(&text);
+        let r = build_chunks(&text, DEFAULT_SEGMENT_CHARS);
         assert_eq!(r.stats.strategy, "plain");
         assert!(r.segments.len() >= 2);
         for seg in &r.segments {
-            assert!(seg.content.chars().count() <= MAX_SEGMENT_CHARS);
+            assert!(seg.content.chars().count() <= DEFAULT_SEGMENT_CHARS * 8 / 5);
         }
         // 第一段边界应落在换行：内容以完整「乙」或「丙」行开头（未硬切）
         let second = &r.segments[1];
@@ -405,7 +414,7 @@ mod tests {
     fn no_segment_cap() {
         // 无章节结构的超长文本：不再设段数上限，全量切出（用户在选择闸门挑选）
         let text = "正".repeat(300_000);
-        let r = build_chunks(&text);
+        let r = build_chunks(&text, DEFAULT_SEGMENT_CHARS);
         assert!(r.segments.len() > 24, "实际段数 {}", r.segments.len());
     }
 
@@ -414,8 +423,8 @@ mod tests {
         let text: String = (1..=15)
             .map(|i| heading(&format!("第{i}章"), 300))
             .collect();
-        let a = build_chunks(&text);
-        let b = build_chunks(&text);
+        let a = build_chunks(&text, DEFAULT_SEGMENT_CHARS);
+        let b = build_chunks(&text, DEFAULT_SEGMENT_CHARS);
         assert_eq!(a, b);
     }
 
@@ -424,7 +433,7 @@ mod tests {
         // 正文长句含「第X章」字样但行超长 → 不判为标题
         let long_line = format!("他说到第三章的内容并且这句话非常长{}", "很长".repeat(60));
         let text = format!("{long_line}\n{}", "正文".repeat(400));
-        let r = build_chunks(&text);
+        let r = build_chunks(&text, DEFAULT_SEGMENT_CHARS);
         assert_eq!(r.stats.strategy, "plain");
     }
 
@@ -434,7 +443,7 @@ mod tests {
         let mut text = heading("第1章", 60_000);
         text.push_str(&heading("第2章", 200));
         text.push_str(&heading("第3章", 200));
-        let r = build_chunks(&text);
+        let r = build_chunks(&text, DEFAULT_SEGMENT_CHARS);
         assert_eq!(r.stats.strategy, "chapter");
         assert!(r.segments.len() >= 4);
         assert_eq!(r.segments[0].label, "第1章");
@@ -451,7 +460,7 @@ mod tests {
             let body = "正".repeat(200);
             text.push_str(&format!("第{i}章\r\n{body}\r\n"));
         }
-        let r = build_chunks(&text.replace('\n', "\r\n"));
+        let r = build_chunks(&text.replace('\n', "\r\n"), DEFAULT_SEGMENT_CHARS);
         assert_eq!(r.stats.strategy, "chapter");
         assert_eq!(r.segments.len(), 4);
     }

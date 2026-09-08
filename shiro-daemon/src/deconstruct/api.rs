@@ -1,8 +1,9 @@
 // 拆解任务 API（角色制作）：创建/列表/详情/保存/删除/事件流。
 // 进度推送用轮询（任务粒度低）；节点输出用 SSE 实时推送（鉴权走 ?key=，EventSource 无法自定义 header）。
 
-use crate::api::{ApiError, ErrorResponse, bad_request};
+use crate::api::{ApiError, ErrorResponse, bad_request, config_dir, internal_error};
 use crate::deconstruct::engine;
+use crate::deconstruct::settings;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -454,3 +455,107 @@ pub(crate) async fn delete_task(
     engine::delete_task(&state.deconstruct, &id).map_err(|e| bad_request(&e))?;
     Ok(StatusCode::NO_CONTENT)
 }
+
+// ---- 运行设置（模型选择 / 切片并发数 / 切片长度） ----
+
+#[derive(Serialize, ToSchema)]
+pub struct CraftSettings {
+    /// 制作任务使用的模型档案 key（[llm] default；未配置为 null）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// AI 调用并发上限（[llm] max_concurrency，1-8）
+    pub max_concurrency: u32,
+    /// 切块目标切片长度（[deconstruct] segment_chars，字）
+    pub segment_chars: usize,
+}
+
+fn read_craft_settings() -> CraftSettings {
+    let (_, default) = crate::llm::read_profiles(&config_dir());
+    CraftSettings {
+        model: default,
+        max_concurrency: crate::llm::max_concurrency(),
+        segment_chars: settings::segment_chars(),
+    }
+}
+
+/// 读取角色制作运行设置
+#[utoipa::path(
+    get,
+    path = "/api/v1/db/deconstruct/settings",
+    tag = "deconstruct",
+    responses(
+        (status = 200, description = "运行设置", body = CraftSettings),
+        (status = 401, description = "未鉴权")
+    ),
+    security(("bearer_token" = []))
+)]
+pub(crate) async fn get_craft_settings() -> Json<CraftSettings> {
+    Json(read_craft_settings())
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct SaveCraftSettingsRequest {
+    /// 模型档案 key（需已注册；设为制作任务使用的档案）
+    #[serde(default)]
+    pub model: Option<String>,
+    /// AI 调用并发上限（1-8）
+    #[serde(default)]
+    pub max_concurrency: Option<u32>,
+    /// 切块目标切片长度（3000-30000 字）
+    #[serde(default)]
+    pub segment_chars: Option<usize>,
+}
+
+/// 保存角色制作运行设置（逐项可选，未提供的项不改动；调节即生效）。
+/// 切片长度只影响之后新建任务的切块，已建任务保持原切片。
+#[utoipa::path(
+    put,
+    path = "/api/v1/db/deconstruct/settings",
+    tag = "deconstruct",
+    request_body = SaveCraftSettingsRequest,
+    responses(
+        (status = 200, description = "已保存", body = CraftSettings),
+        (status = 400, description = "参数越界或档案不存在", body = ErrorResponse),
+        (status = 401, description = "未鉴权"),
+        (status = 500, description = "写入失败", body = ErrorResponse)
+    ),
+    security(("bearer_token" = []))
+)]
+pub(crate) async fn save_craft_settings(
+    Json(req): Json<SaveCraftSettingsRequest>,
+) -> Result<Json<CraftSettings>, ApiError> {
+    use crate::deconstruct::chunk::{MAX_SEGMENT_CHARS, MIN_SEGMENT_CHARS};
+
+    let (profiles, cur_default) = crate::llm::read_profiles(&config_dir());
+    let default = match req.model.as_deref().map(str::trim).filter(|m| !m.is_empty()) {
+        Some(m) => {
+            if !profiles.iter().any(|p| p.key == m) {
+                return Err(bad_request("模型档案不存在，请先在 Model 页注册"));
+            }
+            Some(m.to_string())
+        }
+        None => cur_default.clone(),
+    };
+
+    if let Some(c) = req.max_concurrency {
+        if c == 0 || c > 8 {
+            return Err(bad_request("并发数范围为 1-8"));
+        }
+        crate::llm::write_max_concurrency(&config_dir(), c).map_err(internal_error)?;
+    }
+    if let Some(chars) = req.segment_chars {
+        if !(MIN_SEGMENT_CHARS..=MAX_SEGMENT_CHARS).contains(&chars) {
+            return Err(bad_request(&format!(
+                "切片长度范围为 {MIN_SEGMENT_CHARS}-{MAX_SEGMENT_CHARS} 字"
+            )));
+        }
+        settings::write_segment_chars(&config_dir(), chars).map_err(internal_error)?;
+    }
+    if default != cur_default {
+        crate::llm::write_profiles(&config_dir(), &profiles, default.as_deref())
+            .map_err(internal_error)?;
+    }
+
+    Ok(Json(read_craft_settings()))
+}
+

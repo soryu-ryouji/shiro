@@ -1150,13 +1150,12 @@ pub fn build_router(
         .routes(routes!(crate::deconstruct::api::list_task_logs))
         .routes(routes!(crate::deconstruct::api::get_task_log))
         .routes(routes!(crate::deconstruct::api::delete_task))
+        .routes(routes!(crate::deconstruct::api::get_craft_settings))
+        .routes(routes!(crate::deconstruct::api::save_craft_settings))
         .routes(routes!(crate::model_api::list_profiles))
         .routes(routes!(crate::model_api::upsert_profile))
-        .routes(routes!(crate::model_api::set_default_profile))
         .routes(routes!(crate::model_api::delete_profile))
         .routes(routes!(crate::model_api::test_profile))
-        .routes(routes!(crate::model_api::get_model_settings))
-        .routes(routes!(crate::model_api::save_model_settings))
         .split_for_parts();
     SecurityAddon.modify(&mut doc);
     apply_info(&mut doc);

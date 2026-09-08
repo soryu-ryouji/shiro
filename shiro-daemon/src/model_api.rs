@@ -69,60 +69,6 @@ pub(crate) async fn list_profiles() -> Json<ProfileListResponse> {
     Json(list_response())
 }
 
-#[derive(Serialize, ToSchema)]
-pub struct ModelSettings {
-    /// 全局 LLM 并行调用上限（1-8）
-    pub max_concurrency: u32,
-}
-
-/// 读取全局运行设置
-#[utoipa::path(
-    get,
-    path = "/api/v1/model/settings",
-    tag = "model",
-    responses(
-        (status = 200, description = "运行设置", body = ModelSettings),
-        (status = 401, description = "未鉴权")
-    ),
-    security(("bearer_token" = []))
-)]
-pub(crate) async fn get_model_settings() -> Json<ModelSettings> {
-    Json(ModelSettings {
-        max_concurrency: llm::max_concurrency(),
-    })
-}
-
-#[derive(Deserialize, ToSchema)]
-pub struct SaveSettingsRequest {
-    pub max_concurrency: u32,
-}
-
-/// 保存全局运行设置（调节即生效，无需重启——并发闸门每次获取时现读）
-#[utoipa::path(
-    put,
-    path = "/api/v1/model/settings",
-    tag = "model",
-    request_body = SaveSettingsRequest,
-    responses(
-        (status = 200, description = "已保存", body = ModelSettings),
-        (status = 400, description = "超出 1-8 范围", body = ErrorResponse),
-        (status = 401, description = "未鉴权"),
-        (status = 500, description = "写入失败", body = ErrorResponse)
-    ),
-    security(("bearer_token" = []))
-)]
-pub(crate) async fn save_model_settings(
-    Json(req): Json<SaveSettingsRequest>,
-) -> Result<Json<ModelSettings>, ApiError> {
-    if req.max_concurrency == 0 || req.max_concurrency > 8 {
-        return Err(bad_request("并行数范围为 1-8"));
-    }
-    llm::write_max_concurrency(&config_dir(), req.max_concurrency).map_err(internal_error)?;
-    Ok(Json(ModelSettings {
-        max_concurrency: llm::max_concurrency(),
-    }))
-}
-
 #[derive(Deserialize, ToSchema)]
 pub struct UpsertProfileRequest {
     /// 档案 key（供应商 preset key；同 key 覆盖更新）
@@ -280,37 +226,6 @@ pub(crate) async fn test_profile(
             latency_ms: None,
         })),
     }
-}
-
-#[derive(Deserialize, ToSchema)]
-pub struct SetDefaultRequest {
-    pub key: String,
-}
-
-/// 指定默认档案（拆解等任务使用）
-#[utoipa::path(
-    post,
-    path = "/api/v1/model/profiles/default",
-    tag = "model",
-    request_body = SetDefaultRequest,
-    responses(
-        (status = 200, description = "已指定", body = ProfileListResponse),
-        (status = 400, description = "档案不存在", body = ErrorResponse),
-        (status = 401, description = "未鉴权"),
-        (status = 500, description = "写入失败", body = ErrorResponse)
-    ),
-    security(("bearer_token" = []))
-)]
-pub(crate) async fn set_default_profile(
-    Json(req): Json<SetDefaultRequest>,
-) -> Result<Json<ProfileListResponse>, ApiError> {
-    let (profiles, _) = llm::read_profiles(&config_dir());
-    if !profiles.iter().any(|p| p.key == req.key.trim()) {
-        return Err(bad_request("档案不存在"));
-    }
-    llm::write_profiles(&config_dir(), &profiles, Some(req.key.trim()))
-        .map_err(internal_error)?;
-    Ok(Json(list_response()))
 }
 
 /// 删除档案；删除默认档案时默认项回退到剩余第一个

@@ -1,15 +1,10 @@
 <script setup lang="ts">
 // Model 面板（侧栏）：功能分层——注册分区「模型导入」、管理分区「模型管理」。
-import { computed, onMounted } from 'vue'
-import { modelStore, profileLabel } from '../stores/model'
+import { onMounted } from 'vue'
+import { modelStore } from '../stores/model'
 
 onMounted(() => {
   if (!modelStore.loaded) void modelStore.load()
-})
-
-const defaultSummary = computed(() => {
-  const p = modelStore.profiles.find((x) => x.key === modelStore.defaultKey)
-  return p ? profileLabel(p) : '—'
 })
 </script>
 
@@ -33,7 +28,6 @@ const defaultSummary = computed(() => {
       <span class="label">模型管理</span>
       <span class="count">{{ modelStore.profiles.length }}</span>
     </button>
-    <p class="hint">默认供应商：{{ defaultSummary }}</p>
   </div>
 </template>
 
@@ -79,12 +73,6 @@ const defaultSummary = computed(() => {
 }
 
 .count {
-  color: var(--text-dim);
-  font-size: calc(12px * var(--font-scale-ui));
-}
-
-.hint {
-  margin: 6px 10px 0;
   color: var(--text-dim);
   font-size: calc(12px * var(--font-scale-ui));
 }

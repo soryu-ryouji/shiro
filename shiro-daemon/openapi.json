@@ -267,6 +267,92 @@
         ]
       }
     },
+    "/api/v1/db/deconstruct/settings": {
+      "get": {
+        "tags": [
+          "deconstruct"
+        ],
+        "summary": "读取角色制作运行设置",
+        "operationId": "get_craft_settings",
+        "responses": {
+          "200": {
+            "description": "运行设置",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CraftSettings"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "deconstruct"
+        ],
+        "summary": "保存角色制作运行设置（逐项可选，未提供的项不改动；调节即生效）。\n切片长度只影响之后新建任务的切块，已建任务保持原切片。",
+        "operationId": "save_craft_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveCraftSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "已保存",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CraftSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数越界或档案不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未鉴权"
+          },
+          "500": {
+            "description": "写入失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ]
+      }
+    },
     "/api/v1/db/deconstruct/tasks": {
       "get": {
         "tags": [
@@ -989,65 +1075,6 @@
         ]
       }
     },
-    "/api/v1/model/profiles/default": {
-      "post": {
-        "tags": [
-          "model"
-        ],
-        "summary": "指定默认档案（拆解等任务使用）",
-        "operationId": "set_default_profile",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetDefaultRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "已指定",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileListResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "档案不存在",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "未鉴权"
-          },
-          "500": {
-            "description": "写入失败",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer_token": []
-          }
-        ]
-      }
-    },
     "/api/v1/model/profiles/{key}": {
       "delete": {
         "tags": [
@@ -1142,92 +1169,6 @@
           },
           "404": {
             "description": "档案不存在",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer_token": []
-          }
-        ]
-      }
-    },
-    "/api/v1/model/settings": {
-      "get": {
-        "tags": [
-          "model"
-        ],
-        "summary": "读取全局运行设置",
-        "operationId": "get_model_settings",
-        "responses": {
-          "200": {
-            "description": "运行设置",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ModelSettings"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "未鉴权"
-          }
-        },
-        "security": [
-          {
-            "bearer_token": []
-          }
-        ]
-      },
-      "put": {
-        "tags": [
-          "model"
-        ],
-        "summary": "保存全局运行设置（调节即生效，无需重启——并发闸门每次获取时现读）",
-        "operationId": "save_model_settings",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SaveSettingsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "已保存",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ModelSettings"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "超出 1-8 范围",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "未鉴权"
-          },
-          "500": {
-            "description": "写入失败",
             "content": {
               "application/json": {
                 "schema": {
@@ -2172,6 +2113,33 @@
           }
         }
       },
+      "CraftSettings": {
+        "type": "object",
+        "required": [
+          "max_concurrency",
+          "segment_chars"
+        ],
+        "properties": {
+          "max_concurrency": {
+            "type": "integer",
+            "format": "int32",
+            "description": "AI 调用并发上限（[llm] max_concurrency，1-8）",
+            "minimum": 0
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "制作任务使用的模型档案 key（[llm] default；未配置为 null）"
+          },
+          "segment_chars": {
+            "type": "integer",
+            "description": "切块目标切片长度（[deconstruct] segment_chars，字）",
+            "minimum": 0
+          }
+        }
+      },
       "CreateCharacterRequest": {
         "type": "object",
         "required": [
@@ -2428,20 +2396,6 @@
           "seq": {
             "type": "integer",
             "format": "int32",
-            "minimum": 0
-          }
-        }
-      },
-      "ModelSettings": {
-        "type": "object",
-        "required": [
-          "max_concurrency"
-        ],
-        "properties": {
-          "max_concurrency": {
-            "type": "integer",
-            "format": "int32",
-            "description": "全局 LLM 并行调用上限（1-8）",
             "minimum": 0
           }
         }
@@ -2792,15 +2746,31 @@
           }
         }
       },
-      "SaveSettingsRequest": {
+      "SaveCraftSettingsRequest": {
         "type": "object",
-        "required": [
-          "max_concurrency"
-        ],
         "properties": {
           "max_concurrency": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int32",
+            "description": "AI 调用并发上限（1-8）",
+            "minimum": 0
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "模型档案 key（需已注册；设为制作任务使用的档案）"
+          },
+          "segment_chars": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "切块目标切片长度（3000-30000 字）",
             "minimum": 0
           }
         }
@@ -2864,17 +2834,6 @@
               "minimum": 0
             },
             "description": "选中的段序号（切块结果 index；去重后须非空）"
-          }
-        }
-      },
-      "SetDefaultRequest": {
-        "type": "object",
-        "required": [
-          "key"
-        ],
-        "properties": {
-          "key": {
-            "type": "string"
           }
         }
       },

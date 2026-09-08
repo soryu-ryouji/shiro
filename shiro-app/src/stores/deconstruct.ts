@@ -8,6 +8,7 @@ export type TaskSummary = components['schemas']['TaskSummary']
 export type TaskDetail = components['schemas']['TaskDetail']
 export type Progress = components['schemas']['Progress']
 export type LogSummary = components['schemas']['LogSummary']
+export type CraftSettings = components['schemas']['CraftSettings']
 
 /** 运行中的阶段（轮询继续；其余为终态或未开始） */
 const RUNNING_STAGES = new Set([
@@ -307,6 +308,45 @@ export const deconstructStore = reactive({
   /** 打开中的日志定位（任务轮询时持续刷新，pending 响应实时增长） */
   logDetailTask: null as string | null,
   logDetailSeq: null as number | null,
+
+  /** 运行设置（模型选择 / 切片并发数 / 切片长度） */
+  settings: null as CraftSettings | null,
+  settingsLoading: false,
+  settingsSaving: false,
+
+  async loadSettings() {
+    this.settingsLoading = true
+    try {
+      this.settings = await apiFetch<CraftSettings>('/api/v1/db/deconstruct/settings')
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : String(e)
+    } finally {
+      this.settingsLoading = false
+    }
+  },
+
+  /** 保存运行设置（逐项可选，未提供的项不改动）。返回是否成功 */
+  async saveSettings(patch: {
+    model?: string
+    max_concurrency?: number
+    segment_chars?: number
+  }): Promise<boolean> {
+    this.settingsSaving = true
+    this.error = ''
+    try {
+      this.settings = await apiFetch<CraftSettings>('/api/v1/db/deconstruct/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      return true
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : String(e)
+      return false
+    } finally {
+      this.settingsSaving = false
+    }
+  },
 
   async fetchLogs(id: string) {
     try {

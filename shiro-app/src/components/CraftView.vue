@@ -15,6 +15,7 @@ import { editorParaMode } from '../utils/font'
 import Icon from '../components/Icon.vue'
 import PipelineFlow from './PipelineFlow.vue'
 import SegmentPicker from './SegmentPicker.vue'
+import CraftSettingsDialog from './CraftSettingsDialog.vue'
 import ContextMenu, { type MenuItem } from './ContextMenu.vue'
 import LogDialog from './LogDialog.vue'
 import PromptDialog from './PromptDialog.vue'
@@ -84,6 +85,9 @@ async function submit() {
     deconstructStore.resetForm()
   }
 }
+
+// ---- 设置面板（模型选择 / 切片并发数 / 切片长度） ----
+const showSettings = ref(false)
 
 // ---- 任务详情 ----
 const task = computed(() => deconstructStore.detail)
@@ -338,9 +342,14 @@ function fmtTime(sec: number | undefined | null): string {
     <div class="list-col">
       <div class="list-head">
         <h2>制作记录</h2>
-        <button class="icon-btn" title="刷新" @click="deconstructStore.refreshTasks()">
-          <Icon name="refresh" :size="14" />
-        </button>
+        <div class="head-ops">
+          <button class="icon-btn" title="设置（模型 / 切片）" @click="showSettings = true">
+            <Icon name="settings" :size="14" />
+          </button>
+          <button class="icon-btn" title="刷新" @click="deconstructStore.refreshTasks()">
+            <Icon name="refresh" :size="14" />
+          </button>
+        </div>
       </div>
       <button class="btn new-btn" @click="deconstructStore.openCreateForm()">
         <Icon name="plus" :size="14" />
@@ -388,6 +397,9 @@ function fmtTime(sec: number | undefined | null): string {
         :items="ctxItems"
         @close="ctxMenu = null"
       />
+
+      <!-- 设置面板 -->
+      <CraftSettingsDialog v-if="showSettings" @close="showSettings = false" />
     </div>
 
     <!-- 主区：新建表单 或 任务详情 -->
@@ -397,7 +409,8 @@ function fmtTime(sec: number | undefined | null): string {
         <h2>新建角色制作</h2>
         <p class="desc">
           导入剧本，提炼目录形态的角色档案包（灵魂 / 语言指纹 / 行为指南 / 关系 / 编年 / 红线 / 总索引）。
-          需要先在 <a class="link" @click="gotoModel">Model 页</a>配置模型供应商与密钥。
+          使用的模型与切片参数在 <a class="link" @click="showSettings = true">设置面板</a>中选择；
+          还没有模型档案时先去 <a class="link" @click="gotoModel">Model 页</a>注册。
         </p>
 
         <label class="field">
@@ -669,6 +682,32 @@ function fmtTime(sec: number | undefined | null): string {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 8px;
+}
+
+.head-ops {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .icon-btn:hover {
+    background: var(--border);
+    color: var(--text);
+  }
 }
 
 h2 {

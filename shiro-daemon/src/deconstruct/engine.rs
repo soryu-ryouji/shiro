@@ -6,6 +6,7 @@ use crate::deconstruct::chunk::{self, ChunkResult};
 use crate::deconstruct::evidence::{self, EvidencePack, SegmentNote};
 use crate::deconstruct::prompts;
 use crate::deconstruct::probe::{self, ProbeResult};
+use crate::deconstruct::settings;
 use crate::deconstruct::verify::{self, RemovedQuote, VerifyReport};
 use crate::llm::{self, ChatMessage, LlmConfig};
 use serde::{Deserialize, Serialize};
@@ -1025,7 +1026,7 @@ async fn run_pipeline(
             set_stage(STAGE_PROBING, record);
             let (form, ratio) = probe::probe_form(&content);
             set_stage(STAGE_CHUNKING, record);
-            let chunks = chunk::build_chunks(&content);
+            let chunks = chunk::build_chunks(&content, settings::segment_chars());
             let probe_full = ProbeResult {
                 form: form.clone(),
                 attribution_hit_ratio: ratio,

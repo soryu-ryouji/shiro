@@ -203,13 +203,6 @@ const sortedProfiles = computed(() => {
             >
               {{ modelStore.testing[p.key] === 'run' ? '测试中…' : '测试' }}
             </button>
-            <button
-              v-if="p.key !== modelStore.defaultKey"
-              class="btn slim"
-              @click="modelStore.setDefault(p.key)"
-            >
-              设为默认
-            </button>
             <button class="icon-btn" title="编辑（模型 / Key）" @click="modelStore.editProfile(p)">
               <Icon name="edit" :size="14" />
             </button>
@@ -224,36 +217,6 @@ const sortedProfiles = computed(() => {
           >
             {{ modelStore.testResults[p.key]?.message }}
           </p>
-        </div>
-      </div>
-
-      <!-- 全局运行参数 -->
-      <div class="global-settings">
-        <h3>全局</h3>
-        <div class="setting-row">
-          <div class="setting-info">
-            <span class="setting-name">并行调用数</span>
-            <span class="setting-desc">
-              拆解任务中 AI 调用的并发上限（笔记与档案生成共用）。上游频繁限流时调低。
-            </span>
-          </div>
-          <div class="stepper">
-            <button
-              class="step-btn"
-              :disabled="modelStore.settingsSaving || (modelStore.settings?.max_concurrency ?? 4) <= 1"
-              @click="modelStore.saveSettings((modelStore.settings?.max_concurrency ?? 4) - 1)"
-            >
-              −
-            </button>
-            <span class="step-val">{{ modelStore.settings?.max_concurrency ?? '—' }}</span>
-            <button
-              class="step-btn"
-              :disabled="modelStore.settingsSaving || (modelStore.settings?.max_concurrency ?? 4) >= 8"
-              @click="modelStore.saveSettings((modelStore.settings?.max_concurrency ?? 4) + 1)"
-            >
-              ＋
-            </button>
-          </div>
         </div>
       </div>
     </template>
@@ -426,81 +389,6 @@ const sortedProfiles = computed(() => {
 
 .test-result.err {
   color: #c05050;
-}
-
-/* ---- 全局运行参数 ---- */
-.global-settings {
-  margin-top: 20px;
-  border-top: 1px solid var(--border);
-  padding-top: 14px;
-}
-
-.global-settings h3 {
-  margin: 0 0 10px;
-  font-size: calc(13px * var(--font-scale-ui));
-  color: var(--text-dim);
-}
-
-.setting-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg);
-}
-
-.setting-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.setting-name {
-  font-size: calc(13px * var(--font-scale-ui));
-  font-weight: 600;
-}
-
-.setting-desc {
-  font-size: calc(12px * var(--font-scale-ui));
-  color: var(--text-dim);
-  line-height: 1.5;
-}
-
-.stepper {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.step-btn {
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text);
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.step-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.step-val {
-  min-width: 20px;
-  text-align: center;
-  font-weight: 600;
-}
-
-.hint.empty {
-  line-height: 1.8;
 }
 
 /* ---- 管理分区：档案列表 ---- */

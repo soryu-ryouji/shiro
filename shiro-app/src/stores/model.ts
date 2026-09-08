@@ -1,5 +1,6 @@
-// 模型档案状态（Model 视图）：多档案 CRUD + 默认档案指定。
-// 界面分区：注册分区「模型导入」（注册表单）、管理分区「模型管理」（档案列表 + 默认指定）。
+// 模型档案状态（Model 视图）：多档案 CRUD。
+// 界面分区：注册分区「模型导入」（注册表单）、管理分区「模型管理」（档案列表）。
+// 制作任务用哪个档案（默认指定）在角色制作设置面板选择（stores/deconstruct.ts）。
 // 供应商预设学 pi 内置目录：模型清单完整内置，端点与协议不暴露给用户。
 import { reactive } from 'vue'
 import { apiFetch } from '../api'
@@ -184,8 +185,6 @@ export function profileLabel(p: { key: string; base_url: string }): string {
 
 export type ModelViewMode = 'import' | 'manage'
 
-export type ModelSettings = components['schemas']['ModelSettings']
-
 export const modelStore = reactive({
   loaded: false,
   loading: false,
@@ -193,33 +192,6 @@ export const modelStore = reactive({
   /** 档案列表与默认项 */
   profiles: [] as ProfileSummary[],
   defaultKey: null as string | null,
-  /** 全局运行设置（并行调用数） */
-  settings: null as ModelSettings | null,
-  settingsSaving: false,
-
-  async loadSettings() {
-    try {
-      this.settings = await apiFetch<ModelSettings>('/api/v1/model/settings')
-    } catch {
-      // 设置拉取失败不阻断配置流程
-    }
-  },
-
-  async saveSettings(maxConcurrency: number) {
-    this.settingsSaving = true
-    this.error = ''
-    try {
-      this.settings = await apiFetch<ModelSettings>('/api/v1/model/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ max_concurrency: maxConcurrency }),
-      })
-    } catch (e) {
-      this.error = e instanceof Error ? e.message : String(e)
-    } finally {
-      this.settingsSaving = false
-    }
-  },
 
   /** 当前分区视图 */
   view: 'import' as ModelViewMode,
@@ -280,7 +252,6 @@ export const modelStore = reactive({
   openManage() {
     this.view = 'manage'
     void this.load()
-    void this.loadSettings()
   },
 
   /** 从管理列表点「编辑」：档案回填进注册表单（Key 不回填，改则输入新值） */
@@ -352,24 +323,6 @@ export const modelStore = reactive({
       }
     } finally {
       this.testing[key] = null
-    }
-  },
-
-  async setDefault(key: string) {
-    this.error = ''
-    try {
-      const res = await apiFetch<ProfileListResponse>(
-        '/api/v1/model/profiles/default',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key }),
-        },
-      )
-      this.profiles = res.profiles ?? []
-      this.defaultKey = res.default_key ?? null
-    } catch (e) {
-      this.error = e instanceof Error ? e.message : String(e)
     }
   },
 

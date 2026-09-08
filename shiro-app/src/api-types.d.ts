@@ -63,6 +63,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/db/deconstruct/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 读取角色制作运行设置 */
+        get: operations["get_craft_settings"];
+        /**
+         * 保存角色制作运行设置（逐项可选，未提供的项不改动；调节即生效）。
+         *     切片长度只影响之后新建任务的切块，已建任务保持原切片。
+         */
+        put: operations["save_craft_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/db/deconstruct/tasks": {
         parameters: {
             query?: never;
@@ -253,23 +274,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/model/profiles/default": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** 指定默认档案（拆解等任务使用） */
-        post: operations["set_default_profile"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/model/profiles/{key}": {
         parameters: {
             query?: never;
@@ -298,24 +302,6 @@ export interface paths {
         put?: never;
         /** 测试档案连接（发一个最小真实调用 ping；验证端点 + 密钥 + 模型 + 协议） */
         post: operations["test_profile"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/model/settings": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 读取全局运行设置 */
-        get: operations["get_model_settings"];
-        /** 保存全局运行设置（调节即生效，无需重启——并发闸门每次获取时现读） */
-        put: operations["save_model_settings"];
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -529,6 +515,17 @@ export interface components {
             /** @description 自由标签 */
             tags: string[];
         };
+        CraftSettings: {
+            /**
+             * Format: int32
+             * @description AI 调用并发上限（[llm] max_concurrency，1-8）
+             */
+            max_concurrency: number;
+            /** @description 制作任务使用的模型档案 key（[llm] default；未配置为 null） */
+            model?: string | null;
+            /** @description 切块目标切片长度（[deconstruct] segment_chars，字） */
+            segment_chars: number;
+        };
         CreateCharacterRequest: {
             /** @description 角色显示名（写入 frontmatter 的 name） */
             name: string;
@@ -616,13 +613,6 @@ export interface components {
             segment?: number | null;
             /** Format: int32 */
             seq: number;
-        };
-        ModelSettings: {
-            /**
-             * Format: int32
-             * @description 全局 LLM 并行调用上限（1-8）
-             */
-            max_concurrency: number;
         };
         ProfileListResponse: {
             /** @description 默认档案 key（无档案时为 null） */
@@ -720,9 +710,16 @@ export interface components {
             /** @description 保存后能否仍解析为角色卡（false = frontmatter 缺失/损坏/未标记类型，该卡不进列表） */
             parsed: boolean;
         };
-        SaveSettingsRequest: {
-            /** Format: int32 */
-            max_concurrency: number;
+        SaveCraftSettingsRequest: {
+            /**
+             * Format: int32
+             * @description AI 调用并发上限（1-8）
+             */
+            max_concurrency?: number | null;
+            /** @description 模型档案 key（需已注册；设为制作任务使用的档案） */
+            model?: string | null;
+            /** @description 切块目标切片长度（3000-30000 字） */
+            segment_chars?: number | null;
         };
         SaveTaskResponse: {
             /** @description 保存后的人物库角色 id（db/人物/<id>/） */
@@ -743,9 +740,6 @@ export interface components {
         SelectSegmentsRequest: {
             /** @description 选中的段序号（切块结果 index；去重后须非空） */
             selected: number[];
-        };
-        SetDefaultRequest: {
-            key: string;
         };
         SheetExcerpt: {
             /** @description 正文预览（markdown 剥离标记后取开头约 160 字；纯文本直接取开头） */
@@ -1051,6 +1045,82 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
+            };
+            /** @description 写入失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_craft_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 运行设置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CraftSettings"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    save_craft_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveCraftSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description 已保存 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CraftSettings"];
+                };
+            };
+            /** @description 参数越界或档案不存在 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未鉴权 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description 写入失败 */
             500: {
@@ -1640,55 +1710,6 @@ export interface operations {
             };
         };
     };
-    set_default_profile: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetDefaultRequest"];
-            };
-        };
-        responses: {
-            /** @description 已指定 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileListResponse"];
-                };
-            };
-            /** @description 档案不存在 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 未鉴权 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 写入失败 */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
     delete_profile: {
         parameters: {
             query?: never;
@@ -1767,82 +1788,6 @@ export interface operations {
             };
             /** @description 档案不存在 */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    get_model_settings: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 运行设置 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ModelSettings"];
-                };
-            };
-            /** @description 未鉴权 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    save_model_settings: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SaveSettingsRequest"];
-            };
-        };
-        responses: {
-            /** @description 已保存 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ModelSettings"];
-                };
-            };
-            /** @description 超出 1-8 范围 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 未鉴权 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 写入失败 */
-            500: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -8,4 +8,5 @@ pub mod engine;
 pub mod evidence;
 pub mod prompts;
 pub mod probe;
+pub mod settings;
 pub mod verify;

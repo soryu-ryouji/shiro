@@ -181,7 +181,7 @@ mod tests {
     #[test]
     fn probe_detects_script_form() {
         let text = script_sample();
-        let chunks = chunk::build_chunks(&text);
+        let chunks = chunk::build_chunks(&text, chunk::DEFAULT_SEGMENT_CHARS);
         let p = probe(&text, &chunks.segments);
         assert_eq!(p.form, "script");
         assert!(p.attribution_hit_ratio > 0.3);
@@ -190,7 +190,7 @@ mod tests {
     #[test]
     fn probe_detects_prose_form() {
         let text = "他走进房间，环顾四周。墙上挂着一幅画，画中是海。他想起很多年前的事，那时他还小。\n她低着头，没有说话。窗外的雨一直下，像是要把整个城市淹没。他们就这样站了很久。";
-        let chunks = chunk::build_chunks(text);
+        let chunks = chunk::build_chunks(text, chunk::DEFAULT_SEGMENT_CHARS);
         let p = probe(text, &chunks.segments);
         assert_eq!(p.form, "prose");
     }
@@ -198,7 +198,7 @@ mod tests {
     #[test]
     fn citation_units_extract_scenes() {
         let text = script_sample();
-        let chunks = chunk::build_chunks(&text);
+        let chunks = chunk::build_chunks(&text, chunk::DEFAULT_SEGMENT_CHARS);
         let p = probe(&text, &chunks.segments);
         let units = &p.citation_units[0];
         assert_eq!(units.scenes.len(), 2);
