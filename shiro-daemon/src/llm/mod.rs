@@ -187,7 +187,7 @@ where
                 full.chars().count()
             );
             if attempt < cfg.max_attempts {
-                eprintln!("[llm] {diag}，整体重试");
+                tracing::warn!("{diag}，整体重试");
                 backoff(attempt, None).await;
                 attempt += 1;
                 continue;
@@ -339,7 +339,7 @@ async fn chat_nonstream_fallback(
     };
     match out {
         Some(o) if !o.text.trim().is_empty() => {
-            eprintln!("[llm] 流式失败后非流式兜底成功");
+            tracing::warn!("流式失败后非流式兜底成功");
             Ok(o)
         }
         _ => Err(LlmError {

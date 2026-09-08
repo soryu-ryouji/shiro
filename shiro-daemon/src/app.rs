@@ -87,6 +87,7 @@ pub fn build_router(
         .merge(api_router)
         .route("/health", axum::routing::get(health))
         .with_state(state)
+        .layer(tower_http::trace::TraceLayer::new_for_http())
         .layer(tower_http::cors::CorsLayer::permissive());
 
     // 局域网访问形态：daemon 直接 serve 前端静态资源，SPA 回退到 index.html

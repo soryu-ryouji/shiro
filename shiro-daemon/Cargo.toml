@@ -16,9 +16,11 @@ serde_yaml = "0.9"
 tokio = { version = "1.53.1", features = ["full"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 toml = "1.1.5"
-tower-http = { version = "0.7.1", features = ["fs", "cors"] }
+tower-http = { version = "0.7.1", features = ["fs", "cors", "trace"] }
 utoipa = "5.5.0"
 utoipa-axum = "0.2.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

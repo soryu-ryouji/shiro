@@ -27,12 +27,20 @@ struct Cli {
 
 #[tokio::main]
 async fn main() {
+    // 日志：默认 info，可用 RUST_LOG 覆盖（如 RUST_LOG=shiro_daemon=debug）
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "info".into()),
+        )
+        .init();
+
     let cli = Cli::parse();
 
     let state = AppState {
         token: std::env::var("SHIRO_TOKEN").unwrap_or_else(|_| {
             let generated = format!("{:x}", rand_u128());
-            eprintln!("[shiro-daemon] SHIRO_TOKEN 未设置，已生成临时 token: {generated}");
+            tracing::warn!("SHIRO_TOKEN 未设置，已生成临时 token: {generated}");
             generated
         }),
         watch_hub: Default::default(),
@@ -52,7 +60,7 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .unwrap_or_else(|e| panic!("绑定 {addr} 失败: {e}"));
-    println!("[shiro-daemon] listening on http://{addr}");
+    tracing::info!("listening on http://{addr}");
     axum::serve(listener, router).await.unwrap();
 }
 

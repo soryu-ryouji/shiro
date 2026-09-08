@@ -99,12 +99,12 @@ fn spawn_watch(root: &Path) -> WatchEntry {
         Ok(mut w) => match w.watch(root, RecursiveMode::Recursive) {
             Ok(()) => Some(w),
             Err(e) => {
-                eprintln!("[shiro-daemon] 监听 {:?} 失败: {e}", root);
+                tracing::warn!("监听 {root:?} 失败: {e}");
                 None
             }
         },
         Err(e) => {
-            eprintln!("[shiro-daemon] 创建文件监听器失败: {e}");
+            tracing::warn!("创建文件监听器失败: {e}");
             None
         }
     };
