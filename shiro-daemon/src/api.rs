@@ -3,13 +3,11 @@ use crate::infra::fs::{file_mtime, is_sheet_file, move_to_trash};
 use crate::infra::now_secs;
 use crate::infra::paths::{config_folder, folder_name, resolve_inside, same_path};
 use crate::infra::text::{excerpt_from_content, read_file_head};
-use crate::watch;
+use crate::state::AppState;
 use axum::{
-    Json, Router,
-    extract::{Request, State},
-    http::{StatusCode, header},
-    middleware::Next,
-    response::Response,
+    Json,
+    extract::State,
+    http::StatusCode,
     response::sse::{Event, KeepAlive, Sse},
 };
 use serde::{Deserialize, Serialize};
@@ -18,53 +16,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
-use tower_http::services::{ServeDir, ServeFile};
-use utoipa::{Modify, ToSchema};
-use utoipa_axum::{router::OpenApiRouter, routes};
-
-#[derive(Clone)]
-pub struct AppState {
-    pub token: String,
-    pub watch_hub: watch::WatchHub,
-    /// Chat 生成守卫（同一会话并发限制）
-    pub chat: std::sync::Arc<crate::chat::Hub>,
-}
-
-#[derive(Serialize, ToSchema, PartialEq, Debug)]
-#[serde(rename_all = "lowercase")]
-#[allow(dead_code)] // Starting/Error 为后续初始化流程预留
-pub enum StartupStatus {
-    Starting,
-    Ready,
-    Error,
-}
-
-#[derive(Serialize, ToSchema)]
-pub struct StartupResponse {
-    pub status: StartupStatus,
-}
-
-/// 启动状态。当前无后台初始化流程，直接返回 ready；
-/// 后续加入初始化流程后按 starting → ready/error 流转。
-#[utoipa::path(
-    post,
-    path = "/api/v1/app/startup",
-    tag = "app",
-    responses(
-        (status = 200, description = "启动状态", body = StartupResponse),
-        (status = 401, description = "未鉴权")
-    ),
-    security(("bearer_token" = []))
-)]
-async fn startup() -> Json<StartupResponse> {
-    Json(StartupResponse {
-        status: StartupStatus::Ready,
-    })
-}
-
-async fn health() -> &'static str {
-    "ok"
-}
+use utoipa::ToSchema;
 
 // ---- 项目管理（打开记录存 ~/.config/shiro/history.toml，见 docs/backend/storage.md） ----
 
@@ -133,7 +85,7 @@ pub struct ProjectListResponse {
     ),
     security(("bearer_token" = []))
 )]
-async fn list_projects() -> Json<ProjectListResponse> {
+pub(crate) async fn list_projects() -> Json<ProjectListResponse> {
     let history = load_history();
     let projects = history
         .projects
@@ -194,7 +146,7 @@ fn write_project_name(target: &Path, name: &str) -> Result<(), ApiError> {
     ),
     security(("bearer_token" = []))
 )]
-async fn create_project(
+pub(crate) async fn create_project(
     Json(req): Json<CreateProjectRequest>,
 ) -> Result<(StatusCode, Json<ProjectItem>), ApiError> {
     // 规范化（解析符号链接、去尾斜杠）：避免同一文件夹以不同字符串重复登记
@@ -266,7 +218,7 @@ pub struct RemoveProjectRequest {
     ),
     security(("bearer_token" = []))
 )]
-async fn remove_project(Json(req): Json<RemoveProjectRequest>) -> StatusCode {
+pub(crate) async fn remove_project(Json(req): Json<RemoveProjectRequest>) -> StatusCode {
     // 请求路径与登记路径都容忍非规范形式（尾斜杠/符号链接）
     let key = std::fs::canonicalize(req.path.trim()).ok();
     let mut history = load_history();
@@ -386,7 +338,7 @@ pub struct TreeResponse {
     ),
     security(("bearer_token" = []))
 )]
-async fn project_tree(Json(req): Json<TreeRequest>) -> Result<Json<TreeResponse>, ApiError> {
+pub(crate) async fn project_tree(Json(req): Json<TreeRequest>) -> Result<Json<TreeResponse>, ApiError> {
     let root = ensure_registered(&req.path)?;
     Ok(Json(TreeResponse {
         children: build_tree(&root, &root),
@@ -427,7 +379,7 @@ pub struct ExcerptsResponse {
     ),
     security(("bearer_token" = []))
 )]
-async fn project_excerpts(
+pub(crate) async fn project_excerpts(
     Json(req): Json<ExcerptsRequest>,
 ) -> Result<Json<ExcerptsResponse>, ApiError> {
     const HEAD_BYTES: usize = 4096;
@@ -498,7 +450,7 @@ pub struct FileContent {
     ),
     security(("bearer_token" = []))
 )]
-async fn read_project_file(Json(req): Json<ReadFileRequest>) -> Result<Json<FileContent>, ApiError> {
+pub(crate) async fn read_project_file(Json(req): Json<ReadFileRequest>) -> Result<Json<FileContent>, ApiError> {
     let target = resolve_inside(&ensure_registered(&req.path)?, &req.file)?;
     if !target.is_file() {
         return Err(not_found("文件不存在"));
@@ -533,7 +485,7 @@ pub struct WriteFileRequest {
     ),
     security(("bearer_token" = []))
 )]
-async fn write_project_file(
+pub(crate) async fn write_project_file(
     Json(req): Json<WriteFileRequest>,
 ) -> Result<Json<FileContent>, ApiError> {
     let target = resolve_inside(&ensure_registered(&req.path)?, &req.file)?;
@@ -566,7 +518,7 @@ pub struct CreateFileRequest {
     ),
     security(("bearer_token" = []))
 )]
-async fn create_project_file(
+pub(crate) async fn create_project_file(
     Json(req): Json<CreateFileRequest>,
 ) -> Result<(StatusCode, Json<FileContent>), ApiError> {
     let target = resolve_inside(&ensure_registered(&req.path)?, &req.file)?;
@@ -608,7 +560,7 @@ pub struct CreateFolderRequest {
     ),
     security(("bearer_token" = []))
 )]
-async fn create_project_folder(
+pub(crate) async fn create_project_folder(
     Json(req): Json<CreateFolderRequest>,
 ) -> Result<StatusCode, ApiError> {
     let target = resolve_inside(&ensure_registered(&req.path)?, &req.folder)?;
@@ -641,7 +593,7 @@ pub struct RemoveFolderRequest {
     ),
     security(("bearer_token" = []))
 )]
-async fn remove_project_folder(
+pub(crate) async fn remove_project_folder(
     Json(req): Json<RemoveFolderRequest>,
 ) -> Result<StatusCode, ApiError> {
     let root = ensure_registered(&req.path)?;
@@ -687,7 +639,7 @@ pub struct RenameProjectRequest {
     ),
     security(("bearer_token" = []))
 )]
-async fn rename_project(
+pub(crate) async fn rename_project(
     Json(req): Json<RenameProjectRequest>,
 ) -> Result<Json<ProjectItem>, ApiError> {
     let src = ensure_registered(&req.path)?;
@@ -754,7 +706,7 @@ pub struct RenameEntryRequest {
     ),
     security(("bearer_token" = []))
 )]
-async fn rename_entry(Json(req): Json<RenameEntryRequest>) -> Result<StatusCode, ApiError> {
+pub(crate) async fn rename_entry(Json(req): Json<RenameEntryRequest>) -> Result<StatusCode, ApiError> {
     if req.rel.split(['/', '\\']).next() == Some(".shiro") {
         return Err(bad_request(".shiro 是 shiro 的工作目录，不能重命名"));
     }
@@ -797,7 +749,7 @@ pub struct RemoveFileRequest {
     ),
     security(("bearer_token" = []))
 )]
-async fn remove_project_file(Json(req): Json<RemoveFileRequest>) -> Result<StatusCode, ApiError> {
+pub(crate) async fn remove_project_file(Json(req): Json<RemoveFileRequest>) -> Result<StatusCode, ApiError> {
     let root = ensure_registered(&req.path)?;
     let target = resolve_inside(&root, &req.file)?;
     if !target.is_file() {
@@ -830,7 +782,7 @@ pub struct WatchRequest {
     ),
     security(("bearer_token" = []))
 )]
-async fn watch_project(
+pub(crate) async fn watch_project(
     State(state): State<AppState>,
     Json(req): Json<WatchRequest>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
@@ -847,120 +799,4 @@ async fn watch_project(
             .interval(Duration::from_secs(15))
             .text("ping"),
     ))
-}
-
-async fn auth(
-    State(state): State<AppState>,
-    req: Request,
-    next: Next,
-) -> Result<Response, StatusCode> {
-    let header_token = req
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "));
-    match header_token {
-        Some(t) if t == state.token => Ok(next.run(req).await),
-        _ => Err(StatusCode::UNAUTHORIZED),
-    }
-}
-
-struct SecurityAddon;
-
-impl utoipa::Modify for SecurityAddon {
-    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
-        let components = openapi.components.get_or_insert_with(Default::default);
-        components.add_security_scheme(
-            "bearer_token",
-            utoipa::openapi::security::SecurityScheme::Http(
-                utoipa::openapi::security::HttpBuilder::new()
-                    .scheme(utoipa::openapi::security::HttpAuthScheme::Bearer)
-                    .build(),
-            ),
-        );
-    }
-    // 让 modifier 同时补全 info（OpenApiRouter 生成的文档不含 title/version）
-}
-
-fn apply_info(doc: &mut utoipa::openapi::OpenApi) {
-    doc.info.title = "shiro API".into();
-    doc.info.version = env!("CARGO_PKG_VERSION").into();
-}
-
-/// 构建 API 路由与 OpenAPI 文档（同一来源：路由即文档，契约测试校验 openapi.json 同步）。
-pub fn build_router(
-    state: AppState,
-    serve_folder: Option<PathBuf>,
-) -> (Router, utoipa::openapi::OpenApi) {
-    let (api_router, mut doc) = OpenApiRouter::new()
-        .routes(routes!(startup))
-        .routes(routes!(list_projects))
-        .routes(routes!(create_project))
-        .routes(routes!(remove_project))
-        .routes(routes!(project_tree))
-        .routes(routes!(project_excerpts))
-        .routes(routes!(read_project_file))
-        .routes(routes!(write_project_file))
-        .routes(routes!(create_project_file))
-        .routes(routes!(remove_project_file))
-        .routes(routes!(create_project_folder))
-        .routes(routes!(remove_project_folder))
-        .routes(routes!(rename_project))
-        .routes(routes!(rename_entry))
-        .routes(routes!(watch_project))
-        .routes(routes!(crate::assets::list_characters))
-        .routes(routes!(crate::assets::get_character))
-        .routes(routes!(crate::assets::save_character))
-        .routes(routes!(crate::assets::create_character))
-        .merge(crate::chat::api::router())
-        .routes(routes!(crate::model_api::list_profiles))
-        .routes(routes!(crate::model_api::upsert_profile))
-        .routes(routes!(crate::model_api::delete_profile))
-        .routes(routes!(crate::model_api::test_profile))
-        .split_for_parts();
-    SecurityAddon.modify(&mut doc);
-    apply_info(&mut doc);
-
-    let api_router = api_router.layer(axum::middleware::from_fn_with_state(state.clone(), auth));
-
-    let mut router = Router::new()
-        .merge(api_router)
-        .route("/health", axum::routing::get(health))
-        .with_state(state)
-        .layer(tower_http::cors::CorsLayer::permissive());
-
-    // 局域网访问形态：daemon 直接 serve 前端静态资源，SPA 回退到 index.html
-    if let Some(folder) = serve_folder
-        && folder.is_dir() {
-            let index = ServeFile::new(folder.join("index.html"));
-            router = router.fallback_service(ServeDir::new(folder).not_found_service(index));
-        }
-
-    (router, doc)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// 契约测试：固化的 openapi.json 必须与代码生成一致。
-    /// 改 API 后执行 `cargo run -- --dump-openapi > openapi.json` 重新固化。
-    #[test]
-    fn openapi_json_in_sync() {
-        let (_, doc) = build_router(
-            AppState {
-                token: String::new(),
-                watch_hub: watch::WatchHub::default(),
-                chat: Default::default(),
-            },
-            None,
-        );
-        let generated = serde_json::to_string_pretty(&doc).unwrap();
-        let frozen = include_str!("../openapi.json");
-        assert_eq!(
-            generated.trim(),
-            frozen.trim(),
-            "openapi.json 与代码不同步，请执行 cargo run -- --dump-openapi > openapi.json"
-        );
-    }
 }

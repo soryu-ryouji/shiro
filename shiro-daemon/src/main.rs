@@ -1,13 +1,16 @@
 mod api;
+mod app;
 mod assets;
+mod auth;
 mod chat;
 mod error;
 mod infra;
 mod llm;
 mod model_api;
+mod state;
 mod watch;
 
-use api::AppState;
+use state::AppState;
 use clap::Parser;
 use std::path::PathBuf;
 
@@ -45,7 +48,7 @@ async fn main() {
         chat: Default::default(),
     };
 
-    let (router, doc) = api::build_router(state.clone(), cli.serve_folder);
+    let (router, doc) = app::build_router(state.clone(), cli.serve_folder);
 
     if cli.dump_openapi {
         println!("{}", serde_json::to_string_pretty(&doc).unwrap());

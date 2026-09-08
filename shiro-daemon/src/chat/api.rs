@@ -172,7 +172,7 @@ pub struct SendMessageRequest {
     security(("bearer_token" = []))
 )]
 pub(crate) async fn send_chat_message(
-    State(state): State<crate::api::AppState>,
+    State(state): State<crate::state::AppState>,
     Json(req): Json<SendMessageRequest>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError>
 {
@@ -313,7 +313,7 @@ pub(crate) async fn apply_chat_proposal(
 }
 
 /// 注册路由（在 api.rs 的 build_router 中调用；每条路径单独注册）
-pub fn router() -> utoipa_axum::router::OpenApiRouter<crate::api::AppState> {
+pub fn router() -> utoipa_axum::router::OpenApiRouter<crate::state::AppState> {
     utoipa_axum::router::OpenApiRouter::new()
         .routes(routes!(list_chat_sessions))
         .routes(routes!(create_chat_session))
