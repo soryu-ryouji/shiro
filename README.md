@@ -32,13 +32,14 @@ cd shiro-app && npm run gen:types
 ```
 
 ```bash
-# macOS / Linux：本机安装（mac → /Applications/shiro.app，Linux → out/*.AppImage）
+# macOS / Linux：本机安装（mac → /Applications/shiro.app，Linux → ~/.local/bin/shiro + 桌面启动器）
 ./tools/install.sh
 # macOS / Linux：分发包归置到 out/
 ./tools/build.sh
 ```
 
 前置：Node.js 与 Rust 工具链。
+Linux 为当前用户级安装（无需 sudo）：AppImage 装到 `~/.local/bin/shiro`，启动器写入 `~/.local/share/applications/shiro.desktop`（图标进 hicolor），GNOME 应用列表搜索 shiro 即可启动；构建产物同时留在 `out/`。
 
 ## 文档
 

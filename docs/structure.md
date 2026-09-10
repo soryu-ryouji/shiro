@@ -255,4 +255,5 @@ ChatView 发消息 → POST /chat/sessions/messages（fetch 流式读 SSE）
 | 后端测试 + 契约固化 | `cd shiro-daemon && cargo test`；改 API 后 `cargo run -- --dump-openapi > openapi.json` |
 | 前端类型 + 构建 | `cd shiro-app && npm run gen:types && npm run build` |
 | 前端自检 | `cd shiro-app && npm run test:ui`（Electron 会话） |
+| 本机安装 | `./tools/install.sh`（macOS/Linux）· `./tools/install.ps1`（Windows） |
 | 打包分发 | `./tools/build.sh`（macOS/Linux）· `./tools/build.ps1`（Windows） |

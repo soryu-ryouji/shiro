@@ -2,7 +2,9 @@
 # 发包：构建 shiro 桌面应用的分发包并归置到仓库根目录的 out/。
 # macOS 产物为 shiro-mac-<arch>.zip（.app 目录压缩包），Linux 产物为 shiro-linux-x64.AppImage。
 #
-# 用法: ./tools/build.sh
+# 用法: ./tools/build.sh [--unpacked]
+#   --unpacked：只产出未打包目录（mac 为 release/mac*/shiro.app，Linux 为 release/linux-unpacked），
+#               跳过 zip/AppImage 压缩——install.sh 的复用入口
 # 前置: 最新 Node.js 与 Rust 工具链（https://rustup.rs/）
 set -euo pipefail
 
@@ -10,12 +12,25 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_DIR="$REPO_ROOT/shiro-app"
 OUT_DIR="$REPO_ROOT/out"
 
+UNPACKED=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --unpacked) UNPACKED=1; shift ;;
+    *) echo "未知参数: $1（用法: ./tools/build.sh [--unpacked]）"; exit 1 ;;
+  esac
+done
+
 for tool in node npm cargo; do
   command -v "$tool" >/dev/null 2>&1 || { echo "未找到 $tool，请先安装最新的 Node.js 与 Rust 工具链（https://rustup.rs/）"; exit 1; }
 done
 
 cd "$APP_DIR"
 [ -d node_modules ] || npm install
+if [ "$UNPACKED" -eq 1 ]; then
+  npm run pack:dir # install 只需要未打包目录，跳过 zip/AppImage 压缩
+  echo "未打包产物: $APP_DIR/release/"
+  exit 0
+fi
 npm run pack
 
 mkdir -p "$OUT_DIR"
