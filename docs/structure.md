@@ -41,6 +41,7 @@ shiro/
 │   └── tools/                     前端自检与测试脚本
 │
 ├── tools/                         仓库级脚本（构建/安装/打包）
+├── .github/workflows/ci.yml        ← CI：质量门禁 + 三平台构建 + Release 发布
 └── docs/                          设计文档（本文件为结构总览）
 ```
 
@@ -257,3 +258,11 @@ ChatView 发消息 → POST /chat/sessions/messages（fetch 流式读 SSE）
 | 前端自检 | `cd shiro-app && npm run test:ui`（Electron 会话） |
 | 本机安装 | `./tools/install.sh`（macOS/Linux）· `./tools/install.ps1`（Windows） |
 | 打包分发 | `./tools/build.sh`（macOS/Linux）· `./tools/build.ps1`（Windows） |
+
+### CI 发版（.github/workflows/ci.yml）
+
+单流水线：push/PR 跑质量门禁（daemon fmt/clippy/test + 前端构建/契约同步/表格测试/打包冒烟/UI 自检）；构建与发布只在门禁全绿后进行。
+
+- **正式版**：提交信息首行以 `release` 开头且含与 package.json 一致的版本号（如 `release: v0.2.0`，正文为发布说明）→ 三平台（win zip / mac 双架构 zip / linux AppImage）构建 + sha256 边车，汇流后创建 GitHub Release（同名 tag 已存在则失败，防重复发版）
+- **nightly**：main 上 `feat`/`fix` 开头的提交滚动更新 nightly 预发布（固定 tag=nightly，版本号覆写为 `0.0.0-nightly.<sha7>`）
+- **手动**：workflow_dispatch 只构建上传 Artifacts，不创建 Release
