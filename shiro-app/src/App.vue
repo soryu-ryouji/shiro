@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { apiPost, hasConnection } from './api'
 import { hasShell, shell } from './platform'
-import type { NavItem, NavKey } from './types'
+import { NAV_ITEMS, type NavKey } from './types'
+import { hiddenNavKeys } from './utils/navModules'
 import Sidebar from './components/Sidebar.vue'
 import TitleBar from './components/TitleBar.vue'
 import WindowControls from './components/WindowControls.vue'
@@ -13,18 +14,20 @@ import DatabaseView from './views/DatabaseView.vue'
 import ModelView from './views/ModelView.vue'
 import { projectStore } from './stores/project'
 
-const NAV_ITEMS: NavItem[] = [
-  { key: 'project', label: 'Project', icon: 'folder' },
-  { key: 'chat', label: 'Chat', icon: 'chat' },
-  { key: 'database', label: 'Database', icon: 'database' },
-  { key: 'model', label: 'Model', icon: 'model' },
-]
 const active = ref<NavKey>('project')
 
-/** 跨视图导航（如制作页提示去配模型）：shiro:navigate 事件携带 NavKey */
+/** 设置面板可隐藏可选模块（Chat / Database / Model），此处过滤导航项 */
+const navItems = computed(() => NAV_ITEMS.filter((i) => !hiddenNavKeys.value.includes(i.key)))
+
+// 当前视图所在模块被隐藏时切回 Project（pre flush 保证渲染前生效，不闪退隐藏的视图）
+watch(hiddenNavKeys, (hidden) => {
+  if (hidden.includes(active.value)) active.value = 'project'
+})
+
+/** 跨视图导航（如制作页提示去配模型）：shiro:navigate 事件携带 NavKey；目标模块被隐藏时忽略 */
 function onNavigate(e: Event) {
   const key = (e as CustomEvent<NavKey>).detail
-  if (key) active.value = key
+  if (key && navItems.value.some((i) => i.key === key)) active.value = key
 }
 window.addEventListener('shiro:navigate', onNavigate)
 
@@ -146,7 +149,7 @@ const fullBleed = computed(() => writing.value || active.value === 'chat')
 
   <!-- 侧栏（Activity 图标置顶）+ 中栏：左栏通高；写作模式各栏自带顶栏，全局顶栏只覆盖其余形态 -->
   <div v-else class="app" :style="gridStyle">
-    <Sidebar :items="NAV_ITEMS" :active="active" @activate="onActivity" @toggle="toggleSidebar" />
+    <Sidebar :items="navItems" :active="active" @activate="onActivity" @toggle="toggleSidebar" />
 
     <div class="center">
       <TitleBar

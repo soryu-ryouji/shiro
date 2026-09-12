@@ -44,6 +44,7 @@ import {
   type ParaMode,
 } from '../utils/font'
 import pkg from '../../package.json'
+import { OPTIONAL_NAV_MODULES, isNavHidden, setNavVisible } from '../utils/navModules'
 import { applyCountStrategy, countStrategy, type CountStrategyKey } from '../utils/wordcount'
 
 const emit = defineEmits<{ close: [] }>()
@@ -346,6 +347,20 @@ onMounted(async () => {
 
         <section v-show="section === 'general'" class="pane">
           <div class="group">
+            <div v-for="m in OPTIONAL_NAV_MODULES" :key="m.key" class="grow">
+              <span class="glabel">{{ m.label }}</span>
+              <input
+                type="checkbox"
+                :checked="!isNavHidden(m.key)"
+                :title="`在侧栏顶部图标栏显示 ${m.label}`"
+                @change="setNavVisible(m.key, ($event.target as HTMLInputElement).checked)"
+              />
+            </div>
+          </div>
+          <p class="pane-hint">
+            取消勾选后对应模块从侧栏顶部图标栏隐藏；正在查看被隐藏的模块时自动切回 Project。Project 是写作主模块，始终显示。
+          </p>
+          <div class="group">
             <div class="grow">
               <span class="glabel">字数统计</span>
               <select
@@ -457,6 +472,11 @@ onMounted(async () => {
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
+}
+
+/* 同页多个分组卡片之间的间距（中间可隔说明文字） */
+.pane .group ~ .group {
+  margin-top: 14px;
 }
 
 .grow {
