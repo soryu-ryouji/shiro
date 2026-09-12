@@ -42,7 +42,10 @@ app.whenReady().then(async () => {
 })
 `,
   )
-  const child = spawn(process.execPath, [join(process.cwd(), 'node_modules/electron/cli.js'), join(outDir, 'main.cjs')], {
+  // CI Linux（ubuntu 24.04+）无 setuid 的 chrome-sandbox 助手且 userns 受限，不关沙箱 electron 启动即退
+  const args = [join(process.cwd(), 'node_modules/electron/cli.js'), join(outDir, 'main.cjs')]
+  if (process.platform === 'linux') args.push('--no-sandbox')
+  const child = spawn(process.execPath, args, {
     stdio: ['ignore', 'pipe', 'inherit'],
   })
   let out = ''

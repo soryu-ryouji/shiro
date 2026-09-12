@@ -119,11 +119,16 @@ const watchdog = setTimeout(() => {
 try {
   await waitFor(async () => (await fetch('http://localhost:5173/').catch(() => null))?.ok, 60_000, 'vite 就绪')
 
-  electron = spawn(require('electron'), ['.', '--remote-debugging-port=9225'], {
-    cwd: root,
-    stdio: 'ignore',
-    env: { ...process.env, VITE_DEV_SERVER_URL: 'http://localhost:5173', SHIRO_USER_DATA: path.join(tmp, 'userdata') },
-  })
+  electron = spawn(
+    require('electron'),
+    // CI Linux 无 setuid 的 chrome-sandbox 助手，不关沙箱会启动即退（CDP 端点永远不出现）
+    ['.', '--remote-debugging-port=9225', ...(process.platform === 'linux' ? ['--no-sandbox'] : [])],
+    {
+      cwd: root,
+      stdio: 'ignore',
+      env: { ...process.env, VITE_DEV_SERVER_URL: 'http://localhost:5173', SHIRO_USER_DATA: path.join(tmp, 'userdata') },
+    },
+  )
 
   // ---------- 连接 CDP ----------
 
