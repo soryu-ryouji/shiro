@@ -21,7 +21,12 @@ fn router() -> axum::Router {
 #[tokio::test]
 async fn health_requires_no_auth() {
     let res = router()
-        .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
@@ -34,7 +39,10 @@ async fn protected_route_rejects_missing_or_wrong_token() {
         if let Some(a) = auth {
             req = req.header("Authorization", a);
         }
-        let res = router().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+        let res = router()
+            .oneshot(req.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
         assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
     }
 }
@@ -53,7 +61,9 @@ async fn startup_returns_ready_with_token() {
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
-    let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let body = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     assert!(String::from_utf8_lossy(&body).contains("\"ready\""));
 }
 

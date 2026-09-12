@@ -340,7 +340,10 @@ pub fn build_llm_messages(
     // 本条消息：引用文件内容前置拼接（存储的 user 消息保留原文，发送时才组装）
     let mut content = String::new();
     for rel in attachments {
-        content.push_str(&format!("\n【引用文件：{rel}】\n{}\n【引用结束】\n", read_attachment(root, rel)));
+        content.push_str(&format!(
+            "\n【引用文件：{rel}】\n{}\n【引用结束】\n",
+            read_attachment(root, rel)
+        ));
     }
     content.push_str(user_content);
     out.push(crate::llm::ChatMessage {
@@ -365,9 +368,13 @@ pub fn parse_proposals(session: &mut Session, text: &str) -> Vec<Proposal> {
     let mut out = Vec::new();
     let mut rest = text;
     while let Some(start) = rest.find("```shiro-edit") {
-        let Some(after_fence) = rest[start..].find('\n') else { break };
+        let Some(after_fence) = rest[start..].find('\n') else {
+            break;
+        };
         let body_start = start + after_fence + 1;
-        let Some(end) = rest[body_start..].find("```") else { break };
+        let Some(end) = rest[body_start..].find("```") else {
+            break;
+        };
         let body = &rest[body_start..body_start + end];
         if let Ok(v) = crate::llm::extract_json(body) {
             let file = v.get("file").and_then(|f| f.as_str()).unwrap_or("").trim();
@@ -450,7 +457,10 @@ mod tests {
         let folder = std::env::temp_dir().join(format!("shiro-chat-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).unwrap();
-        let mut s = Session { id: "t".into(), ..session.clone() };
+        let mut s = Session {
+            id: "t".into(),
+            ..session.clone()
+        };
         s.messages.push(ChatMessage {
             role: "assistant".into(),
             content: text.into(),

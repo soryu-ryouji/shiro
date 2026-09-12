@@ -271,7 +271,10 @@ pub(crate) async fn create_project_file(
     Json(req): Json<CreateFileRequest>,
 ) -> Result<(StatusCode, Json<FileContent>), ApiError> {
     let root = store::ensure_registered(&req.path)?;
-    Ok((StatusCode::CREATED, Json(files::create_file(&root, &req.file)?)))
+    Ok((
+        StatusCode::CREATED,
+        Json(files::create_file(&root, &req.file)?),
+    ))
 }
 
 #[derive(Deserialize, ToSchema)]

@@ -185,14 +185,17 @@ pub(super) fn openai_request<'a>(
     stream: bool,
 ) -> reqwest::RequestBuilder {
     let url = format!("{}/chat/completions", cfg.base_url.trim_end_matches('/'));
-    client.post(url).bearer_auth(&cfg.api_key).json(&ChatRequest {
-        model: &cfg.model,
-        messages,
-        temperature: TASK_TEMPERATURE,
-        stream,
-        reasoning_effort: cfg.thinking.as_deref(),
-        stream_options: stream.then(|| serde_json::json!({ "include_usage": true })),
-    })
+    client
+        .post(url)
+        .bearer_auth(&cfg.api_key)
+        .json(&ChatRequest {
+            model: &cfg.model,
+            messages,
+            temperature: TASK_TEMPERATURE,
+            stream,
+            reasoning_effort: cfg.thinking.as_deref(),
+            stream_options: stream.then(|| serde_json::json!({ "include_usage": true })),
+        })
 }
 
 /// Anthropic Messages：POST {base}/v1/messages，x-api-key + anthropic-version（stream:true）；
@@ -242,15 +245,17 @@ pub(super) fn anthropic_request<'a>(
 pub(super) fn retry_after_ms_from(headers: &reqwest::header::HeaderMap) -> Option<u64> {
     const CAP_MS: u64 = 60_000;
     if let Some(v) = headers.get("retry-after-ms").and_then(|v| v.to_str().ok())
-        && let Ok(ms) = v.parse::<f64>() {
-            let ms = ms as u64;
-            return (ms <= CAP_MS).then_some(ms);
-        }
+        && let Ok(ms) = v.parse::<f64>()
+    {
+        let ms = ms as u64;
+        return (ms <= CAP_MS).then_some(ms);
+    }
     if let Some(v) = headers.get("retry-after").and_then(|v| v.to_str().ok())
-        && let Ok(secs) = v.parse::<f64>() {
-            let ms = (secs * 1000.0) as u64;
-            return (ms <= CAP_MS).then_some(ms);
-        }
+        && let Ok(secs) = v.parse::<f64>()
+    {
+        let ms = (secs * 1000.0) as u64;
+        return (ms <= CAP_MS).then_some(ms);
+    }
     None
 }
 
@@ -299,6 +304,9 @@ mod tests {
         let mut h = reqwest::header::HeaderMap::new();
         h.insert("retry-after", "2".parse().unwrap());
         assert_eq!(retry_after_ms_from(&h), Some(2000));
-        assert_eq!(retry_after_ms_from(&reqwest::header::HeaderMap::new()), None);
+        assert_eq!(
+            retry_after_ms_from(&reqwest::header::HeaderMap::new()),
+            None
+        );
     }
 }

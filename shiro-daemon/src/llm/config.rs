@@ -95,10 +95,11 @@ pub(crate) fn write_max_concurrency(folder: &Path, value: u32) -> Result<(), std
 /// 读取默认档案（引擎使用）；未配置或默认项缺失返回 None
 pub fn load_llm_config() -> Option<LlmConfig> {
     let (profiles, default_key) = read_profiles(&config_folder());
-    let p = profiles.iter().find(|p| Some(&p.key) == default_key.as_ref())?;
-    let usable = !p.base_url.trim().is_empty()
-        && !p.api_key.trim().is_empty()
-        && !p.model.trim().is_empty();
+    let p = profiles
+        .iter()
+        .find(|p| Some(&p.key) == default_key.as_ref())?;
+    let usable =
+        !p.base_url.trim().is_empty() && !p.api_key.trim().is_empty() && !p.model.trim().is_empty();
     usable.then(|| LlmConfig {
         base_url: p.base_url.clone(),
         api_key: p.api_key.clone(),
@@ -291,7 +292,11 @@ mod tests {
         assert_eq!(default.as_deref(), Some("kimi-code"));
         let kimi = read_back.iter().find(|p| p.key == "kimi-code").unwrap();
         assert_eq!(kimi.protocol, "anthropic");
-        assert_eq!(kimi.thinking.as_deref(), Some("medium"), "thinking 字段往返");
+        assert_eq!(
+            kimi.thinking.as_deref(),
+            Some("medium"),
+            "thinking 字段往返"
+        );
         let text2 = std::fs::read_to_string(folder.join("config.toml")).unwrap();
         assert!(text2.contains("thinking = \"medium\""));
         let text = std::fs::read_to_string(folder.join("config.toml")).unwrap();

@@ -106,7 +106,9 @@ pub(crate) fn save(input: &ProfileInput) -> Result<ProfileListResponse, ApiError
     if let Some(t) = thinking
         && !["low", "medium", "high"].contains(&t)
     {
-        return Err(bad_request("思考强度仅支持 low / medium / high（或不填不启用）"));
+        return Err(bad_request(
+            "思考强度仅支持 low / medium / high（或不填不启用）",
+        ));
     }
 
     let (mut profiles, mut default) = llm::read_profiles(&config_folder());

@@ -1,8 +1,10 @@
 //! Chat HTTP 端点：会话 CRUD + 消息流式生成（SSE）+ 提案应用。
 //! 存储与生成辅助见 mod.rs；模型调用走 llm::chat_stream（重试/双协议见 llm.rs）。
 
-use crate::features::chat::{self, ChatMessage, Proposal, RunningGuard, SessionDetail, SessionSummary};
 use crate::error::{ApiError, ErrorResponse, bad_request, not_found};
+use crate::features::chat::{
+    self, ChatMessage, Proposal, RunningGuard, SessionDetail, SessionSummary,
+};
 use crate::infra::now_secs;
 use axum::{
     Json,
@@ -112,8 +114,7 @@ pub(crate) async fn get_chat_session(
     Json(req): Json<SessionRefRequest>,
 ) -> Result<Json<SessionDetail>, ApiError> {
     let root = crate::features::projects::ensure_registered(&req.path)?;
-    let session = chat::read_session(&root, &req.id)
-        .ok_or_else(|| not_found("会话不存在"))?;
+    let session = chat::read_session(&root, &req.id).ok_or_else(|| not_found("会话不存在"))?;
     Ok(Json(session.detail()))
 }
 
@@ -174,8 +175,7 @@ pub struct SendMessageRequest {
 pub(crate) async fn send_chat_message(
     State(state): State<crate::state::AppState>,
     Json(req): Json<SendMessageRequest>,
-) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError>
-{
+) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
     let id = req.id.clone();
     let root = crate::features::projects::ensure_registered(&req.path)?;
     if req.content.trim().is_empty() {
@@ -252,12 +252,15 @@ pub(crate) async fn send_chat_message(
                     return;
                 }
                 let _ = tx
-                    .send(Ok(Event::default().data(json!({ "type": "done", "message": dto }).to_string())))
+                    .send(Ok(Event::default()
+                        .data(json!({ "type": "done", "message": dto }).to_string())))
                     .await;
             }
             Some(Err(e)) => {
                 let _ = tx
-                    .send(Ok(Event::default().data(json!({ "type": "error", "message": e.message }).to_string())))
+                    .send(Ok(Event::default().data(
+                        json!({ "type": "error", "message": e.message }).to_string(),
+                    )))
                     .await;
             }
         }
@@ -305,10 +308,9 @@ pub(crate) async fn apply_chat_proposal(
     Json(req): Json<ApplyProposalRequest>,
 ) -> Result<Json<ApplyProposalResponse>, ApiError> {
     let root = crate::features::projects::ensure_registered(&req.path)?;
-    let mut session =
-        chat::read_session(&root, &req.id).ok_or_else(|| not_found("会话不存在"))?;
-    let proposal = chat::apply_proposal(&root, &mut session, &req.proposal_id)
-        .map_err(|e| bad_request(&e))?;
+    let mut session = chat::read_session(&root, &req.id).ok_or_else(|| not_found("会话不存在"))?;
+    let proposal =
+        chat::apply_proposal(&root, &mut session, &req.proposal_id).map_err(|e| bad_request(&e))?;
     Ok(Json(ApplyProposalResponse { proposal }))
 }
 

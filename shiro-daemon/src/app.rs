@@ -92,12 +92,12 @@ pub fn build_router(
 
     // 局域网访问形态：daemon 直接 serve 前端静态资源，SPA 回退到 index.html
     if let Some(folder) = serve_folder
-        && folder.is_dir() {
-            let index = tower_http::services::ServeFile::new(folder.join("index.html"));
-            router = router.fallback_service(
-                tower_http::services::ServeDir::new(folder).not_found_service(index),
-            );
-        }
+        && folder.is_dir()
+    {
+        let index = tower_http::services::ServeFile::new(folder.join("index.html"));
+        router = router
+            .fallback_service(tower_http::services::ServeDir::new(folder).not_found_service(index));
+    }
 
     (router, doc)
 }

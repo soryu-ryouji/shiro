@@ -89,8 +89,7 @@ fn write_project_name(target: &Path, name: &str) -> Result<(), ApiError> {
 /// 登记项目：规范化路径（canonicalize，避免尾斜杠/符号链接重复），补齐 .shiro/ 元数据，
 /// 写入 history（去重、最新在前）。display_name 有值时写入 project.toml 的 name。
 pub(crate) fn register(path: &str, display_name: Option<&str>) -> Result<ProjectItem, ApiError> {
-    let target =
-        std::fs::canonicalize(path.trim()).map_err(|_| bad_request("项目文件夹不存在"))?;
+    let target = std::fs::canonicalize(path.trim()).map_err(|_| bad_request("项目文件夹不存在"))?;
     if !target.is_dir() {
         return Err(bad_request("项目文件夹不存在"));
     }
